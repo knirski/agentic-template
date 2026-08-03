@@ -38,7 +38,9 @@ jobs:
         run: nix develop --command bash scripts/validate-template.sh
       - name: Push dev-shell closure to Cachix
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: cachix push knirski-agentic-template '.#devShells.x86_64-linux.default'
+        run: |
+          nix develop . --profile /tmp/agentic-template-dev-profile -c true
+          cachix push knirski-agentic-template /tmp/agentic-template-dev-profile
 
   release:
     name: Semantic Release

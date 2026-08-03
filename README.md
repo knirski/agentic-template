@@ -85,7 +85,9 @@ closure with:
 ```bash
 export CACHIX_AUTH_TOKEN='...'
 cachix authtoken "$CACHIX_AUTH_TOKEN"
-cachix push knirski-agentic-template '.#devShells.x86_64-linux.default'
+profile="${TMPDIR:-/tmp}/agentic-template-dev-profile"
+nix develop . --profile "$profile" -c true
+cachix push knirski-agentic-template "$profile"
 ```
 
 For GitHub Actions, add `CACHIX_AUTH_TOKEN` as a repository secret. CI uses it only for pushes to
