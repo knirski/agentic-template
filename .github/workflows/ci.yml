@@ -20,9 +20,31 @@ jobs:
       - name: Validate generic delivery files
         run: scripts/validate-template.sh
 
+  nix:
+    name: Nix tooling and checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up Nix and Cachix
+        uses: ./.github/actions/setup-nix
+        with:
+          cachix-auth-token: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && secrets.CACHIX_AUTH_TOKEN || '' }}
+      - name: Run flake checks
+        run: nix flake check
+      - name: Validate repository contract in the dev shell
+        run: nix develop --command bash scripts/validate-template.sh
+      - name: Push dev-shell closure to Cachix
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          nix develop . --profile /tmp/agentic-template-dev-profile -c true
+          cachix push knirski-agentic-template /tmp/agentic-template-dev-profile
+
   release:
     name: Semantic Release
-    needs: delivery-contract
+    needs: [delivery-contract, nix]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: write

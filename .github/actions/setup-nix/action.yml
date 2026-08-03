@@ -1,0 +1,26 @@
+# Install Nix and configure pull-only or authenticated Cachix access.
+name: Setup Nix
+description: Install Nix and configure Cachix caching
+
+inputs:
+  cachix-auth-token:
+    description: Cachix token for publishing build results; omit for pull-only access.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+    - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d # v14
+      with:
+        use-flakehub: false
+    - uses: cachix/cachix-action@v17
+      if: ${{ inputs.cachix-auth-token == '' }}
+      with:
+        name: knirski-agentic-template
+    - uses: cachix/cachix-action@v17
+      if: ${{ inputs.cachix-auth-token != '' }}
+      with:
+        name: knirski-agentic-template
+        authToken: '${{ inputs.cachix-auth-token }}'

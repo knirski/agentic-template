@@ -58,3 +58,38 @@ This template intentionally contains generic instructions, documentation scaffol
 files, and reusable skills. Product code and language-specific skills belong in generated projects.
 
 See `NOTICE.md` for bundled skill provenance.
+
+## Optional Nix development shell
+
+Nix is optional. Contributors can use the repository's normal validation directly:
+
+```bash
+scripts/validate-template.sh
+```
+
+For contributors who use Nix, the repository also includes a language-neutral development shell
+with the tools used to maintain the template: `shellcheck`, `actionlint`, `deadnix`, `statix`,
+`nixfmt`, Git, and Cachix.
+
+```bash
+nix develop
+nix flake check
+nix fmt
+```
+
+The CI workflow uses the `knirski-agentic-template` Cachix cache. Pull-only access does not require
+credentials when the cache is public. Publishing the development-shell closure requires a
+Cachix authentication token. Set `CACHIX_AUTH_TOKEN` locally, authenticate once, and push a
+closure with:
+
+```bash
+export CACHIX_AUTH_TOKEN='...'
+cachix authtoken "$CACHIX_AUTH_TOKEN"
+profile="${TMPDIR:-/tmp}/agentic-template-dev-profile"
+nix develop . --profile "$profile" -c true
+cachix push knirski-agentic-template "$profile"
+```
+
+For GitHub Actions, add `CACHIX_AUTH_TOKEN` as a repository secret. CI uses it only for pushes to
+`main`; pull requests receive pull-only Cachix access and never receive the secret. Formatting is
+checked without modifying files by the `formatting` check included in `nix flake check`.
