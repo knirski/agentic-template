@@ -38,6 +38,17 @@ Add a `GEMINI_API_KEY` Actions repository secret before opening a pull request; 
 Google AI Studio and store it in the generated repository under **Settings → Secrets and variables →
 Actions**. Never commit the key.
 
+### Required repository secrets
+
+Configure these user-provided secrets under **Settings → Secrets and variables → Actions**:
+
+- `GEMINI_API_KEY` — required by both PR Agent workflows. Create it in Google AI Studio.
+- `CACHIX_AUTH_TOKEN` — required for pushes to `main` to publish the development-shell closure to
+  Cachix. Pull requests use pull-only access and do not need this secret.
+
+`GITHUB_TOKEN` and `GH_TOKEN` are supplied automatically by GitHub Actions for the PR Agent and
+semantic-release workflows; do not create or commit them manually.
+
 The default model and review behavior are configured in `.pr_agent.toml`. Projects may adapt those
 settings while retaining the workflow's least-privilege permissions and secret-based credential
 wiring.
@@ -82,8 +93,10 @@ nix flake check
 nix fmt
 ```
 
-The CI workflow uses the `knirski-agentic-template` Cachix cache. Pull-only access does not require
-credentials when the cache is public. Publishing the development-shell closure requires a
+The CI workflow uses the `knirski-agentic-template` Cachix cache. When adapting this template,
+replace that cache name with the name of your own Cachix cache in the workflow and local commands.
+Pull-only access does not require credentials when the cache is public. Publishing the
+development-shell closure requires a
 Cachix authentication token. Set `CACHIX_AUTH_TOKEN` locally, authenticate once, and push a
 closure with:
 
