@@ -1,0 +1,462 @@
+---
+name: pr-review-loop
+description: Use when addressing open PR review comments from any reviewer (human or bot) within the current agent session. For a fresh-context-per-comment approach, use ralph-wiggum-loop instead.
+license: MIT
+compatibility: Requires gh CLI or any other tool to interact with GitHub. PR branch must be checked out locally.
+metadata:
+  author: Pietro Di Bello
+  version: "1.5.0"
+allowed-tools: Bash(gh:*)
+---
+
+# PR Review Loop
+
+## Purpose
+
+Address all open PR review comments one at a time using an opinionated, resumable workflow. Works with comments from any reviewer (human or bot).
+
+## Typical invocations
+
+Users trigger this skill with prompts like:
+
+- "Address all open review comments on this PR"
+- "Work through the code review feedback on PR #42"
+- "Fix the review comments left by @alice on this pull request"
+- "Use pr-review-loop on PR #123"
+
+## Prerequisites
+
+- `gh` CLI (preferred). If unavailable, fall back to any tool available to interact with GitHub.
+- The PR branch must be checked out locally.
+
+## Process
+
+### Step 1 — Pre-flight
+
+Inspect the project for safeguard conventions by checking these files (if they exist):
+- `CLAUDE.md`, `AGENTS.md`
+- `Makefile`
+- `.github/workflows/`
+- `README.md`
+
+Identify all required safeguards (tests, compilation, linting, formatting, etc.).
+Run all of them. If any fail, stop immediately and report — do not proceed on a broken baseline.
+
+### Step 2 — Get Current PR Number and Basic Info
+
+```bash
+# Get current PR details
+gh pr status
+
+# View PR with all comments
+gh pr view
+```
+
+### Step 3 — Collect All Unresolved PR Feedback
+
+GitHub surfaces reviewer feedback in two distinct forms — both must be collected:
+
+| Type | Where it lives | Has "resolve"? |
+|------|---------------|----------------|
+| **Review threads** | Inline comments anchored to a file/line, submitted as part of a review | Yes — `resolveReviewThread` mutation |
+| **Issue comments** | Regular PR conversation comments (e.g. a summary review posted as a top-level comment) | No — reply serves as closure |
+
+**Fetch review threads** (keep only unresolved ones):
+```bash
+gh api graphql -f query='
+query($owner:String!, $name:String!, $number:Int!) {
+  repository(owner:$owner, name:$name) {
+    pullRequest(number:$number) {
+      reviewThreads(first:100) {
+        nodes {
+          id
+          isResolved
+          path
+          line
+          comments(first:20) {
+            nodes {
+              id
+              databaseId
+              author { login }
+              body
+              createdAt
+              replyTo { databaseId }
+            }
+          }
+        }
+      }
+    }
+  }
+}' -f owner='{owner}' -f name='{repo}' -F number={pr_number} \
+  | jq '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved == false)) | map(. + {type: "review-thread"})'
+```
+
+**Fetch issue comments** (top-level PR conversation comments):
+```bash
+gh api repos/{owner}/{repo}/issues/{pr_number}/comments \
+  | jq '[.[] | {id: .id, author: .user.login, body: .body, created_at: .created_at, type: "issue-comment"}]'
+```
+
+> Before triaging, filter out comments by the PR author because they are not reviewer feedback.
+> Retain feedback from automated reviewers and bots; classify it by substance exactly as human
+> feedback. Exclude automation only when the comment is operational noise rather than review
+> feedback, and record that decision as OUT_OF_SCOPE.
+
+Triage items from both lists. Track which type each item is — it affects how you reply (Step 6f) and close (Step 6g).
+
+### Step 4 — Triage
+Read [the triage guide](references/triage-guide.md) for the specific classification framework and examples. If the guide is not available, use the MUST_FIX / SHOULD_FIX / PARK / OUT_OF_SCOPE / NEEDS_CLARIFICATION classification with your own judgment (see definitions below).
+
+Classify every unresolved comment as: MUST_FIX, SHOULD_FIX, PARK, OUT_OF_SCOPE, or NEEDS_CLARIFICATION.
+
+Triage all comments before acting on any.
+
+If a comment is non-actionable/no-op (e.g. acknowledgment, praise, emoji-only), classify as OUT_OF_SCOPE. Its short acknowledgment reply and resolution happen during processing (Step 6), after the triage is approved — not now.
+
+If a comment's intent is genuinely ambiguous — multiple interpretations exist and each would lead to a meaningfully different change — classify as NEEDS_CLARIFICATION rather than guessing.
+
+If Perplexity or other research tools are available and a comment requires external knowledge to classify (e.g., library idioms, language conventions), use them to inform your decision.
+
+### Step 5 — Present triage and wait for go-ahead
+
+**Stop here. Do not start processing until the user approves the triage.**
+
+After classifying every comment, present the full triage to the user and wait for their go-ahead. Until the user responds, do **not** touch code, create plan files, post replies, or resolve anything.
+
+Present a compact table, one row per unresolved comment:
+
+| Ref | Class | Rationale |
+|-----|-------|-----------|
+| @author `file:line` (review thread) or short excerpt (issue comment) | MUST_FIX / SHOULD_FIX / PARK / OUT_OF_SCOPE / NEEDS_CLARIFICATION | one line, grounded in the codebase conventions / agent guidelines found in Step 1 |
+
+The rationale is where feedback is challenged rather than blindly accepted: show each comment as accepted, adapted, or pushed back on, with a reason tied to the project's conventions. The shared goal is the highest-quality merge — hold the feedback in high regard, but do not implement a suggestion that conflicts with the project's established conventions without saying so here.
+
+The user may:
+- **Approve as-is** ("go ahead", "looks good") — proceed to Step 6.
+- **Adjust classifications** ("treat #3 as PARK", "#5 is OUT_OF_SCOPE — convention is X"). Apply the overrides. If the changes are substantial, re-present the updated triage; otherwise proceed.
+
+Only after explicit approval, move on to Step 6.
+
+### Step 6 — Process ONE comment at a time
+
+Process in order: all MUST_FIX first, then SHOULD_FIX.
+
+For OUT_OF_SCOPE **no-op** comments (acknowledgment, praise, emoji-only): post a short acknowledgment reply and resolve the thread (Steps 6f–6g), then move on. Skip PARK and genuine OUT_OF_SCOPE suggestions for now — they are deferred and reported in the summary.
+
+**NEEDS_CLARIFICATION comments:** post one focused question as a reply to the thread (see format below), do **not** resolve the thread, and move on to the next comment. Do not implement anything.
+
+**Cascading comments:** When multiple comments form a cascade (e.g., changing a trait signature requires updating all impls, callers, and tests), group them into a single commit referencing all comment IDs. Implement the full cascade atomically — applying any single comment without the others would leave the code in an inconsistent state.
+
+For each comment (or group of cascading comments):
+
+**6a. Assess complexity**
+
+Is this trivial (e.g., rename a function, fix a typo, adjust formatting)?
+- Yes → fix directly, no plan needed
+- No → create a plan file at `.pr-review/plan-<comment-id>.md` before touching any code
+
+The plan file must describe:
+- What the comment is asking for
+- The approach to fix it
+- Files that will be changed
+
+**6b. Run safeguards**
+
+Run all safeguards identified in Step 1. They must all pass before you touch any code.
+If they fail, stop and report.
+
+**6c. Fix, park, or ask for clarification**
+
+- Fix: implement the change
+- Fix with adaptation: if the reviewer's suggestion is directionally right but the exact code won't compile or is otherwise infeasible, implement the closest working alternative. Document the constraint in your reply (Step 6f) so the reviewer understands why the implementation differs from their suggestion.
+- Park (if you discover mid-fix that it should be parked): write reasoning, revert any partial changes, no commit
+- Ask for clarification (if you discover mid-assessment that the intent is genuinely ambiguous): post one focused question to the thread (see below), do not resolve, no commit, move on
+
+**Clarification question format (for NEEDS_CLARIFICATION or mid-assessment uncertainty):**
+
+```bash
+cat > /tmp/pr-review-reply-{comment_id}.md <<'EOF'
+Thanks for the feedback! Before I make a change, I want to make sure I understand what you're after:
+
+<one specific, focused question — e.g. "Did you mean to rename this everywhere, or just at the call site?" or "Would you prefer approach A (…) or approach B (…)?">
+EOF
+
+jq -n --rawfile body /tmp/pr-review-reply-{comment_id}.md '{body:$body}' > /tmp/pr-review-reply-{comment_id}.json
+
+gh api repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies \
+  --input /tmp/pr-review-reply-{comment_id}.json
+```
+
+Ask exactly **one** question. Do not list alternatives unless directly needed to frame the question. Leave the thread unresolved so the reviewer's answer re-surfaces it.
+
+**6d. Run safeguards again**
+
+Run all safeguards. They must all pass.
+If they fail, fix the regression before moving on — do not skip this step.
+
+**6e. Commit and push**
+
+Each comment gets its own focused commit. Reference the comment author in the message body.
+
+```bash
+git add <changed files>
+git commit -m "<conventional commit message describing the fix>
+
+Addresses PR comment from @<reviewer>."
+git push
+```
+
+Invoke `loop-on-ci` immediately after each push. Do not reply to or resolve the addressed comment
+until every PR-attached check is green for the pushed commit. If CI fails, let `loop-on-ci`
+diagnose and fix the failure, re-running the full check set after every additional push. Resume this
+step only after `loop-on-ci` reports green CI.
+
+Example commit flow across multiple comments:
+```bash
+# Comment 1: Add missing documentation
+git commit -m "docs: add module-level documentation for MetricsRecorder
+
+Addresses PR comment from @reviewer about missing module docs."
+git push
+
+# Comment 2: Use Duration instead of i64
+git commit -m "refactor: use Duration type for timing parameters
+
+Addresses PR comment from @reviewer - improves type safety."
+git push
+```
+
+**6f. Reply to the PR comment**
+
+Post a reply explaining:
+- What was done (for fixes: reference the commit)
+- Why it was parked (for deferred items)
+- Why it was rejected (for out-of-scope items)
+
+The reply mechanism differs by comment type:
+
+**For review thread comments** (inline, anchored to a file/line):
+```bash
+cat > /tmp/pr-review-reply-{comment_id}.md <<'EOF'
+<reply text>
+EOF
+
+jq -n --rawfile body /tmp/pr-review-reply-{comment_id}.md '{body:$body}' > /tmp/pr-review-reply-{comment_id}.json
+
+# POST the reply and capture the response — do NOT run this twice
+gh api repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies \
+  --input /tmp/pr-review-reply-{comment_id}.json > /tmp/pr-review-reply-{comment_id}-response.json
+```
+
+**For issue comments** (top-level PR conversation comments):
+```bash
+cat > /tmp/pr-review-reply-{comment_id}.md <<'EOF'
+<reply text — quote or reference the original comment so context is clear>
+EOF
+
+jq -n --rawfile body /tmp/pr-review-reply-{comment_id}.md '{body:$body}' > /tmp/pr-review-reply-{comment_id}.json
+
+gh api repos/{owner}/{repo}/issues/{pr_number}/comments \
+  --input /tmp/pr-review-reply-{comment_id}.json > /tmp/pr-review-reply-{comment_id}-response.json
+```
+
+> Note: this creates a new top-level comment in the PR conversation. It is not threaded under the original — quoting the relevant excerpt is how context is preserved.
+
+**6f.1 Verify reply body**
+
+Immediately verify what was posted using a **GET** with the ID from the POST response (never re-run the POST to verify — that creates a duplicate):
+
+For review thread replies:
+```bash
+NEW_REPLY_ID=$(jq '.id' /tmp/pr-review-reply-{comment_id}-response.json)
+gh api repos/{owner}/{repo}/pulls/comments/$NEW_REPLY_ID | jq '{id, body, html_url}'
+```
+
+For issue comment replies:
+```bash
+NEW_COMMENT_ID=$(jq '.id' /tmp/pr-review-reply-{comment_id}-response.json)
+gh api repos/{owner}/{repo}/issues/comments/$NEW_COMMENT_ID | jq '{id, body, html_url}'
+```
+
+**6g. Resolve the comment**
+
+**For review thread comments** — mark as resolved on GitHub.
+
+First, find the thread ID for the comment:
+```bash
+gh api graphql -f query='
+query {
+  repository(owner: "{owner}", name: "{repo}") {
+    pullRequest(number: {pr_number}) {
+      reviewThreads(first: 50) {
+        nodes {
+          id
+          isResolved
+          comments(first: 1) { nodes { body } }
+        }
+      }
+    }
+  }
+}'
+```
+
+Then resolve the thread:
+```bash
+gh api graphql -f query='
+mutation {
+  resolveReviewThread(input: {threadId: "{thread_id}"}) {
+    thread { id isResolved }
+  }
+}'
+```
+
+Verify resolution:
+```bash
+gh api graphql -f query='
+query {
+  node(id: "{thread_id}") {
+    ... on PullRequestReviewThread {
+      id
+      isResolved
+    }
+  }
+}'
+```
+
+**For issue comments** — there is no "resolve" mechanism. The reply posted in Step 6f is the closure signal. Note it in the Step 9 summary.
+
+**6h. Delete plan file**
+
+If a plan file was created, delete it:
+```bash
+rm .pr-review/plan-<comment-id>.md
+```
+
+### Step 7 — Stop condition for the processing loop
+
+Stop only when no MUST_FIX or SHOULD_FIX comments remain and all PR-attached checks are green for
+the latest commit. Re-fetch unresolved feedback after each return from `loop-on-ci`; a review bot
+may have added comments for the new commit.
+
+If you prefer to batch-resolve all threads at once rather than one by one, you can do so here:
+```bash
+gh api graphql -f query='
+query {
+  repository(owner: "{owner}", name: "{repo}") {
+    pullRequest(number: {pr_number}) {
+      reviewThreads(first: 50) {
+        nodes { id isResolved comments(first: 1) { nodes { body } } }
+      }
+    }
+  }
+}' | jq -r '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | .id' \
+  | while read thread_id; do
+    gh api graphql -f query="mutation { resolveReviewThread(input: {threadId: \"$thread_id\"}) { thread { id } } }"
+  done
+```
+
+### Step 8 — Check for PR body drift
+
+Before posting the summary, check whether the PR's commits have drifted its scope away from what the body claims. Compare against the PR's base branch rather than this run's starting point — the body should describe the whole PR, and the base branch is recoverable on a fresh-context resume.
+
+```bash
+# The PR's base branch (e.g. main)
+base=$(gh pr view {pr_number} --json baseRefName --jq '.baseRefName')
+
+# All commits the PR adds on top of its base
+git log "origin/$base..HEAD" --oneline
+
+# The current PR body
+gh pr view {pr_number} --json body --jq '.body'
+```
+
+**Drift** = the body would now mislead a reader about what the PR contains: added or removed behaviour, a changed approach, or scope the body does not mention.
+
+**Not drift** = pure bug-fix tweaks that do not change the PR's stated intent. Do not churn the body needlessly.
+
+If drift is detected, update the PR body, preserving the parts that are still accurate:
+
+```bash
+cat > /tmp/pr-body.md <<'EOF'
+<updated PR body>
+EOF
+
+gh pr edit {pr_number} --body-file /tmp/pr-body.md
+```
+
+Record the update in the Step 9 summary (an "Updated PR body to reflect …" line). This was already sanctioned by the triage approval in Step 5 and is surfaced in the summary, so no separate confirmation is needed.
+
+### Step 9 — Summary
+
+Post a final comment on the PR summarising:
+
+```
+## PR Review Loop — Summary
+
+### Fixed
+- [commit abc1234] Renamed `foo` to `bar` (comment by @alice)
+- ...
+
+### Parked
+- Refactor of X module deferred — tracked in #<issue> (comment by @bob)
+- ...
+
+### Rejected
+- Suggestion to use Y rejected: project convention is Z (comment by @carol)
+- ...
+
+### Awaiting Clarification
+- Asked @alice: "Did you mean to rename this everywhere, or just at the call site?" — thread left open
+- ...
+
+### PR Body
+- Updated PR body to reflect <what changed> (or omit this section if no drift)
+```
+
+Omit any section that has no entries.
+
+Use a body file to avoid shell interpolation:
+```bash
+cat > /tmp/pr-review-summary.md <<'EOF'
+<summary text>
+EOF
+
+gh pr comment {pr_number} --body-file /tmp/pr-review-summary.md
+```
+
+Then verify the posted summary body:
+```bash
+gh pr view {pr_number} --comments
+```
+
+## Resumability
+
+This skill is designed to be interrupted and restarted in a fresh context at any point.
+
+On startup:
+1. Run pre-flight (Step 1)
+2. Run `loop-on-ci` if the latest pushed commit is not confirmed green, then re-fetch both review
+   threads and issue comments from GitHub (Step 3) — already-resolved threads won't appear; for
+   issue comments, look for a comment posted *after* the original whose body quotes the original or
+   follows the reply template. This is best-effort and inherently less reliable than the
+   auto-filtered `isResolved` mechanism — if uncertain, re-reading the reply is safer than skipping it
+3. Check for an existing `.pr-review/plan-*.md` file — if found, you are mid-fix on that comment; continue from Step 6b
+4. If the previous run was interrupted, verify the latest issue/comment bodies and thread states before continuing (to catch partially posted or malformed remote writes)
+5. Triage remaining comments and continue
+
+The triage approval gate (Step 5) is conversational state and is not persisted. On a fresh-context resume the gate is presented again before processing — re-prompting is safe because every fix is committed and pushed before moving on, so no work is lost.
+
+This means no progress is ever lost. Each fix is committed and pushed before moving on.
+
+## State Directory
+
+`.pr-review/` at the repo root (gitignored by the project).
+- `plan-<comment-id>.md` — plan for the comment currently in progress (deleted after resolution)
+
+## Do Not
+
+- Start processing comments before the user has approved the triage (Step 5)
+- Bundle all PR feedback into one large commit
+- Make multiple unrelated changes in a single commit
+- Push all changes at once without intermediate commits
+- Leave comments unresolved after addressing them

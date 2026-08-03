@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a user outcome or capability
+title: "feat: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: Who needs this, and why is the current workflow insufficient?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: >-
+        Describe observable success without prescribing the implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: >-
+        List testable conditions and relevant PRD requirement identifiers.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and non-goals
+      description: >-
+        Note considered workarounds and adjacent scope that remains excluded.

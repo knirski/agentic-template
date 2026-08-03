@@ -1,0 +1,37 @@
+name: Bug report
+description: Report reproducible incorrect behavior
+title: "bug: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, and what impact did it have?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: >-
+        Give the smallest reliable sequence that reproduces the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: >-
+        Include relevant versions, platform, configuration, and commit.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: >-
+        Add logs, screenshots, traces, or links after removing secrets.
