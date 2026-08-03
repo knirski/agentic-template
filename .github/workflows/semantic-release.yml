@@ -1,0 +1,42 @@
+name: Semantic Release
+
+on:
+  workflow_call:
+
+concurrency:
+  group: semantic-release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check release eligibility
+        id: release-eligibility
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          main_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
+          if [ "$GITHUB_SHA" = "$main_sha" ]; then
+            echo "eligible=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping release because this validated commit is no longer the main branch tip."
+          fi
+
+      - name: Publish semantic release
+        if: steps.release-eligibility.outputs.eligible == 'true'
+        uses: cycjimmy/semantic-release-action@v6.0.0
+        with:
+          semantic_version: 25.0.8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
