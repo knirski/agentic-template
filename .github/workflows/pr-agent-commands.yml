@@ -1,25 +1,20 @@
-# AI-powered PR review using Qodo's PR Agent with a Gemini backend.
+# Trusted pull-request comment commands for Qodo's PR Agent.
 # Requires the GEMINI_API_KEY GitHub Actions repository secret.
-name: PR Agent
+name: PR Agent Commands
 
 on:
-  pull_request:
+  issue_comment:
     types:
-      - opened
-      - reopened
-      - ready_for_review
+      - created
 
 permissions: {}
-
-concurrency:
-  group: pr-agent-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: true
 
 jobs:
   pr-agent:
     if: |
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.type != 'Bot'
+      github.event.issue.pull_request != null &&
+      github.event.comment.user.type != 'Bot' &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

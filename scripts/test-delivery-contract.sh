@@ -6,6 +6,7 @@ release_config=.releaserc
 release_workflow=.github/workflows/semantic-release.yml
 pr_agent_config=.pr_agent.toml
 pr_agent_workflow=.github/workflows/pr-agent.yml
+pr_agent_commands_workflow=.github/workflows/pr-agent-commands.yml
 
 test -f "$release_config" || {
   echo 'template must include semantic-release configuration' >&2
@@ -24,6 +25,11 @@ test -f "$pr_agent_config" || {
 
 test -f "$pr_agent_workflow" || {
   echo 'template must include the PR Agent workflow' >&2
+  exit 1
+}
+
+test -f "$pr_agent_commands_workflow" || {
+  echo 'template must include the PR Agent command workflow' >&2
   exit 1
 }
 
