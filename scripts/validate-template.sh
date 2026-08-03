@@ -3,6 +3,7 @@ set -euo pipefail
 
 required_files=(
   AGENTS.md
+  .agents/AGENTS.md
   README.md
   docs/prd.md
   docs/agents/domain.md
@@ -11,6 +12,8 @@ required_files=(
   .github/ISSUE_TEMPLATE/feature.yml
   .github/pull_request_template.md
   .github/workflows/ci.yml
+  .github/workflows/semantic-release.yml
+  .releaserc
 )
 
 required_skills=(

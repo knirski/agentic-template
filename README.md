@@ -26,6 +26,16 @@ precede SHOULD_FIX items.
 The bundled CI validates the template contract itself. Generated projects must add their own tests,
 linting, builds, security checks, and required-check configuration.
 
+## Releases
+
+After delivery-contract validation succeeds, the template runs semantic-release for pushes to
+`main` and manual CI dispatches from `main`. Releases are serialized, and Conventional Commit
+messages determine the next version, release notes, Git tag, and GitHub Release. Product-specific
+validation, artifact builds, and uploads are not included; generated projects should add validation
+to CI and artifact publication to the reusable semantic-release workflow when needed. Every
+release-critical validation job must also be added to the `release` job's `needs`; unrelated CI jobs
+do not delay publication.
+
 ## Scope
 
 This template intentionally contains generic instructions, documentation scaffolds, GitHub delivery
