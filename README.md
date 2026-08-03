@@ -40,8 +40,7 @@ Actions**. Never commit the key.
 
 The default model and review behavior are configured in `.pr_agent.toml`. Projects may adapt those
 settings while retaining the workflow's least-privilege permissions and secret-based credential
-wiring; update `scripts/test-delivery-contract.sh` when intentionally changing a pinned default.
-Local template validation requires Bash and Python 3.11 or newer.
+wiring.
 
 ## Releases
 
