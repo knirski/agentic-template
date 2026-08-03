@@ -53,5 +53,7 @@ jobs:
       - name: Run PR Agent
         uses: the-pr-agent/pr-agent@v0.40.0
         env:
+          config.model: gemini/gemini-3.6-flash
+          config.fallback_models: '["gemini/gemini-3.5-flash-lite"]'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GOOGLE_AI_STUDIO.GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
