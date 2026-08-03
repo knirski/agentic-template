@@ -7,6 +7,12 @@ release_workflow=.github/workflows/semantic-release.yml
 pr_agent_config=.pr_agent.toml
 pr_agent_workflow=.github/workflows/pr-agent.yml
 pr_agent_commands_workflow=.github/workflows/pr-agent-commands.yml
+copier_config=copier.yml
+
+test -f "$copier_config" || {
+  echo 'template must include Copier configuration' >&2
+  exit 1
+}
 
 test -f "$release_config" || {
   echo 'template must include semantic-release configuration' >&2

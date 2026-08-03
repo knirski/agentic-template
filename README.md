@@ -12,6 +12,22 @@ software changes with coding agents.
 5. Add project CI jobs alongside the included delivery-contract job.
 6. Install only the language and domain skills the project actually needs.
 
+The template is maintained with [Copier](https://copier.readthedocs.io/):
+
+```console
+uv tool install copier
+copier copy https://github.com/knirski/agentic-template.git ./my-project
+cd ./my-project
+copier update
+```
+
+The generated project records its template source and answers in `.copier-answers.yml`. Copier
+uses semantic-release Git tags to identify template versions, preserves project changes during
+updates, and reports conflicts for manual review. Run `copier update --vcs-ref <tag>` to select a
+specific release.
+
+Copier requires Python and Git. The template itself does not bundle or distribute a custom updater.
+
 `docs/prd.md` is the product source of truth. `docs/agents/issue-tracker.md` defines the relationship
 between GitHub Issues and Atelier plans, while `docs/agents/domain.md` defines lazy domain and ADR
 documentation.
@@ -85,7 +101,7 @@ scripts/validate-template.sh
 
 For contributors who use Nix, the repository also includes a language-neutral development shell
 with the tools used to maintain the template: `shellcheck`, `actionlint`, `deadnix`, `statix`,
-`nixfmt`, Git, and Cachix.
+`nixfmt`, Git, `uv`, and Cachix.
 
 ```bash
 nix develop

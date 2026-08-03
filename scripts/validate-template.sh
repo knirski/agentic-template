@@ -5,6 +5,7 @@ required_files=(
   AGENTS.md
   .agents/AGENTS.md
   README.md
+  copier.yml
   docs/prd.md
   docs/agents/domain.md
   docs/agents/issue-tracker.md

@@ -1,0 +1,19 @@
+name: Copier Smoke Test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  copier:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Nix
+        uses: ./.github/actions/setup-nix
+      - name: Run Copier smoke test
+        run: nix develop --command bash scripts/test-copier.sh
