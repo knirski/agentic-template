@@ -38,7 +38,8 @@ feedback remains:
 6. Re-fetch feedback after CI because automated reviewers may comment on the new commit.
 
 Triage approval authorizes scoped commits, pushes, replies, PR-body corrections, and thread
-resolution for the approved MUST_FIX and SHOULD_FIX items. It does not authorize merging, unrelated
+resolution for MUST_FIX and SHOULD_FIX items; those classifications are auto-approved after triage.
+It does not authorize merging, unrelated
 changes, or processing PARK and OUT_OF_SCOPE items. Ask one focused question for
 NEEDS_CLARIFICATION items and leave those threads open.
 

@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+copier_version=9.17.0
 if command -v copier >/dev/null; then
+  test "$(copier --version)" = "copier $copier_version" || {
+    echo "Copier $copier_version is required" >&2
+    exit 1
+  }
   copier_command=(copier)
 elif command -v uvx >/dev/null; then
-  copier_command=(uvx --from copier copier)
+  copier_command=(uvx --from "copier==$copier_version" copier)
 else
   echo "Copier is required; install it with: uv tool install copier" >&2
   exit 1
@@ -51,6 +56,8 @@ assert_absent() {
 }
 
 assert_file "$project/.copier-answers.yml"
+grep -q '^_commit: v0.1.0$' "$project/.copier-answers.yml"
+grep -q '^_src_path: ' "$project/.copier-answers.yml"
 assert_file "$project/README.md"
 assert_file "$project/copier.yml"
 assert_absent "$project/template-manifest.json"
@@ -72,5 +79,10 @@ git -C "$project" config user.name "Copier Test"
 git -C "$project" add .
 git -C "$project" commit -m "generated project" >/dev/null
 
+printf '\nLocal project customization.\n' >> "$project/README.md"
+git -C "$project" add README.md
+git -C "$project" commit -m "project customization" >/dev/null
+
 (cd "$project" && "${copier_command[@]}" update --vcs-ref v0.2.0 --defaults)
 grep -q 'Copier smoke-test marker.' "$project/NOTICE.md"
+grep -q 'Local project customization.' "$project/README.md"
