@@ -28,6 +28,7 @@
             nixfmt
             shellcheck
             statix
+            uv
           ];
 
           shellHook = ''
@@ -35,11 +36,23 @@
             echo "  nix flake check     run Nix and repository checks"
             echo "  nix fmt             format Nix files"
             echo "  cachix push ...     publish a built closure (CACHIX_AUTH_TOKEN required)"
+            echo "  uv tool install copier   install the template updater"
           '';
         };
       });
 
-      formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt);
+      formatter = forAllSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        pkgs.writeShellScriptBin "nixfmt" ''
+          if [ "$#" -gt 0 ]; then
+            exec ${pkgs.nixfmt}/bin/nixfmt "$@"
+          fi
+          exec ${pkgs.nixfmt}/bin/nixfmt flake.nix
+        ''
+      );
 
       checks = forAllSystems (
         system:

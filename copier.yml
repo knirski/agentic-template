@@ -1,0 +1,14 @@
+answers_file: .copier-answers.yml
+
+_exclude:
+  - .github/workflows/copier-smoke.yml
+  - scripts/test-copier.sh
+  - tools
+
+_message_after_copy: |
+  Project created from the Agentic Delivery Template.
+
+  Install Copier to receive future template updates:
+
+    uv tool install copier
+    copier update
