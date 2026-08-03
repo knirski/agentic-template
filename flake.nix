@@ -74,7 +74,7 @@
                 nativeBuildInputs = [ pkgs.actionlint ];
               }
               ''
-                actionlint ${source}/.github/workflows/*.yml
+                actionlint "${source}/.github/workflows/"*.yml
                 touch $out
               '';
 
