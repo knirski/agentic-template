@@ -59,6 +59,11 @@ files, and reusable skills. Product code and language-specific skills belong in 
 
 See `NOTICE.md` for bundled skill provenance.
 
+## License
+
+This repository is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the
+full text. Third-party bundled skill provenance and licensing notes are listed in `NOTICE.md`.
+
 ## Optional Nix development shell
 
 Nix is optional. Contributors can use the repository's normal validation directly:
