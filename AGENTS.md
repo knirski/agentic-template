@@ -21,6 +21,10 @@ Before completion, run repository-defined formatting, linting, tests, builds, an
 `verification-before-completion`. Use `code-review` for substantive changes and `code-commit` for
 reviewable conventional commits. Creating a PR and merging remain explicit user-authorized actions.
 
+Use `spec-finish` for completion of Spec-backed Plans. It coordinates the post-implementation
+workflow, while `verification-before-completion` remains the universal evidence gate for completion
+claims, commits, and PRs, including work that does not use `spec-finish`.
+
 ## Pull-request gate
 
 After a PR is created, use this state machine until the PR has green CI and no approved actionable
