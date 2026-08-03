@@ -82,8 +82,10 @@ nix flake check
 nix fmt
 ```
 
-The CI workflow uses the `knirski-agentic-template` Cachix cache. Pull-only access does not require
-credentials when the cache is public. Publishing the development-shell closure requires a
+The CI workflow uses the `knirski-agentic-template` Cachix cache. When adapting this template,
+replace that cache name with the name of your own Cachix cache in the workflow and local commands.
+Pull-only access does not require credentials when the cache is public. Publishing the
+development-shell closure requires a
 Cachix authentication token. Set `CACHIX_AUTH_TOKEN` locally, authenticate once, and push a
 closure with:
 
