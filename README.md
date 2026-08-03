@@ -26,6 +26,22 @@ precede SHOULD_FIX items.
 The bundled CI validates the template contract itself. Generated projects must add their own tests,
 linting, builds, security checks, and required-check configuration.
 
+## Automated PR reviews
+
+PR Agent automatically describes, reviews, and suggests improvements when a same-repository pull
+request is opened, reopened, or marked ready for review. Fork and bot pull requests are skipped
+because GitHub withholds ordinary Actions secrets and restricts their workflow token to read-only,
+while PR Agent requires the secret and write access. Repository owners, members, and collaborators
+may also run `/review`, `/describe`, and `/improve` commands in pull-request comments.
+
+Add a `GEMINI_API_KEY` Actions repository secret before opening a pull request; create the key in
+Google AI Studio and store it in the generated repository under **Settings → Secrets and variables →
+Actions**. Never commit the key.
+
+The default model and review behavior are configured in `.pr_agent.toml`. Projects may adapt those
+settings while retaining the workflow's least-privilege permissions and secret-based credential
+wiring.
+
 ## Releases
 
 After delivery-contract validation succeeds, the template runs semantic-release for pushes to

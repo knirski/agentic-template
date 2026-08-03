@@ -12,7 +12,10 @@ required_files=(
   .github/ISSUE_TEMPLATE/feature.yml
   .github/pull_request_template.md
   .github/workflows/ci.yml
+  .github/workflows/pr-agent-commands.yml
+  .github/workflows/pr-agent.yml
   .github/workflows/semantic-release.yml
+  .pr_agent.toml
   .releaserc
 )
 

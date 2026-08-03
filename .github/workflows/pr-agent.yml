@@ -1,0 +1,45 @@
+# AI-powered PR review using Qodo's PR Agent with a Gemini backend.
+# Requires the GEMINI_API_KEY GitHub Actions repository secret.
+name: PR Agent
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+
+permissions: {}
+
+concurrency:
+  group: pr-agent-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  pr-agent:
+    if: |
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.type != 'Bot'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Validate Gemini API key secret
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::GEMINI_API_KEY repository secret is required for PR Agent."
+            exit 1
+          fi
+
+      - name: Run PR Agent
+        uses: the-pr-agent/pr-agent@v0.40.0
+        env:
+          config.model: gemini/gemini-3.6-flash
+          config.fallback_models: '["gemini/gemini-3.5-flash-lite"]'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_AI_STUDIO.GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

@@ -1,0 +1,40 @@
+# Trusted pull-request comment commands for Qodo's PR Agent.
+# Requires the GEMINI_API_KEY GitHub Actions repository secret.
+name: PR Agent Commands
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions: {}
+
+jobs:
+  pr-agent:
+    if: |
+      github.event.issue.pull_request != null &&
+      github.event.comment.user.type != 'Bot' &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Validate Gemini API key secret
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::GEMINI_API_KEY repository secret is required for PR Agent."
+            exit 1
+          fi
+
+      - name: Run PR Agent
+        uses: the-pr-agent/pr-agent@v0.40.0
+        env:
+          config.model: gemini/gemini-3.6-flash
+          config.fallback_models: '["gemini/gemini-3.5-flash-lite"]'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_AI_STUDIO.GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
