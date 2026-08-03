@@ -15,11 +15,11 @@ runs:
     - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d # v14
       with:
         use-flakehub: false
-    - uses: cachix/cachix-action@5f2d7c5294214f71b873db4b969586b980625e71 # v17
+    - uses: cachix/cachix-action@v17
       if: ${{ inputs.cachix-auth-token == '' }}
       with:
         name: knirski-agentic-template
-    - uses: cachix/cachix-action@5f2d7c5294214f71b873db4b969586b980625e71 # v17
+    - uses: cachix/cachix-action@v17
       if: ${{ inputs.cachix-auth-token != '' }}
       with:
         name: knirski-agentic-template
