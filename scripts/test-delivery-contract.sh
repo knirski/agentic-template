@@ -4,6 +4,8 @@ set -euo pipefail
 review_skill=.agents/skills/pr-review-loop/SKILL.md
 release_config=.releaserc
 release_workflow=.github/workflows/semantic-release.yml
+pr_agent_config=.pr_agent.toml
+pr_agent_workflow=.github/workflows/pr-agent.yml
 
 test -f "$release_config" || {
   echo 'template must include semantic-release configuration' >&2
@@ -12,6 +14,16 @@ test -f "$release_config" || {
 
 test -f "$release_workflow" || {
   echo 'template must include the semantic-release workflow' >&2
+  exit 1
+}
+
+test -f "$pr_agent_config" || {
+  echo 'template must include PR Agent configuration' >&2
+  exit 1
+}
+
+test -f "$pr_agent_workflow" || {
+  echo 'template must include the PR Agent workflow' >&2
   exit 1
 }
 
@@ -51,7 +63,40 @@ if required_positions != sorted(required_positions):
     raise SystemExit("semantic-release core plugins must retain release order")
 PY
 
-python3 - .github/workflows/ci.yml "$release_workflow" <<'PY'
+python3 - "$pr_agent_config" <<'PY'
+import sys
+
+if sys.version_info < (3, 11):
+    raise SystemExit("PR Agent configuration validation requires Python 3.11 or newer")
+
+import tomllib
+
+with open(sys.argv[1], "rb") as config_file:
+    config = tomllib.load(config_file)
+
+agent_config = config.get("config", {})
+if agent_config.get("model") != "gemini/gemini-3.6-flash":
+    raise SystemExit("PR Agent must use the Gemini 3.6 Flash model")
+if agent_config.get("fallback_models") != ["gemini/gemini-3.5-flash-lite"]:
+    raise SystemExit("PR Agent must retain the Gemini Flash Lite fallback")
+
+action_config = config.get("github_action_config", {})
+for setting in ("auto_review", "auto_describe", "auto_improve"):
+    if action_config.get(setting) is not True:
+        raise SystemExit(f"PR Agent must enable {setting}")
+if "verbose" in action_config:
+    raise SystemExit("PR Agent configuration must not use the unsupported verbose setting")
+if action_config.get("pr_actions") != ["opened", "reopened", "ready_for_review"]:
+    raise SystemExit("PR Agent must run automatically for the supported PR actions")
+
+suggestions = config.get("pr_code_suggestions", {})
+if suggestions.get("commitable_code_suggestions") is not True:
+    raise SystemExit("PR Agent must publish committable code suggestions")
+if suggestions.get("dual_publishing_score_threshold") != 5:
+    raise SystemExit("PR Agent must retain the code-suggestion score threshold")
+PY
+
+python3 - .github/workflows/ci.yml "$release_workflow" "$pr_agent_workflow" <<'PY'
 import sys
 
 
@@ -166,6 +211,78 @@ for expected_line in (
     "          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
 ):
     require(release_publish, expected_line)
+
+pr_agent_lines = meaningful_lines(sys.argv[3])
+pr_agent_events = nested_block(pr_agent_lines, "on:", 0)
+pr_events = nested_block(pr_agent_events, "pull_request:", 2)
+if nested_block(pr_events, "types:", 4) != [
+    "      - opened",
+    "      - reopened",
+    "      - ready_for_review",
+]:
+    raise SystemExit("PR Agent must run for the supported pull request actions")
+comment_events = nested_block(pr_agent_events, "issue_comment:", 2)
+if nested_block(comment_events, "types:", 4) != ["      - created"]:
+    raise SystemExit("PR Agent must accept commands from new PR comments")
+
+if "permissions: {}" not in pr_agent_lines:
+    raise SystemExit("PR Agent workflow must deny permissions by default")
+
+pr_agent_concurrency = nested_block(pr_agent_lines, "concurrency:", 0)
+for expected_line in (
+    "  group: pr-agent-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}",
+    "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+):
+    require(pr_agent_concurrency, expected_line)
+
+pr_agent_jobs = nested_block(pr_agent_lines, "jobs:", 0)
+pr_agent_job = nested_block(pr_agent_jobs, "pr-agent:", 2)
+for expected_line in (
+    "      (github.event_name == 'pull_request' &&",
+    "        github.event.pull_request.head.repo.full_name == github.repository &&",
+    "        github.event.sender.type != 'Bot') ||",
+    "      (github.event_name == 'issue_comment' &&",
+    "        github.event.issue.pull_request != null &&",
+    "        github.event.sender.type != 'Bot' &&",
+    "        contains(fromJSON('[\"OWNER\", \"MEMBER\", \"COLLABORATOR\"]'), github.event.comment.author_association) &&",
+    "        (github.event.comment.body == '/review' ||",
+    "          startsWith(github.event.comment.body, '/review ') ||",
+    "          github.event.comment.body == '/describe' ||",
+    "          startsWith(github.event.comment.body, '/describe ') ||",
+    "          github.event.comment.body == '/improve' ||",
+    "          startsWith(github.event.comment.body, '/improve ')))",
+    "    runs-on: ubuntu-24.04",
+    "    timeout-minutes: 10",
+):
+    require(pr_agent_job, expected_line)
+
+job_permissions = nested_block(pr_agent_job, "permissions:", 4)
+expected_job_permissions = [
+    "      contents: read",
+    "      issues: write",
+    "      pull-requests: write",
+]
+if job_permissions != expected_job_permissions:
+    raise SystemExit("PR Agent job permissions must match the exact approved set")
+
+pr_agent_steps = nested_block(pr_agent_job, "steps:", 4)
+if any("actions/checkout@" in line for line in pr_agent_steps):
+    raise SystemExit("PR Agent must not check out pull request contents")
+
+secret_check = nested_block(pr_agent_steps, "- name: Validate Gemini API key secret", 6)
+for expected_line in (
+    "          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}",
+    '          if [ -z "$GEMINI_API_KEY" ]; then',
+):
+    require(secret_check, expected_line)
+
+agent_step = nested_block(pr_agent_steps, "- name: Run PR Agent", 6)
+for expected_line in (
+    "        uses: the-pr-agent/pr-agent@v0.40.0",
+    "          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
+    "          GOOGLE_AI_STUDIO.GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}",
+):
+    require(agent_step, expected_line)
 PY
 
 if grep -Eq 'known bot accounts' "$review_skill"; then
