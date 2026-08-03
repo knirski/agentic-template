@@ -37,15 +37,16 @@ while IFS= read -r skill_file; do
     echo "missing frontmatter delimiter: $skill_file" >&2
     exit 1
   }
-  sed -n '2,/^---$/p' "$skill_file" | rg -q '^name:' || {
+  sed -n '2,/^---$/p' "$skill_file" | grep -Eq '^name:' || {
     echo "missing skill name: $skill_file" >&2
     exit 1
   }
-  sed -n '2,/^---$/p' "$skill_file" | rg -q '^description:' || {
+  sed -n '2,/^---$/p' "$skill_file" | grep -Eq '^description:' || {
     echo "missing skill description: $skill_file" >&2
     exit 1
   }
 done < <(find .agents/skills -name SKILL.md -type f | sort)
 
+scripts/test-portable-validation.sh
 scripts/test-delivery-contract.sh
 git diff --check
