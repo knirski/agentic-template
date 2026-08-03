@@ -64,7 +64,7 @@
                 nativeBuildInputs = [ pkgs.shellcheck ];
               }
               ''
-                shellcheck ${source}/scripts/*.sh
+                shellcheck "${source}/scripts/"*.sh
                 touch $out
               '';
 
