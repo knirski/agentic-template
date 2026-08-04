@@ -279,13 +279,13 @@
               "AGENTS.md",
               ".github/pull_request_template.md",
               "docs/adr/0001-use-copier-for-template-updates.md",
-              "scripts/test-delivery-contract.sh"
+              "scripts/test-delivery-contract.py"
             ]
           },
           "validation": {
             "tests": [
               "Markdownlint for changed Markdown",
-              "scripts/test-delivery-contract.sh documentation path, command, and stable check-name assertions",
+              "scripts/test-delivery-contract.py documentation path, command, and stable check-name assertions",
               "Search for stale quality, update-lineage, merge-gate, and source-mode claims"
             ],
             "acceptance": [
