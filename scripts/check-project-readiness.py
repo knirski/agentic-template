@@ -51,13 +51,18 @@ def read_text(path: Path, findings: list[Finding]) -> str | None:
 
 def visible_lines(text: str) -> list[tuple[int, str]]:
     result: list[tuple[int, str]] = []
-    fenced = False
+    fence: tuple[str, int] | None = None
     for number, line in enumerate(text.splitlines(), 1):
         stripped = line.lstrip()
-        if stripped.startswith("```") or stripped.startswith("~~~"):
-            fenced = not fenced
+        match = re.match(r"(`{3,}|~{3,})", stripped)
+        if match:
+            delimiter = match.group(1)
+            if fence is None:
+                fence = (delimiter[0], len(delimiter))
+            elif delimiter[0] == fence[0] and len(delimiter) >= fence[1]:
+                fence = None
             continue
-        if not fenced:
+        if fence is None:
             result.append((number, line))
     return result
 
@@ -125,25 +130,28 @@ def check_readme(findings: list[Finding]) -> None:
         findings.append(Finding("READINESS_README_MARKER", README, "template replacement marker remains", "replace the marked README with project documentation"))
     if "# Agentic Delivery Template" in text:
         findings.append(Finding("READINESS_README_BOILERPLATE", README, "template title remains", "replace the template title with the project title"))
+    if "A language-neutral GitHub repository template for planning" in text:
+        findings.append(Finding("READINESS_README_BOILERPLATE", README, "template introduction remains", "replace the template introduction with project documentation"))
     titles = [line for _, line in lines if re.match(r"^#\s+", line)]
     if len(titles) != 1:
         findings.append(Finding("READINESS_README_TITLE", README, "README must contain exactly one level-one project title", "add one non-template '# Project name' title"))
+    raw_lines = list(enumerate(text.splitlines(), 1))
+    headings_raw = [(n, line) for n, line in raw_lines if re.match(r"^##\s+.+?\s*$", line)]
+    section_spans: dict[str, tuple[int, int]] = {}
     for section in ("Setup", "Validation"):
-        matches = [n for n, line in lines if re.match(rf"^##\s+{re.escape(section)}\s*$", line, re.I)]
+        matches = [n for n, line in headings_raw if re.fullmatch(rf"##\s+{re.escape(section)}\s*", line, re.I)]
         if len(matches) != 1:
             findings.append(Finding("READINESS_README_SECTION", README, f"README must contain exactly one '## {section}' section", f"add one non-empty '## {section}' section"))
-        elif not any(
-            line.strip()
-            for number, line in lines
-            if number > matches[0]
-            and not any(next_number > matches[0] and next_number < number for next_number, _ in lines if re.match(r"^##\s+", _))
-            and not re.match(r"^##\s+", line)
-        ):
-            findings.append(Finding("READINESS_README_SECTION_EMPTY", README, f"README section '## {section}' is empty", f"add content to the '## {section}' section"))
-    validation_start = next((n for n, line in lines if re.match(r"^##\s+Validation\s*$", line)), None)
-    validation_end = next((n for n, line in lines if validation_start is not None and n > validation_start and re.match(r"^##\s+", line)), len(text.splitlines()) + 1)
-    validation_text = "\n".join(line for n, line in lines if validation_start is not None and validation_start < n < validation_end)
-    if "scripts/validate-repository.py" not in validation_text:
+        else:
+            start = matches[0]
+            end = next((n for n, line in headings_raw if n > start), len(raw_lines) + 1)
+            section_spans[section] = (start, end)
+            body = [line for number, line in raw_lines if start < number < end and not re.match(r"^##\s+", line)]
+            if not any(line.strip() for line in body):
+                findings.append(Finding("READINESS_README_SECTION_EMPTY", README, f"README section '## {section}' is empty", f"add content to the '## {section}' section"))
+    validation_start, validation_end = section_spans.get("Validation", (None, None))
+    validation_text = "\n".join(line for n, line in raw_lines if validation_start is not None and validation_start < n < validation_end)
+    if validation_start is not None and "scripts/validate-repository.py" not in validation_text:
         findings.append(Finding("READINESS_README_COMMAND", README, "README does not name the canonical validation command", "document python3 scripts/validate-repository.py in the Validation section"))
 
 
@@ -151,7 +159,10 @@ def check_hook(findings: list[Finding]) -> None:
     if not HOOK.exists():
         findings.append(Finding("READINESS_HOOK_MISSING", HOOK, "project-validation hook is missing", "create an executable scripts/validate-project.py hook"))
         return
-    if not HOOK.is_file() or not (HOOK.stat().st_mode & 0o111):
+    if not HOOK.is_file():
+        findings.append(Finding("READINESS_HOOK_NOT_EXECUTABLE", HOOK, "project-validation hook is not a regular file", "create an executable scripts/validate-project.py hook"))
+        return
+    if not (HOOK.stat().st_mode & 0o111):
         findings.append(Finding("READINESS_HOOK_NOT_EXECUTABLE", HOOK, "project-validation hook is not executable", "chmod +x scripts/validate-project.py"))
     text = read_text(HOOK, findings)
     if text is not None and HOOK_SENTINEL in text:
