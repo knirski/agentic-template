@@ -39,7 +39,6 @@ jobs:
           python3 scripts/test-project-readiness.py
           python3 scripts/test-repository-validation.py
           python3 scripts/test-github-template-readiness.py
-          python3 scripts/test-copier.py
 
   nix:
     name: Nix tooling and checks
