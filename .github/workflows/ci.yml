@@ -18,7 +18,28 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Validate generic delivery files
-        run: scripts/validate-template.sh
+        run: python3 scripts/validate-template.py
+
+  project-validation:
+    name: Project validation
+    runs-on: ubuntu-latest
+    env:
+      AGENTIC_TEMPLATE_SOURCE_REPOSITORY: knirski/agentic-template
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Validate generated-project contract
+        if: github.repository != 'knirski/agentic-template'
+        run: python3 scripts/validate-repository.py
+      - name: Validate source fixtures
+        if: github.repository == 'knirski/agentic-template'
+        run: |
+          python3 scripts/test-project-readiness.py
+          python3 scripts/test-repository-validation.py
+          python3 scripts/test-github-template-readiness.py
+          python3 scripts/test-copier.py
 
   nix:
     name: Nix tooling and checks
@@ -35,7 +56,7 @@ jobs:
       - name: Run flake checks
         run: nix flake check
       - name: Validate repository contract in the dev shell
-        run: nix develop --command bash scripts/validate-template.sh
+        run: nix develop --command python3 scripts/validate-template.py
       - name: Push dev-shell closure to Cachix
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
@@ -44,7 +65,7 @@ jobs:
 
   release:
     name: Semantic Release
-    needs: [delivery-contract, nix]
+    needs: [delivery-contract, project-validation, nix]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: write

@@ -21,13 +21,12 @@
 
           packages = with nixpkgs.legacyPackages.${system}; [
             actionlint
-            bash
             cachix
             deadnix
             git
             nixfmt
-            shellcheck
             statix
+            python3
             uv
           ];
 
@@ -71,16 +70,6 @@
                 touch $out
               '';
 
-          shell-lint =
-            pkgs.runCommand "agentic-template-shell-lint"
-              {
-                nativeBuildInputs = [ pkgs.shellcheck ];
-              }
-              ''
-                shellcheck "${source}/scripts/"*.sh
-                touch $out
-              '';
-
           workflow-lint =
             pkgs.runCommand "agentic-template-workflow-lint"
               {
@@ -106,14 +95,13 @@
               '';
 
           repository-validation =
-            pkgs.runCommand "agentic-template-repository-validation"
-              {
-                nativeBuildInputs = [ pkgs.bash ];
-              }
+            pkgs.runCommand "agentic-template-repository-validation" { nativeBuildInputs = [ pkgs.python3 ]; }
               ''
                 cd ${source}
-                bash scripts/test-portable-validation.sh
-                bash scripts/test-delivery-contract.sh
+                if [ -f scripts/test-project-readiness.py ]; then python3 scripts/test-project-readiness.py; fi
+                if [ -f scripts/test-repository-validation.py ]; then python3 scripts/test-repository-validation.py; fi
+                if [ -f scripts/test-github-template-readiness.py ]; then python3 scripts/test-github-template-readiness.py; fi
+                if [ -f scripts/test-delivery-contract.py ]; then python3 scripts/test-delivery-contract.py; fi
                 touch $out
               '';
         }

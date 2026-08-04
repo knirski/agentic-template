@@ -23,5 +23,6 @@ path. Write `N/A` for changes without such risk.
 - [ ] Scope matches `docs/prd.md` and linked tracking artifacts.
 - [ ] Tests cover changed behavior, including relevant failure paths.
 - [ ] Documentation reflects user-visible or operational changes.
+- [ ] Generated-project changes preserve the `Project validation` check and readiness contract.
 - [ ] No secrets, local settings, debug artifacts, or generated agent state are included.
 - [ ] CI is green for the latest commit.

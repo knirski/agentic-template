@@ -2,16 +2,21 @@
 status: accepted
 ---
 
-# Use Copier for template generation and updates
+# Use Copier for update-capable project generation
 
-The template uses Copier for project generation and ongoing updates rather than maintaining a
-custom updater. Copier provides version-aware template updates, preservation of project changes,
-and conflict handling without requiring this repository to own its own merge and filesystem
-safety implementation.
+The template supports one-time GitHub snapshot generation and update-capable Copier generation. It
+uses Copier for projects that need ongoing template updates rather than maintaining a custom updater.
+Copier provides version-aware updates, project-change merging, and conflict handling without
+requiring this repository to own its own merge and filesystem safety implementation.
 
-Semantic-release Git tags are the template versions, and generated projects retain Copier's
-`.copier-answers.yml` metadata. This accepts Python, Git, and network/tool-installation
-requirements in exchange for a smaller and more maintainable template toolchain.
+Project-readiness validation is separate from Copier ownership. The template ships Python 3.11+
+standard-library validators and an adopter-owned `scripts/validate-project.py` hook; Copier remains
+responsible for preserving and reporting conflicts during updates.
+
+Semantic-release Git tags are the template versions, and Copier-generated projects retain Copier's
+`.copier-answers.yml` metadata. GitHub-generated projects are one-time snapshots without Copier
+update lineage. This accepts Python, Git, and network/tool-installation requirements for
+update-capable generation in exchange for a smaller and more maintainable template toolchain.
 
 ## Considered options
 
@@ -22,6 +27,6 @@ requirements in exchange for a smaller and more maintainable template toolchain.
 
 ## Consequences
 
-- Users install Copier and its prerequisites to create or update projects.
+- Users install Copier and its prerequisites when they choose update-capable Copier generation.
 - Updates are selected by semantic-release tags and can be pinned with `--vcs-ref`.
 - The repository owns the Copier configuration and smoke tests, while Copier owns update mechanics.
