@@ -80,6 +80,13 @@ class ReadinessFixtures(unittest.TestCase):
             check=False,
         )
 
+    def snapshot(self) -> dict[str, tuple[bytes, int]]:
+        return {
+            str(path.relative_to(self.root)): (path.read_bytes(), path.stat().st_mode & 0o777)
+            for path in self.root.rglob("*")
+            if path.is_file()
+        }
+
     def test_valid_fixture_passes(self) -> None:
         result = self.run_checker()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -139,14 +146,14 @@ class ReadinessFixtures(unittest.TestCase):
     def test_hook_is_inspected_without_execution_or_mutation(self) -> None:
         canary = self.root / "canary"
         hook = self.root / "scripts/validate-project.py"
-        hook.write_text(f"#!/usr/bin/env python3\nPath({str(canary)!r}).write_text('executed')\n{HOOK_SENTINEL!r}\n", encoding="utf-8")
+        hook.write_text(f"#!/usr/bin/env python3\nfrom pathlib import Path\nPath({str(canary)!r}).write_text('executed')\n{HOOK_SENTINEL!r}\n", encoding="utf-8")
         hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
-        before = hook.read_bytes()
+        before = self.snapshot()
         result = self.run_checker()
         self.assertEqual(result.returncode, 1)
         self.assertIn("READINESS_HOOK_SENTINEL", result.stderr)
         self.assertFalse(canary.exists())
-        self.assertEqual(before, hook.read_bytes())
+        self.assertEqual(before, self.snapshot())
 
     def test_unexpected_arguments_are_usage_errors(self) -> None:
         result = self.run_checker("unexpected")
