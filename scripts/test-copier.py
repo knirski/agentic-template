@@ -79,6 +79,7 @@ def main() -> int:
             handle.write("\nLocal project customization.\n")
         with project_hook.open("a", encoding="utf-8") as handle:
             handle.write("\n# local hook customization\n")
+        expected_hook_text = project_hook.read_text(encoding="utf-8")
         run(project_git + ["add", "README.md", "docs/prd.md", "scripts/validate-project.py"])
         run(project_git + ["commit", "-m", "project customization"])
         result = run(command + ["update", "--vcs-ref", "v0.2.0", "--defaults"], cwd=project)
@@ -87,7 +88,7 @@ def main() -> int:
         if result.returncode and not conflict_evidence:
             print(result.stdout + result.stderr, file=sys.stderr)
             return 1
-        if "# local hook customization" not in hook_text or "Copier smoke-test marker." not in (project / "NOTICE.md").read_text(encoding="utf-8") or "Local project customization." not in (project / "README.md").read_text(encoding="utf-8"):
+        if hook_text != expected_hook_text or "Copier smoke-test marker." not in (project / "NOTICE.md").read_text(encoding="utf-8") or "Local project customization." not in (project / "README.md").read_text(encoding="utf-8"):
             print(result.stderr, file=sys.stderr)
             return 1
     print("copier contract: ok")
