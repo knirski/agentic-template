@@ -34,7 +34,13 @@ def main(argv: list[str]) -> int:
             failures.append(f"missing required skill: {path.relative_to(ROOT)}")
     for path in sorted((ROOT / ".agents" / "skills").glob("*/SKILL.md")):
         text = path.read_text(encoding="utf-8")
-        if not text.startswith("---\n") or not re.search(r"^name:\s*.+$", text, re.M) or not re.search(r"^description:\s*.+$", text, re.M):
+        match = re.match(r"\A---\n(?P<body>.*?)\n---(?:\n|\Z)", text, re.S)
+        frontmatter = match.group("body") if match else ""
+        if (
+            not match
+            or not re.search(r"^name:\s*.+$", frontmatter, re.M)
+            or not re.search(r"^description:\s*.+$", frontmatter, re.M)
+        ):
             failures.append(f"invalid skill frontmatter: {path.relative_to(ROOT)}")
     for failure in failures:
         print(f"TEMPLATE_CONTRACT_ERROR: {failure}; next: restore the template contract", file=sys.stderr)
