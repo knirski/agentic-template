@@ -19,21 +19,26 @@
             "create": [
               "pyproject.toml",
               "uv.lock",
-              ".python-version",
+              ".python-version"
+            ],
+            "modify": [
               "flake.nix",
               ".github/workflows/ci.yml",
               "README.md"
             ],
-            "modify": [],
             "remove": []
           },
           "validation": {
             "tests": [
-              "`uv lock --check`; `uv sync --all-groups`; `uv run ruff check`; `uv run ruff format --check`; `uv run ty check`; `nix develop` exposes `uv`; Python 3.14 source checks and dependency-free canonical generated-validator lanes both execute successfully."
+              "`uv lock --check`",
+              "`uv sync --all-groups`",
+              "`uv run ruff check`",
+              "`uv run ruff format --check`",
+              "`uv run ty check`",
+              "`nix develop` exposes `uv`",
+              "Python 3.14 source checks and dependency-free canonical generated-validator lanes both execute successfully."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T1."
-            ]
+            "acceptance": []
           }
         },
         {
@@ -60,11 +65,11 @@
           },
           "validation": {
             "tests": [
-              "strict ty; Ruff; pytest properties for deep immutability, result composition, error-to-diagnostic totality, content interning, exact/one-over resource limits, and exhaustive-union canaries."
+              "strict ty",
+              "Ruff",
+              "pytest properties for deep immutability, result composition, error-to-diagnostic totality, content interning, exact/one-over resource limits, and exhaustive-union canaries."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T2."
-            ]
+            "acceptance": []
           }
         },
         {
@@ -91,9 +96,7 @@
             "tests": [
               "pytest/Hypothesis boundary fixtures for duplicate keys, booleans, floats, NaN, surrogates, invalid UTF-8, path collisions, line endings, absent/empty files, isolated tree encoding, tag separation, modes, and directory topology."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T3."
-            ]
+            "acceptance": []
           }
         }
       ]
@@ -126,11 +129,14 @@
           },
           "validation": {
             "tests": [
-              "generated complete intent/state matrices; illegal-constructor fixtures; preimage witness coverage; coherent-observation retry behavior; unsupported target and protected target behavior; strict type exhaustiveness."
+              "generated complete intent/state matrices",
+              "illegal-constructor fixtures",
+              "preimage witness coverage",
+              "coherent-observation retry behavior",
+              "unsupported target and protected target behavior",
+              "strict type exhaustiveness."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T4."
-            ]
+            "acceptance": []
           }
         },
         {
@@ -151,21 +157,26 @@
               "scripts/bootstrap/validation_program.py",
               "scripts/bootstrap/presentation.py",
               "scripts/test-bootstrap-readiness.py",
-              "scripts/test-bootstrap-presentation.py",
+              "scripts/test-bootstrap-presentation.py"
+            ],
+            "modify": [
               "scripts/validate-template.py",
               "scripts/check-project-readiness.py",
               "scripts/validate-repository.py"
             ],
-            "modify": [],
             "remove": []
           },
           "validation": {
             "tests": [
-              "existing readiness/aggregate fixture parity; pure-core tests with no filesystem or process access; readiness identity/sort/multiset tests; compatibility corpus tests; text/JSON parity; stage-fold and stop-condition properties; canonical diagnostic next-action reachability."
+              "existing readiness/aggregate fixture parity",
+              "pure-core tests with no filesystem or process access",
+              "readiness identity/sort/multiset tests",
+              "compatibility corpus tests",
+              "text/JSON parity",
+              "stage-fold and stop-condition properties",
+              "canonical diagnostic next-action reachability."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T5."
-            ]
+            "acceptance": []
           }
         },
         {
@@ -181,20 +192,21 @@
           "files": {
             "create": [
               "docs/adr/0002-functional-core-domain-ownership.md",
-              "docs/licensing-provenance-audit.md",
+              "docs/licensing-provenance-audit.md"
+            ],
+            "modify": [
               "CONTEXT.md",
               "docs/adr/0001-use-copier-for-template-updates.md"
             ],
-            "modify": [],
             "remove": []
           },
           "validation": {
             "tests": [
-              "ADR/design/PRD terminology consistency; audit covers every bundled skill and every licensing mode; no licence-writing task starts before the audit is accepted."
+              "ADR/design/PRD terminology consistency",
+              "audit covers every bundled skill and every licensing mode",
+              "no licence-writing task starts before the audit is accepted."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T6."
-            ]
+            "acceptance": []
           }
         }
       ]
@@ -230,11 +242,15 @@
           },
           "validation": {
             "tests": [
-              "strict schema round-trips; stable-ID fixtures; full profile matrix; dependency closure and incompatibility tests; secret rejection; normalized-setting identity tests; no capability content execution."
+              "strict schema round-trips",
+              "stable-ID fixtures",
+              "full profile matrix",
+              "dependency closure and incompatibility tests",
+              "secret rejection",
+              "normalized-setting identity tests",
+              "no capability content execution."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T7."
-            ]
+            "acceptance": []
           }
         },
         {
@@ -259,11 +275,15 @@
           },
           "validation": {
             "tests": [
-              "byte-identical rendering; renderer purity under blocked filesystem/environment/network; input perturbation properties; missing-blob failures; ownership collision rejection; managed-only inventory; seed/legal bytes and default-branch coverage."
+              "byte-identical rendering",
+              "renderer purity under blocked filesystem/environment/network",
+              "input perturbation properties",
+              "missing-blob failures",
+              "ownership collision rejection",
+              "managed-only inventory",
+              "seed/legal bytes and default-branch coverage."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T8."
-            ]
+            "acceptance": []
           }
         },
         {
@@ -288,11 +308,15 @@
           },
           "validation": {
             "tests": [
-              "manifest round-trip/checksum/schema tests; plan completeness; deterministic ordering; collision and cleanup disagreement tests; plan digest re-derivation; expected-target readiness and template-contract evaluation; no partial plan on error."
+              "manifest round-trip/checksum/schema tests",
+              "plan completeness",
+              "deterministic ordering",
+              "collision and cleanup disagreement tests",
+              "plan digest re-derivation",
+              "expected-target readiness and template-contract evaluation",
+              "no partial plan on error."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T9."
-            ]
+            "acceptance": []
           }
         }
       ]
@@ -324,11 +348,14 @@
           },
           "validation": {
             "tests": [
-              "linked-worktree independence; submodule and bare/non-worktree cases; lock reuse after process death; stale pending/orphan/corrupt journal behavior; path substitution and no-follow checks; state-root durability and evidence preservation."
+              "linked-worktree independence",
+              "submodule and bare/non-worktree cases",
+              "lock reuse after process death",
+              "stale pending/orphan/corrupt journal behavior",
+              "path substitution and no-follow checks",
+              "state-root durability and evidence preservation."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T10."
-            ]
+            "acceptance": []
           }
         },
         {
@@ -351,11 +378,13 @@
           },
           "validation": {
             "tests": [
-              "injected failures before/after every journal/preparation/phase/effect boundary; typed request/observation matching; gate failure enters rollback rather than sealed cleanup; Hypothesis stateful traces cover every transaction-machine constructor; all filesystem primitive/error mappings are closed."
+              "injected failures before/after every journal/preparation/phase/effect boundary",
+              "typed request/observation matching",
+              "gate failure enters rollback rather than sealed cleanup",
+              "Hypothesis stateful traces cover every transaction-machine constructor",
+              "all filesystem primitive/error mappings are closed."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T11."
-            ]
+            "acceptance": []
           }
         },
         {
@@ -380,11 +409,17 @@
           },
           "validation": {
             "tests": [
-              "exact raw bytes/modes and directory topology restored; idempotent rollback; directory create/remove recovery; crash during gating and cleanup; `RESTORED` and `SEALED` recovery; third-state preservation; git-clean survival; Hypothesis crash sequences; evidence remains available after failure."
+              "exact raw bytes/modes and directory topology restored",
+              "idempotent rollback",
+              "directory create/remove recovery",
+              "crash during gating and cleanup",
+              "`RESTORED` and `SEALED` recovery",
+              "third-state preservation",
+              "git-clean survival",
+              "Hypothesis crash sequences",
+              "evidence remains available after failure."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T11b."
-            ]
+            "acceptance": []
           }
         }
       ]
@@ -397,8 +432,6 @@
           "id": "T12",
           "name": "Implement CLI adapters and scaffold/cleanup classification",
           "depends_on": [
-            "T9",
-            "T11",
             "T11b"
           ],
           "inputs": [
@@ -410,20 +443,26 @@
               "scripts/bootstrap-project.py",
               "scripts/bootstrap/cli.py",
               "scripts/bootstrap/scaffold.py",
-              "scripts/test-bootstrap-cli.py",
+              "scripts/test-bootstrap-cli.py"
+            ],
+            "modify": [
               "README.md",
               "docs/project-readiness.md"
             ],
-            "modify": [],
             "remove": []
           },
           "validation": {
             "tests": [
-              "golden coverage for every listed command and command-family exit mapping; status, planning, and recovery never run the hook; refusal/rollback/recovery hook counts; all-scaffold install exits nonzero but remains installed; cleanup marker collision and leave override; text/JSON parity; phase-specific recover behavior; exit 0/1/2 family tests."
+              "golden coverage for every listed command and command-family exit mapping",
+              "status, planning, and recovery never run the hook",
+              "refusal/rollback/recovery hook counts",
+              "all-scaffold install exits nonzero but remains installed",
+              "cleanup marker collision and leave override",
+              "text/JSON parity",
+              "phase-specific recover behavior",
+              "exit 0/1/2 family tests."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T12."
-            ]
+            "acceptance": []
           }
         },
         {
@@ -437,26 +476,32 @@
           ],
           "description": "First update ADR 0001 to state that Copier owns source lifecycle updates while bootstrap owns derived-output reconciliation. Then wire Copier to retain source lifecycle inputs while excluding generated managed/seed/cleanup outputs, including the source `pyproject.toml` and `uv.lock` boundary. Add GitHub snapshot cleanup and ownership declarations; the GitHub cleanup inventory must include the source root `pyproject.toml` and `uv.lock`, while Copier excludes them from generated projects. Ensure both paths initialize a Git working tree before bootstrap, recognize only their legal scaffold shapes, and share the same compiler and transaction shell.",
           "files": {
-            "create": [],
-            "modify": [
-              "copier.yml",
-              "docs/adr/0001-use-copier-for-template-updates.md",
-              ".github/workflows/ci.yml",
-              "flake.nix",
+            "create": [
               ".agentic-template/source-ownership.json",
               ".agentic-template/maintenance-artifacts.json",
               "scripts/test-github-template-readiness.py",
               "scripts/test-copier-bootstrap.py"
             ],
+            "modify": [
+              "copier.yml",
+              "docs/adr/0001-use-copier-for-template-updates.md",
+              ".github/workflows/ci.yml",
+              "flake.nix"
+            ],
             "remove": []
           },
           "validation": {
             "tests": [
-              "ADR 0001 contains the approved ownership split before integration; direct GitHub snapshot and Copier fixtures; source `pyproject.toml`/`uv.lock` do not leak into generated projects; seed preservation; cleanup valid/mismatch/leave cases; no stale Copier excludes; both paths install supplied and all-scaffold bundles; actionlint and canonical aggregate validation pass."
+              "ADR 0001 contains the approved ownership split before integration",
+              "direct GitHub snapshot and Copier fixtures",
+              "source `pyproject.toml`/`uv.lock` do not leak into generated projects",
+              "seed preservation",
+              "cleanup valid/mismatch/leave cases",
+              "no stale Copier excludes",
+              "both paths install supplied and all-scaffold bundles",
+              "actionlint and canonical aggregate validation pass."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T13."
-            ]
+            "acceptance": []
           }
         }
       ]
@@ -476,27 +521,32 @@
           ],
           "description": "Extend capability definitions with explicit non-secret runtime dependency declarations, supported Python ranges, and invocation metadata. Render generated `pyproject.toml` for every generated project as a bootstrap-managed artifact containing `requires-python = \">=3.14\"`; add selected capability dependencies only when required. Keep the source repository's root `pyproject.toml` and `uv.lock` source-only. Define the adopter follow-up that creates `uv.lock`; bootstrap never resolves or installs packages. Add ownership and leakage fixtures proving that source development dependencies do not enter snapshots or generated Copier projects.",
           "files": {
-            "create": [],
+            "create": [
+              "scripts/bootstrap/dependencies.py",
+              "scripts/test-generated-dependencies.py",
+              "scripts/fixtures/generated-dependencies/pyproject.toml"
+            ],
             "modify": [
               "scripts/bootstrap/catalog.py",
               "scripts/bootstrap/profiles.py",
               "scripts/bootstrap/schemas.py",
               "scripts/bootstrap/render.py",
               ".agentic-template/source-ownership.json",
-              "copier.yml",
-              "scripts/bootstrap/dependencies.py",
-              "scripts/test-generated-dependencies.py",
-              "scripts/fixtures/generated-dependencies/pyproject.toml"
+              "copier.yml"
             ],
             "remove": []
           },
           "validation": {
             "tests": [
-              "dependency metadata round-trips; every generated profile contains `requires-python = \">=3.14\"`; supported-Python and invocation validation; generated `pyproject.toml` ownership and source-lock leakage tests; all profile/custom-selection matrices; no generated `uv.lock` is claimed by bootstrap; generated capability fixtures can create and use their own uv lock without source-only packages leaking into the runtime."
+              "dependency metadata round-trips",
+              "every generated profile contains `requires-python = \">=3.14\"`",
+              "supported-Python and invocation validation",
+              "generated `pyproject.toml` ownership and source-lock leakage tests",
+              "all profile/custom-selection matrices",
+              "no generated `uv.lock` is claimed by bootstrap",
+              "generated capability fixtures can create and use their own uv lock without source-only packages leaking into the runtime."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T14."
-            ]
+            "acceptance": []
           }
         },
         {
@@ -510,14 +560,8 @@
           ],
           "description": "Add the four declarative capability contributions, profile expansions, settings normalization, compiled workflow/document outputs, release dependencies, read-only secret preflights, and available/unavailable activation behavior. Keep capability-specific dependency commands behind their declared uv invocation metadata and ensure unselected capabilities emit no artifacts.",
           "files": {
-            "create": [],
-            "modify": [
-              "scripts/bootstrap/catalog.py",
-              "scripts/bootstrap/contributions.py",
-              "scripts/bootstrap/render.py",
+            "create": [
               "scripts/bootstrap/capability_fragments.py",
-              ".github/workflows/ci.yml",
-              ".github/workflows/copier-smoke.yml",
               "scripts/test-capability-matrix.py",
               "scripts/test-secret-preflight.py",
               "scripts/fixtures/workflows/semantic-release.yml",
@@ -525,15 +569,27 @@
               "scripts/fixtures/workflows/cachix-publish.yml",
               "scripts/fixtures/workflows/pr-agent-gemini.yml"
             ],
+            "modify": [
+              "scripts/bootstrap/catalog.py",
+              "scripts/bootstrap/contributions.py",
+              "scripts/bootstrap/render.py",
+              ".github/workflows/ci.yml",
+              ".github/workflows/copier-smoke.yml"
+            ],
             "remove": []
           },
           "validation": {
             "tests": [
-              "full profile/custom-selection matrix; dependency and setting tests; actionlint on source and generated workflows; structural preflight policy; local non-secret canary; privileged jobs are blocked when preflight is unavailable; release graph gating; adopter fixtures use uv to install and run capability-specific commands while canonical validators remain directly runnable and bootstrap itself never installs packages."
+              "full profile/custom-selection matrix",
+              "dependency and setting tests",
+              "actionlint on source and generated workflows",
+              "structural preflight policy",
+              "local non-secret canary",
+              "privileged jobs are blocked when preflight is unavailable",
+              "release graph gating",
+              "adopter fixtures use uv to install and run capability-specific commands while canonical validators remain directly runnable and bootstrap itself never installs packages."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T15."
-            ]
+            "acceptance": []
           }
         },
         {
@@ -551,21 +607,26 @@
               "scripts/bootstrap/actions_yaml.py",
               "scripts/bootstrap/source_ci.py",
               "scripts/test-source-ci.py",
-              ".agentic-template/source-ci-allowlist.json",
+              ".agentic-template/source-ci-allowlist.json"
+            ],
+            "modify": [
               "scripts/validate-template.py",
               ".github/workflows/ci.yml",
               "pyproject.toml"
             ],
-            "modify": [],
             "remove": []
           },
           "validation": {
             "tests": [
-              "duplicate/merge/null/boolean parser fixtures; complete env/with/permissions/strategy comparison; step identity/order; actionlint; stale/uncovered allowlist detection; privileged trust predicate checks; source and generated workflow conformance."
+              "duplicate/merge/null/boolean parser fixtures",
+              "complete env/with/permissions/strategy comparison",
+              "step identity/order",
+              "actionlint",
+              "stale/uncovered allowlist detection",
+              "privileged trust predicate checks",
+              "source and generated workflow conformance."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T16."
-            ]
+            "acceptance": []
           }
         }
       ]
@@ -585,23 +646,28 @@
           ],
           "description": "Implement plan/apply add transitions, old-selection inventory verification, expanded selection compilation, persisted capability additions/settings, and incomplete-project gating where pre-existing placeholders are retained but new findings are rejected.",
           "files": {
-            "create": [],
+            "create": [
+              "scripts/test-bootstrap-add.py"
+            ],
             "modify": [
               "scripts/bootstrap/decisions.py",
               "scripts/bootstrap/render.py",
               "scripts/bootstrap/planner.py",
-              "scripts/bootstrap-project.py",
-              "scripts/test-bootstrap-add.py"
+              "scripts/bootstrap-project.py"
             ],
             "remove": []
           },
           "validation": {
             "tests": [
-              "`apply → add → apply`; shared-output changes; removal/reconfiguration refusal; changed source refusal; old render-contract reachability; readiness multiset non-regression; digest-bound plans."
+              "`apply → add → apply`",
+              "shared-output changes",
+              "removal/reconfiguration refusal",
+              "changed source refusal",
+              "old render-contract reachability",
+              "readiness multiset non-regression",
+              "digest-bound plans."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T17."
-            ]
+            "acceptance": []
           }
         },
         {
@@ -615,24 +681,29 @@
           ],
           "description": "Implement targeted certified restore without manifest/inventory advancement, Copier-only reconcile, destructive overwrite requiring matching preview digest, source-delta diagnostics, reachable snapshot baseline repair, and regeneration guidance when repair is unavailable.",
           "files": {
-            "create": [],
+            "create": [
+              "scripts/test-bootstrap-restore.py",
+              "scripts/test-bootstrap-reconcile.py"
+            ],
             "modify": [
               "scripts/bootstrap/decisions.py",
               "scripts/bootstrap/source_baseline.py",
               "scripts/bootstrap/planner.py",
-              "scripts/bootstrap-project.py",
-              "scripts/test-bootstrap-restore.py",
-              "scripts/test-bootstrap-reconcile.py"
+              "scripts/bootstrap-project.py"
             ],
             "remove": []
           },
           "validation": {
             "tests": [
-              "targeted restore leaves unrelated drift; restore writes only certified paths; Copier reconcile updates source baseline; snapshots refuse reconcile; source delta names exact paths; overwrite requires matching plan digest; `RenderContractViolation` is reachable only in old-render cases."
+              "targeted restore leaves unrelated drift",
+              "restore writes only certified paths",
+              "Copier reconcile updates source baseline",
+              "snapshots refuse reconcile",
+              "source delta names exact paths",
+              "overwrite requires matching plan digest",
+              "`RenderContractViolation` is reachable only in old-render cases."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T18."
-            ]
+            "acceptance": []
           }
         },
         {
@@ -652,22 +723,25 @@
               "docs/capabilities.md",
               "docs/github-setup.md",
               "docs/release-notes/2026-08-05-deterministic-project-bootstrap.md",
-              "scripts/bootstrap/fragments/",
+              "scripts/bootstrap/fragments/"
+            ],
+            "modify": [
               "docs/project-readiness.md",
               "README.md",
               "CONTEXT.md",
               "docs/prd.md"
             ],
-            "modify": [],
             "remove": []
           },
           "validation": {
             "tests": [
-              "generated documents contain required lifecycle/recovery/source-boundary guidance; restore repairs documentation drift; active adopter/maintainer documentation contains no legacy, migration, adoption, or `.py` hook contract; superseded design revisions are absent from the active spec directory; cross-document consistency checks pass."
+              "generated documents contain required lifecycle/recovery/source-boundary guidance",
+              "restore repairs documentation drift",
+              "active adopter/maintainer documentation contains no legacy, migration, adoption, or `.py` hook contract",
+              "superseded design revisions are absent from the active spec directory",
+              "cross-document consistency checks pass."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T19."
-            ]
+            "acceptance": []
           }
         }
       ]
@@ -688,7 +762,9 @@
           "description": "Replace the source scaffold hook contract with `scripts/validate-project`, wire final Copier/readiness/aggregate/workflow/docs boundaries, remove stale legacy/adoption/migration references, and ensure the source tree itself is the integrated profile fixture. Do not add compatibility aliases.",
           "files": {
             "create": [
-              "scripts/validate-project",
+              "scripts/validate-project"
+            ],
+            "modify": [
               "copier.yml",
               ".github/workflows/ci.yml",
               ".github/workflows/copier-smoke.yml",
@@ -699,22 +775,22 @@
               "README.md",
               "CONTEXT.md",
               "docs/adr/0001-use-copier-for-template-updates.md",
-              "flake.nix",
-              "scripts/validate-project.py",
-              ".py",
-              "design.md",
-              "plan.md"
+              "flake.nix"
             ],
-            "modify": [],
-            "remove": []
+            "remove": [
+              "scripts/validate-project.py"
+            ]
           },
           "validation": {
             "tests": [
-              "repository-wide search finds no forbidden legacy paths/lifecycles; both generation paths pass full profile matrix; actionlint and source-CI conformance pass; licensing audit is reflected; every decision leaf has a witness; strict ty/Ruff/pytest/Hypothesis/uv checks pass."
+              "repository-wide search finds no forbidden legacy paths/lifecycles",
+              "both generation paths pass full profile matrix",
+              "actionlint and source-CI conformance pass",
+              "licensing audit is reflected",
+              "every decision leaf has a witness",
+              "strict ty/Ruff/pytest/Hypothesis/uv checks pass."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T20."
-            ]
+            "acceptance": []
           }
         },
         {
@@ -734,11 +810,18 @@
           },
           "validation": {
             "tests": [
-              "`uv run pytest`; `uv run ruff check`; `uv run ruff format --check`; `uv run ty check`; `uv lock --check`; Nix/CI checks; `git diff --check`; generated-project canonical validation; complete release gate; verification-before-completion evidence and substantive code review with no unresolved required finding."
+              "`uv run pytest`",
+              "`uv run ruff check`",
+              "`uv run ruff format --check`",
+              "`uv run ty check`",
+              "`uv lock --check`",
+              "Nix/CI checks",
+              "`git diff --check`",
+              "generated-project canonical validation",
+              "complete release gate",
+              "verification-before-completion evidence and substantive code review with no unresolved required finding."
             ],
-            "acceptance": [
-              "All listed validation criteria pass for T21."
-            ]
+            "acceptance": []
           }
         }
       ]
