@@ -155,8 +155,9 @@ without adding capability-specific branches to the resolver, renderer, transacti
   conforming released project unready is a breaking template-contract change with an explicit
   lifecycle. Before that publication no generated-project population or legacy compatibility contract
   exists.
-- **Portability:** Template-owned deterministic validation runs with Python 3.11+ and the standard
-  library. Adopter-owned commands define their own toolchain requirements.
+- **Portability:** Template-owned deterministic validation runs with Python 3.14+. Selected generated
+  capabilities may declare uv-managed runtime dependencies; adopter-owned commands define their own
+  additional toolchain requirements.
 - **Maintainability:** Template, readiness, project, and aggregate validation keep separate ownership.
 - **Analyzability:** Template-owned Python commands keep immutable policy and state transitions in a
   shared functional core; filesystem, Git, process, environment, and terminal effects remain in thin

@@ -1,10 +1,10 @@
 # Deterministic Project Bootstrap with Capability Profiles
 
-**Status:** Revision 6, assembled for owner approval
+**Status:** Revision 11, assembled for owner approval
 **Date:** 2026-08-05
 **Planning mode:** Spec-backed Plan
-**Supersedes:** `design.discovery-draft.md` (revision 1), `design.revision-2.md`,
-`design.revision-3.reconstructed.md`, `design.revision-4.md`, `design.revision-5.md`
+**Supersedes:** earlier discovery and revision drafts, consolidated into this document and removed
+from the active spec directory.
 
 ## Summary
 
@@ -74,7 +74,7 @@ Revision 4's ledger contained factual errors. They are struck here rather than c
 
 | Earlier claim | Status | Evidence |
 | --- | --- | --- |
-| "Revision 1 installed the hook at `scripts/validate-project.py`" | **False; struck** | `design.discovery-draft.md:112` already specifies the extensionless path. The current source scaffold predates bootstrap, but no generated project compatibility contract exists |
+| "Revision 1 installed the hook at `scripts/validate-project.py`" | **False; struck** | The earlier discovery record already specified the extensionless path. The current source scaffold predates bootstrap, but no generated project compatibility contract exists |
 | "Revision 3's scaffold exemption made `add`, `restore`, and `reconcile` necessarily gate-fail" | **False; struck** | `design.revision-3.reconstructed.md:1120` contains the pre-existing-finding clause covering exactly those operations. The multiset formulation is an improvement, but the stated defect did not exist |
 | "Revision 3 described itself as having seventeen corrections" | **Unverifiable; struck** | A reconstruction cannot establish historical wording or counts |
 | "Revision 2's apply matrix had no absent-manifest branch at all" | **Too broad; softened** | Revision 2 covered initial install under generation-path behavior. The real defect was the absence of one exhaustive classification |
@@ -89,7 +89,7 @@ Revision 4's ledger contained factual errors. They are struck here rather than c
 | Reconciliation writes only paths whose bytes match old hashes | `reconcile --overwrite-drift` may overwrite drift, bound to a preview digest | Without an escape, drift plus a changed template is unresolvable |
 | The lifecycle is initial bootstrap plus additive capability changes | Adds `restore`, a same-contract drift repair | Revision 1 blocked on drift and provided no remedy |
 | Partial bundles and a finalize phase are future work | `scaffold` is in v1; no finalize phase | Slot completion is derived from files, so there is no state to transition |
-| `CONTRIBUTING.md` is bootstrap-managed output (`design.discovery-draft.md:403`) | Seed-once adopter output | A managed drift-fatal file that adopters are expected to edit blocks the repository |
+| `CONTRIBUTING.md` is bootstrap-managed output | Seed-once adopter output | A managed drift-fatal file that adopters are expected to edit blocks the repository |
 | One `initial_input_fingerprint` | Normalized answers stored as values; **no input fingerprint at all** | A fingerprint is a lossy compression of a comparison; storing the values yields field-level diagnostics for free |
 | `.agentic-template.json` | `.agentic-template/project.json` | One namespace; one character of separation was too little |
 | `compiler_contract_version` in the manifest | Removed | `template_source_fingerprint` already covers engine and catalog identity |
@@ -170,7 +170,7 @@ permissions, and allowed declared source-only steps.
 | `ReadinessResult` was "ordered" with no normative order | Sort key defined |
 | One global exit-code rule contradicted `status` returning 0 for reported unreadiness | Exit semantics per command family |
 | "The hook runs exactly once per mutating invocation" is false on preflight refusal, rollback, and recovery | Invocation rule stated exactly |
-| The dev shell's unversioned `python3` does not establish the 3.11 floor | An explicit 3.11 validation lane |
+| The dev shell's unversioned `python3` does not establish the 3.14 floor | An explicit 3.14 validation lane |
 
 ### New in revision 5
 
@@ -213,7 +213,32 @@ permissions, and allowed declared source-only steps.
 | Empty-target wording implied an installation branch with no trustworthy generation provenance | Only exact GitHub or Copier scaffold recognition permits initial installation; arbitrary empty and populated manifest-free targets share one explicit refusal state |
 | Eager byte-carrying values had no resource bound | One bounded content-addressed `VerifiedBlobStore` owns bytes; exact file/path/operation/diagnostic limits fail before partial decisions |
 | Mechanical findings were named as complete project readiness | `MechanicalReadinessResult` gates installation; `ProjectReadinessOutcome` additionally requires this invocation's hook success |
-| The original source-tool recommendation was not reevaluated against the FP boundary | Strict Pyright, pytest, Hypothesis, Ruff, and PyYAML are pinned source-only; stdlib `argparse` is a contained shell adapter and no runtime framework enters the generated contract |
+| The original source-tool recommendation was not reevaluated against the FP boundary | Strict `ty`, pytest, Hypothesis, Ruff, and PyYAML are pinned through uv; stdlib `argparse` is a contained shell adapter, and generated projects may declare uv-managed runtime dependencies |
+
+### Corrections in revision 7
+
+| Revision 6 decision | Revision 7 correction |
+| --- | --- |
+| `ty` was listed as a non-normative future option while Pyright was the type gate | `ty` is the sole normative type checker, managed through uv and configured for strict Python 3.14 checking |
+| Source dependencies were described as Nix-flake-only | Python source dependencies are declared in `pyproject.toml`, locked in `uv.lock`, and run with `uv run`; Nix exposes uv and remains the reproducible host/tooling boundary |
+| Generated-project Python was required to be standard-library-only | Generated projects may declare runtime dependencies in rendered uv metadata; bootstrap does not install packages or execute package setup code |
+| Capabilities had no dependency contribution contract | A capability may declare non-secret runtime dependencies, supported Python range, and invocation metadata alongside its outputs and settings |
+
+### Corrections in revision 8
+
+| Dependency-locking ambiguity | The template source commits its root `uv.lock`; bootstrap renders generated `pyproject.toml` but does not generate a project `uv.lock`. When selected capabilities declare runtime dependencies, the generated project names `uv lock`/`uv sync` as the explicit adopter follow-up. Lock resolution remains outside the pure compiler because it depends on uv, package indexes, platform markers, and external availability |
+
+### Corrections in revision 9
+
+| Source uv metadata could leak into generated projects | The source root `pyproject.toml` and `uv.lock` are source-only cleanup targets: GitHub snapshot cleanup removes them after verification, and Copier excludes them. Bootstrap renders a bootstrap-managed `pyproject.toml` for every generated project; selected capabilities may add declared runtime dependencies, and bootstrap still does not create `uv.lock` |
+
+### Corrections in revision 10
+
+| Python support floor | Python 3.14 is the minimum and primary runtime for source and generated projects; uv and CI use 3.14 explicitly, with no 3.11 or 3.13 compatibility lane |
+
+### Correction in revision 11
+
+| Generated project metadata ownership | Every generated project receives bootstrap-managed `pyproject.toml` containing the Python 3.14 requirement; selected capabilities may add declared runtime dependencies, while bootstrap never creates `uv.lock` |
 
 ### Unchanged load-bearing decisions
 
@@ -221,11 +246,11 @@ Snapshot profiles and `InitialAnswers` freeze at creation; `CapabilityAdditions`
 their settings while closure is derived separately; secrets are
 never accepted or persisted; repository owner and name are never persisted; transactions cover only
 planned paths and never claim to roll back hook-created artifacts; the renderer cannot execute
-capability-supplied code; generated-project validation is Python 3.11 standard library only.
+capability-supplied code; generated-project runtime dependencies are declared and managed through uv.
 
 Approaches B (mirrored Copier and Python rendering) and C (trusted Copier task) were considered and
-rejected in revision 1; see `design.discovery-draft.md`. Approach A, one shared declarative
-standard-library compiler, remains selected.
+rejected in revision 1; see the consolidated discovery decisions above. Approach A, one shared declarative
+compiler with a dependency-light functional core and uv-managed project dependencies, remains selected.
 
 ## Context and problem
 
@@ -522,36 +547,41 @@ there is no artificial universal stage that accepts meaningless `NotApplicable` 
 
 ### Dependency policy
 
-Generated-project runtime commands remain Python 3.11 standard-library programs so bootstrap and
-validation work before an adopter initializes a toolchain. The core uses a small repository-owned
-`Ok`/`Err` type, frozen data classes, `Enum`, and `typing.assert_never`; a general FP framework would add
-installation and type-plugin costs without adding domain capability.
+Generated-project runtime commands target Python 3.14 and may use dependencies declared by the
+generated project's `pyproject.toml`. Source and generated project metadata declare
+`requires-python = ">=3.14,<3.15"`, and the repository pins its primary interpreter with
+`.python-version` set to `3.14`. Bootstrap renders dependency declarations as part of the selected
+capability set, but does not install packages, execute package setup code, or accept secrets. The core
+still uses a small repository-owned `Ok`/`Err` type, frozen data classes, `Enum`, and
+`typing.assert_never`; a general FP framework would add domain and dependency surface without adding
+capability.
 
-Source-only assurance uses a small modern toolchain pinned through the existing Nix flake:
+Source assurance uses a small modern toolchain managed by uv and made available from the Nix dev shell:
 
-- **Pyright** is the one normative type checker, with `pythonVersion = "3.11"`,
-  `typeCheckingMode = "strict"`, `reportMatchNotExhaustive = "error"`,
-  `reportUnnecessaryTypeIgnoreComment = "error"`, and experimental features disabled. A checker
-  canary adds a union constructor and must make the check fail. Pyright is preferred over mypy because
-  it directly diagnoses non-exhaustive `match`, rejects unknown types in strict mode, and needs no
-  project-specific type plugin for this algebra. Running both would add a second, occasionally
-  divergent type-policy surface without independent acceptance evidence.
+- **ty** is the one normative type checker, configured through `[tool.ty.environment]` for Python 3.14,
+  `[tool.ty.terminal]` with warnings treated as errors, and explicit rules for unresolved references and
+  unused ignore comments. A checker canary adds a union constructor and must make the check fail. ty is
+  preferred because it is the modern Astral checker aligned with the repository's uv/Ruff toolchain.
+  Running a second type checker would add a divergent type-policy surface without independent acceptance
+  evidence.
 - **pytest** is the source test runner. Existing `unittest` tests remain runnable while fixtures move to
   explicit pytest fixtures; production code never imports pytest.
 - **Hypothesis** supplies value properties and rule-based state-machine sequences. The pull-request
   profile is deterministic and database-free; an exploratory pre-release profile records its seed.
   Every discovered failure is shrunk and promoted to a named example-based regression, so a seed is
   evidence for reproduction rather than the permanent regression test.
-- **Ruff** is the single Python linter and formatter, configured for Python 3.11. CI runs
+- **Ruff** is the single Python linter and formatter, configured for Python 3.14. CI runs
   `ruff check` and `ruff format --check`; automatic fixes are a developer action, never a release-gate
   mutation.
 - **PyYAML** exists only in the source-CI workflow conformance fixture, behind the custom Actions loader
   defined below.
 
-Versions are locked by `flake.lock`, and none of these tools is imported by generated-project runtime
-commands. `python311.withPackages (ps: [ps.hypothesis ps.pytest ps.pyyaml])` supplies source-test Python;
-`pkgs.pyright` and `pkgs.ruff` supply the checker and lint/format executables. Dev-shell and flake checks
-use exactly that package set; no ambient user-site or PATH package may satisfy a gate.
+The template source commits `uv.lock` for its Python packages, while `flake.lock` pins Nix-provided tools.
+The Nix dev shell includes uv explicitly and exposes a documented `uv sync`/`uv run` workflow. Source
+checks run through uv's locked environment; no ambient user-site or PATH package may satisfy a gate.
+Bootstrap renders generated dependency declarations but never resolves or writes a generated `uv.lock`.
+When a generated project selects runtime dependencies, its adopter-facing next action is `uv lock` followed
+by `uv sync`; generated workflows may enforce that lock after the adopter has created it.
 
 The runtime CLI uses `argparse` only as a shell-side token grammar. A private parser adapter disables
 automatic process termination where supported, captures the remaining `error`/`exit` callbacks at that
@@ -559,21 +589,12 @@ single effect boundary, and immediately converts them to `UsageError`; callbacks
 work. Pure decoding then turns primitive parsed values into exactly one `Intent` constructor. Help text
 is generated from immutable command metadata and golden-tested alongside text and JSON outcomes.
 
-Upstream Pyright is selected over BasedPyright because every required strictness is explicit, the Nix
-package already removes installation friction, and depending on a stricter downstream fork would not
-add a missing acceptance property. BasedPyright remains a credible future replacement if one of its
-additional diagnostics catches a demonstrated defect. Astral's `ty` remains beta and is not yet the
-normative exhaustiveness gate. Neither checker is run as a redundant second oracle.
-
-Typer is a high-quality general CLI framework, and Pydantic is a high-quality boundary-validation
-library, but neither improves this v1 boundary enough to justify a generated runtime dependency. Typer
-brings its own command-dispatch and presentation stack; Pydantic defaults to coercion, reports validation
-through exceptions, and frozen models do not establish this design's recursive immutability. `returns`
-would couple core typing to a checker plugin. Rich, Click, `attrs`, `cattrs`, `msgspec`, `immutables`, and
-similar libraries are likewise not rejected in general; they are simply unnecessary for a small,
-portable algebra whose exact JSON, diagnostic, and deep-freeze rules are already domain-specific. A
-future hermetic executable may reevaluate runtime libraries against the same core/shell conformance
-suite without changing the domain algebra.
+The design does not prohibit runtime libraries categorically. A capability may declare a runtime
+dependency when its generated artifacts need one; the dependency, supported Python range, and invocation
+contract must be represented in the capability definition and rendered project metadata. Bootstrap does
+not silently install or execute those dependencies. Typer, Pydantic, Rich, and similar libraries remain
+optional rather than default choices because the v1 CLI and domain algebra already define their own
+contracts.
 
 ### Why only one aggregate fingerprint remains
 
@@ -1262,7 +1283,7 @@ and a snapshot could fail its own installation gate.
 | Class | Members | Retained in generated projects? | In `template_source_fingerprint`? | Validated by |
 | --- | --- | --- | --- | --- |
 | Generated-lifecycle | `source-ownership.json` plus every `lifecycle_paths` entry: entry points, shared core and shell modules, catalog, definitions, blobs, schemas, profiles, stable-ID fixture, readiness-rule baseline and compatibility corpus, and policy data | Yes, both paths | **Yes** | Generated template-contract core; source perturbation fixtures |
-| Source-only snapshot-cleanup target | Exactly `snapshot_cleanup_paths`: source tests and workflow fixtures, `source-ci-allowlist.json`, historical specs, and source development data | No | No as entries; the authorizing ownership-manifest bytes are fingerprinted | Source-only fixtures in the template repository |
+| Source-only snapshot-cleanup target | Exactly `snapshot_cleanup_paths`: source tests and workflow fixtures, source `pyproject.toml` and `uv.lock`, `source-ci-allowlist.json`, historical specs, and source development data | No | No as entries; the authorizing ownership-manifest bytes are fingerprinted | Source-only fixtures in the template repository |
 | Snapshot-cleanup control | `maintenance-artifacts.json` | No — removed after use | **No** | Source-only fixtures plus runtime agreement with the fingerprinted ownership manifest |
 
 The fingerprint therefore contains only inputs that both generation paths actually retain, which is the
@@ -1367,9 +1388,11 @@ for every newly effective capability. It never mutates `InitialAnswers`.
 A capability declares a stable ID and description; dependency IDs; settings typed `string`, `boolean`,
 or `enum`; validation constraints for every string used in a structured output context; external
 activation requirements; exclusively owned output paths each declared `text` or `binary`; contributions
-to named typed slots; document fragments; and fixture cases. Definitions are data: no command
+to named typed slots; document fragments; fixture cases; and, when needed, non-secret runtime dependency
+declarations with supported Python range and invocation metadata. Definitions are data: no command
 execution, no Python object loading, no network, no environment reads, no arbitrary target paths.
-Settings must be declared non-secret.
+Settings and dependency credentials must be declared non-secret. Bootstrap renders dependency metadata but
+does not install packages or execute package setup code.
 
 ### Stable-ID compatibility
 
@@ -1395,7 +1418,7 @@ v1 does not support; a separate ID per backend keeps "add a new capability" avai
 | Class | Members |
 | --- | --- |
 | Generated-lifecycle source | `source-ownership.json` and its declared public entry points, shared core and shell modules, catalog, render sources including audit-approved legal/provenance blobs, validators, schemas, policy and static contracts; Copier updates and merges these |
-| Bootstrap-managed output | Compiled CI, selected capability artifacts, durable operational documents; exact hashes enforced; `restore` repairs them |
+| Bootstrap-managed output | Generated-project `pyproject.toml`, with selected capability runtime dependencies added conditionally, compiled CI, selected capability artifacts, durable operational documents; exact hashes enforced; `restore` repairs them |
 | Manifest | `.agentic-template/project.json`; transaction-owned primary state, not managed render output, and excluded from `ManagedInventory` |
 | Seed-once adopter output | README, PRD, validation hook, SECURITY, `CONTRIBUTING.md`, root `LICENSE`, generated `NOTICE.md`, preserved `LICENSES/Apache-2.0.txt`, and project-validation workflow; installed once, never regenerated in v1 |
 | Adopter files | Product code and documentation, `.gitattributes`, `.gitignore`, unrelated workflows, everything outside declared ownership |
@@ -1688,7 +1711,7 @@ that request; a mismatched success observation is `InternalFailure`, not an igno
 uses the exact request kind and the already closed `EffectError` family. The shell loop
 executes one `EffectRequest`, converts every ordinary OS result into a typed `EffectObservation`, and
 feeds it back. It never selects a phase, rollback direction, gate outcome, or next operation itself.
-Pyright exhaustiveness plus Hypothesis stateful traces cover every constructor and every
+ty exhaustiveness plus Hypothesis stateful traces cover every constructor and every
 `TransactionPrimitiveFailed` branch.
 
 The journal transitions are therefore states rather than interpreter conditionals:
@@ -2230,7 +2253,7 @@ recovery stop at the first failure where continuing could mutate state or destro
 | Secret diagnosis | Available, or unavailable with likely causes | Authoritative diagnosis in a GitHub doctor |
 | Licensing | Explicit; digest fingerprinted; audit gates all modes | SPDX, SBOM, richer automation |
 | Workflow validation | Shared pure bounded checks in the generated project; a real parser only in source fixtures | A portable structured parser |
-| Dependencies | Standard-library runtime; source-only pinned Pyright, pytest, Hypothesis, Ruff, and PyYAML | Runtime libraries only with hermetic distribution and the same core/shell conformance suite |
+| Dependencies | uv-managed source and generated-project dependencies; pinned ty, pytest, Hypothesis, Ruff, and PyYAML for source assurance | Hermetic distribution, dependency provenance, and the same core/shell conformance suite |
 | Delivery | One public release; integration branch, one activation merge | Independent lifecycle releases |
 
 ## GitHub workflow architecture
@@ -2328,8 +2351,9 @@ longer corresponds to a real difference. Self-expiry removes **stale** entries; 
 accumulation of genuine differences. The fixture reports the current entry count so growth is visible
 and attributable.
 
-**Parser.** This source-only fixture uses PyYAML from the pinned development environment established in
-batch 1. Generated-project runtime remains standard-library only.
+**Parser.** This source-only fixture uses PyYAML from the pinned uv development environment established
+in batch 1. Generated-project runtime may use declared uv-managed dependencies; this source-CI parser is
+not automatically part of that runtime contract.
 
 The loader contract is specified, because default PyYAML semantics are not GitHub Actions semantics:
 `yaml.SafeLoader` with a custom Actions resolver; duplicate keys rejected before construction; merge
@@ -2353,7 +2377,8 @@ schemas; the `RenderInput` schema and renderer purity; profiles and the complete
 dependency topology; setting declarations and defaults; output ownership, declared kinds, and slots;
 canonical path grammar; lifecycle-source membership and fingerprint; complete readiness-rule definitions
 and compatibility corpus; and the stable-ID compatibility fixture. It returns structured diagnostics in
-the shared schema. Python 3.11 standard library only; executes no capability content and no adopter hook.
+the shared schema, uses only declared generated-project dependencies, executes no capability content, and
+never executes the adopter hook.
 
 It does **not** validate source-only inputs. Revision 4 required it to validate the source-CI allowlist,
 a file no generated project retains.
@@ -2472,10 +2497,10 @@ edits are drift repaired by `restore`.
 ## Cleanup inventory
 
 `.agentic-template/maintenance-artifacts.json` declares the source-only paths that a GitHub snapshot
-must remove: source test suites, the Copier smoke workflow, the source-CI allowlist, the readiness-rule
-fixtures, and historical specs. Each entry records the path, its expected source hash or tree hash, and
-whether it is a regular file or a directory tree. Entries may not overlap any other ownership class, and
-the inventory does not list itself.
+must remove: source test suites, the Copier smoke workflow, the source `pyproject.toml` and `uv.lock`,
+the source-CI allowlist, the readiness-rule fixtures, and historical specs. Each entry records the path,
+its expected source hash or tree hash, and whether it is a regular file or a directory tree. Entries may
+not overlap any other ownership class, and the inventory does not list itself.
 
 - Copier excludes the declared paths and the inventory by static configuration.
 - Fingerprinted `SourceOwnership.snapshot_cleanup_paths` independently declares the finite deletion
@@ -2526,7 +2551,7 @@ is a supported generated-project release.
 
 | # | Contents | Evidence before merge to the integration branch |
 | --- | --- | --- |
-| 1 | Tooling and algebra foundations: explicit Python 3.11 lane; pinned Pyright, pytest, Hypothesis, Ruff, and PyYAML; `Ok`/`Err`; frozen value conventions; diagnostics and CLI envelope; determinism primitives and schemas | Strict type check; exhaustive-union canary; lint/format checks; property-test canary; schema round-trips; primitive boundary and rejection fixtures |
+| 1 | Tooling and algebra foundations: explicit Python 3.14 lane; uv and pinned ty, pytest, Hypothesis, Ruff, and PyYAML; `Ok`/`Err`; frozen value conventions; diagnostics and CLI envelope; determinism primitives and schemas | Strict type check; exhaustive-union canary; lint/format checks; property-test canary; schema round-trips; primitive boundary and rejection fixtures |
 | 2 | Staged observation sums; family-specific total decisions; operation semantics; readiness rule definitions; source/ownership declarations | Static exhaustiveness; generated complete bundle/project intent-state matrices; no illegal constructor fixture; a preimage witness for every leaf decision; every diagnostic next action reachable |
 | 3 | Shared template-contract, readiness, and aggregate-validation cores; thin adapters replacing existing mixed scripts | Existing fixture parity; pure-core tests without filesystem/process access; stage-fold properties; canonical text/JSON parity |
 | 4 | Resolver, typed slots, `render_managed`, verified blob maps, complete initial compiler, `ExpectedTarget`, and planner | Byte-identical render; missing-blob failures; semantically relevant input perturbation; complete seed/legal/manifest/cleanup plan; collision and plan ordering |
@@ -2555,7 +2580,7 @@ canary tests pass; the diagnostic reachability check passes; the readiness-rule 
 every leaf decision constructor retains a generated preimage witness;
 the licensing audit is complete and reflected in the installed layout; the PRD, `CONTEXT.md`, and ADR
 0001 reflect the approved boundary; repository formatting, linting, tests, builds, and source fixtures
-pass under both the dev shell and the explicit Python 3.11 lane; strict Pyright passes with no unknown or
+pass under both the uv-enabled dev shell and the explicit Python 3.14 lane; strict ty passes with no unknown or
 unchecked core definition; deterministic Hypothesis properties pass and exploratory failures have a
 recorded seed plus a promoted regression example; no runtime,
 generated contract, fixture expectation, or user diagnostic names the `.py` hook or a legacy/migration
@@ -2740,7 +2765,7 @@ Exit semantics:
 | REQ-003 gate releases on project validation | Retained; the gate is a compiled contribution present only with `semantic-release` |
 | REQ-004 verify generated behavior from source | Extended to the tiered matrix and both paths across profiles |
 | REQ-005 preserve generation-path ownership | Extended with disjoint ownership classes, source baselines, operation-specific drift, and explicit refusal of unrecognized manifest-free targets |
-| REQ-006 portable, least-privileged template validation | Retained; generated runtime stays Python 3.11 standard-library only, while pinned Pyright, pytest, Hypothesis, Ruff, and PyYAML remain source-only |
+| REQ-006 portable, least-privileged template validation | Retained; generated runtime dependencies are explicit, uv-managed, and least-privileged, while pinned ty, pytest, Hypothesis, Ruff, and PyYAML provide source assurance |
 | REQ-007 deterministic bootstrap | The compiler, its input contract, greenfield target boundary, and byte-for-byte output guarantees |
 | REQ-008 capability selection and addition | Profiles, catalog, normalized additive settings, and the absence of unselected artifacts |
 | REQ-009 ownership and identity | Disjoint ownership classes, primary manifest state, managed inventory, and source baseline |
@@ -2802,7 +2827,7 @@ This revision incorporates the following changes into `CONTEXT.md`:
 | Security-relevant CI drift stays green | Complete declared workflow/job/step normal form, raw pin-comment check, and trust predicates |
 | A canary gives false assurance | Run locally with a non-secret sentinel across all channels |
 | A YAML parser's defaults misread Actions | An Actions resolver, duplicate/merge rejection, null-trigger distinction, and parser fixtures |
-| The Python floor or sum exhaustiveness is unproved | Python 3.11 lane, strict Pyright, and a constructor-addition canary from batch 1 |
+| The Python floor or sum exhaustiveness is unproved | Python 3.14 lane, strict ty, and a constructor-addition canary from batch 1 |
 | False drift from line endings or umask | Specified normalization and execute-bit-only comparison |
 | An ownership class traps ordinary configuration | `CONTRIBUTING.md` and `.gitattributes` are adopter-owned |
 | Bootstrap becomes an authoring gate | `scaffold` compiles a real project before prose exists |
@@ -2906,20 +2931,16 @@ before licence-writing implementation proceeds.
 - `docs/prd.md`; `CONTEXT.md`; `docs/project-readiness.md`
 - `docs/adr/0001-use-copier-for-template-updates.md`
 - `docs/specs/2026-08-03-project-readiness/design.md`
-- `design.discovery-draft.md`, `design.revision-2.md`, `design.revision-4.md`, and
-  `design.revision-5.md` in this directory
-- `design.revision-3.reconstructed.md` — a reconstruction of revision 3, faithful in substance but not
-  verifiable byte-for-byte against the original
+- Earlier discovery and revision drafts were consolidated into this document and are not retained in the
+  active spec directory.
 - [GitHub: Creating a repository from a template](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template)
 - [GitHub: Reusing workflow configurations](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations)
 - [GitHub: Workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
 - [GitHub: Dependabot on Actions](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-on-actions)
 - [Git: `git rev-parse`](https://git-scm.com/docs/git-rev-parse); [Git: `git clean`](https://git-scm.com/docs/git-clean)
 - [Copier configuration](https://copier.readthedocs.io/en/stable/configuring/); [Copier updating](https://copier.readthedocs.io/en/stable/updating/)
-- [Python 3.11: `typing.assert_never`](https://docs.python.org/3.11/library/typing.html#typing.assert_never)
-- [Pyright configuration and exhaustive-match diagnostics](https://github.com/microsoft/pyright/blob/main/docs/configuration.md)
-- [BasedPyright: benefits over Pyright](https://docs.basedpyright.com/latest/benefits-over-pyright/)
-- [Astral `ty` status and documentation](https://github.com/astral-sh/ty)
+- [Python 3.14: `typing.assert_never`](https://docs.python.org/3.14/library/typing.html#typing.assert_never)
+- [Astral `ty` documentation](https://docs.astral.sh/ty/)
 - [Hypothesis: rule-based stateful testing](https://hypothesis.readthedocs.io/en/latest/stateful.html)
 - [pytest documentation](https://docs.pytest.org/en/stable/contents.html)
 - [Ruff linter](https://docs.astral.sh/ruff/linter/); [Ruff formatter](https://docs.astral.sh/ruff/formatter/)

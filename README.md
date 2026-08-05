@@ -28,7 +28,7 @@ uses semantic-release Git tags to identify template versions, preserves project 
 updates, and reports conflicts for manual review. Run `copier update --vcs-ref <tag>` to select a
 specific release.
 
-Copier requires Python and Git. Template-owned readiness validation requires Python 3.11+ and the
+Copier requires Python and Git. Template-owned readiness validation requires Python 3.14+ and the
 standard library. The template itself does not bundle or distribute a custom updater.
 
 `docs/prd.md` is the product source of truth. `docs/agents/issue-tracker.md` defines the relationship
@@ -44,7 +44,7 @@ precede SHOULD_FIX items.
 
 ## Setup
 
-Install Python 3.11+ and Git. Copier is optional for one-time GitHub snapshots and required only
+Install Python 3.14+ and Git. Copier is optional for one-time GitHub snapshots and required only
 when the project needs update lineage.
 
 ## Validation
