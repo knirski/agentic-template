@@ -14,7 +14,7 @@
           "inputs": [
             "design dependency policy; existing `flake.nix`; modern-python guidance; current standalone Python scripts."
           ],
-          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14,<3.15\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks, make the Nix dev shell explicitly provide uv with a short install/sync workflow, and add an explicit Python 3.14 validation lane in Nix/CI rather than relying on an unversioned `python3`.",
+          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks, make the Nix dev shell explicitly provide uv with a short install/sync workflow, and add an explicit Python 3.14 validation lane in Nix/CI rather than relying on an unversioned `python3`.",
           "files": {
             "create": [
               "pyproject.toml",
@@ -474,7 +474,7 @@
           "inputs": [
             "capability definition schema; source/generated ownership boundary; uv project metadata contract; stable IDs; supported Python ranges; capability runtime-dependency metadata requirements."
           ],
-          "description": "Extend capability definitions with explicit non-secret runtime dependency declarations, supported Python ranges, and invocation metadata. Render generated `pyproject.toml` for every generated project as a bootstrap-managed artifact containing `requires-python = \">=3.14,<3.15\"`; add selected capability dependencies only when required. Keep the source repository's root `pyproject.toml` and `uv.lock` source-only. Define the adopter follow-up that creates `uv.lock`; bootstrap never resolves or installs packages. Add ownership and leakage fixtures proving that source development dependencies do not enter snapshots or generated Copier projects.",
+          "description": "Extend capability definitions with explicit non-secret runtime dependency declarations, supported Python ranges, and invocation metadata. Render generated `pyproject.toml` for every generated project as a bootstrap-managed artifact containing `requires-python = \">=3.14\"`; add selected capability dependencies only when required. Keep the source repository's root `pyproject.toml` and `uv.lock` source-only. Define the adopter follow-up that creates `uv.lock`; bootstrap never resolves or installs packages. Add ownership and leakage fixtures proving that source development dependencies do not enter snapshots or generated Copier projects.",
           "files": {
             "create": [],
             "modify": [
@@ -492,7 +492,7 @@
           },
           "validation": {
             "tests": [
-              "dependency metadata round-trips; every generated profile contains the exact 3.14 `requires-python` constraint; supported-Python and invocation validation; generated `pyproject.toml` ownership and source-lock leakage tests; all profile/custom-selection matrices; no generated `uv.lock` is claimed by bootstrap; generated capability fixtures can create and use their own uv lock without source-only packages leaking into the runtime."
+              "dependency metadata round-trips; every generated profile contains `requires-python = \">=3.14\"`; supported-Python and invocation validation; generated `pyproject.toml` ownership and source-lock leakage tests; all profile/custom-selection matrices; no generated `uv.lock` is claimed by bootstrap; generated capability fixtures can create and use their own uv lock without source-only packages leaking into the runtime."
             ],
             "acceptance": [
               "All listed validation criteria pass for T14."

@@ -1,6 +1,6 @@
 # Deterministic Project Bootstrap with Capability Profiles
 
-**Status:** Revision 11, assembled for owner approval
+**Status:** Revision 12, assembled for owner approval
 **Date:** 2026-08-05
 **Planning mode:** Spec-backed Plan
 **Supersedes:** earlier discovery and revision drafts, consolidated into this document and removed
@@ -239,6 +239,10 @@ permissions, and allowed declared source-only steps.
 ### Correction in revision 11
 
 | Generated project metadata ownership | Every generated project receives bootstrap-managed `pyproject.toml` containing the Python 3.14 requirement; selected capabilities may add declared runtime dependencies, while bootstrap never creates `uv.lock` |
+
+### Correction in revision 12
+
+| Python support range | Python 3.14 is the minimum and primary validation lane; source and generated metadata use `requires-python = ">=3.14"`, so later Python 3.x releases remain supported unless a future compatibility decision narrows the range |
 
 ### Unchanged load-bearing decisions
 
@@ -549,7 +553,7 @@ there is no artificial universal stage that accepts meaningless `NotApplicable` 
 
 Generated-project runtime commands target Python 3.14 and may use dependencies declared by the
 generated project's `pyproject.toml`. Source and generated project metadata declare
-`requires-python = ">=3.14,<3.15"`, and the repository pins its primary interpreter with
+`requires-python = ">=3.14"`, and the repository pins its primary interpreter with
 `.python-version` set to `3.14`. Bootstrap renders dependency declarations as part of the selected
 capability set, but does not install packages, execute package setup code, or accept secrets. The core
 still uses a small repository-owned `Ok`/`Err` type, frozen data classes, `Enum`, and
