@@ -9,7 +9,7 @@ uses Copier for projects that need ongoing template updates rather than maintain
 Copier provides version-aware updates, project-change merging, and conflict handling without
 requiring this repository to own its own merge and filesystem safety implementation.
 
-Project-readiness validation is separate from Copier ownership. The template ships Python 3.11+
+Project-readiness validation is separate from Copier ownership. The template ships Python 3.14+
 standard-library validators and an adopter-owned `scripts/validate-project.py` hook; Copier remains
 responsible for preserving and reporting conflicts during updates.
 
