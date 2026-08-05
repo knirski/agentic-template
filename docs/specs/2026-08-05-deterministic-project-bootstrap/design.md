@@ -2934,9 +2934,10 @@ before licence-writing implementation proceeds.
 
 - `docs/prd.md`; `CONTEXT.md`; `docs/project-readiness.md`
 - `docs/adr/0001-use-copier-for-template-updates.md`
-- `docs/specs/2026-08-03-project-readiness/design.md`
-- Earlier discovery and revision drafts were consolidated into this document and are not retained in the
-  active spec directory.
+- `docs/specs/2026-08-03-project-readiness/design.md` remains as a separate active spec and is not one of
+  this document's superseded revisions.
+- This document's earlier discovery and revision drafts were consolidated here and are not retained in the
+  active bootstrap spec directory.
 - [GitHub: Creating a repository from a template](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template)
 - [GitHub: Reusing workflow configurations](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations)
 - [GitHub: Workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
