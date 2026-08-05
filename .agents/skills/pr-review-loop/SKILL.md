@@ -100,7 +100,8 @@ gh api repos/{owner}/{repo}/issues/{pr_number}/comments \
 > Before triaging, filter out comments by the PR author because they are not reviewer feedback.
 > Retain feedback from automated reviewers and bots; classify it by substance exactly as human
 > feedback. Exclude automation only when the comment is operational noise rather than review
-> feedback, and record that decision as OUT_OF_SCOPE.
+> feedback, and record that decision as OUT_OF_SCOPE. The `author` field in the transformed output
+> helps with this.
 
 Triage items from both lists. Track which type each item is — it affects how you reply (Step 6f) and close (Step 6g).
 
