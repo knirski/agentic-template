@@ -17,4 +17,4 @@ jobs:
       - name: Set up Nix
         uses: ./.github/actions/setup-nix
       - name: Run Copier smoke test
-        run: nix develop --command bash scripts/test-copier.sh
+        run: nix develop --command python3 scripts/test-copier.py

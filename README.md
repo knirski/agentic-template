@@ -1,16 +1,18 @@
 # Agentic Delivery Template
 
+<!-- agentic-template:placeholder:readme -->
+
 A language-neutral GitHub repository template for planning, implementing, validating, and reviewing
 software changes with coding agents.
 
 ## Start a project
 
 1. Select **Use this template** on GitHub.
-2. Replace the prompts in `docs/prd.md` with the project's product requirements.
-3. Adapt `README.md` for the product and add stack-specific build and test commands.
-4. Extend `AGENTS.md` only with durable project conventions; keep detailed procedures in skills.
-5. Add project CI jobs alongside the included delivery-contract job.
-6. Install only the language and domain skills the project actually needs.
+2. Replace the marked contract in `docs/prd.md` with the project's product requirements.
+3. Replace this marked README with the project title, setup, and validation instructions.
+4. Replace `scripts/validate-project.py` with the project's formatting, linting, tests, and build checks.
+5. Run `python3 scripts/validate-repository.py` and address every readiness diagnostic.
+6. Require the `Project validation` check in the default-branch ruleset.
 
 The template is maintained with [Copier](https://copier.readthedocs.io/):
 
@@ -26,7 +28,8 @@ uses semantic-release Git tags to identify template versions, preserves project 
 updates, and reports conflicts for manual review. Run `copier update --vcs-ref <tag>` to select a
 specific release.
 
-Copier requires Python and Git. The template itself does not bundle or distribute a custom updater.
+Copier requires Python and Git. Template-owned readiness validation requires Python 3.11+ and the
+standard library. The template itself does not bundle or distribute a custom updater.
 
 `docs/prd.md` is the product source of truth. `docs/agents/issue-tracker.md` defines the relationship
 between GitHub Issues and Atelier plans, while `docs/agents/domain.md` defines lazy domain and ADR
@@ -38,6 +41,22 @@ Atelier chooses an Inline or Spec-backed Plan. Once implementation is validated 
 agents alternate between `loop-on-ci` and `pr-review-loop`: CI must be green before review work, and
 every pushed review fix must become green before review processing resumes. Approved MUST_FIX items
 precede SHOULD_FIX items.
+
+## Setup
+
+Install Python 3.11+ and Git. Copier is optional for one-time GitHub snapshots and required only
+when the project needs update lineage.
+
+## Validation
+
+Generated projects use one validation boundary:
+
+```console
+python3 scripts/validate-repository.py
+```
+
+It runs the template contract, readiness inspection, and adopter-owned project validation in that
+order. The template source uses its fixture suites instead; it does not bypass readiness locally.
 
 The bundled CI validates the template contract itself. Generated projects must add their own tests,
 linting, builds, security checks, and required-check configuration.
@@ -71,13 +90,11 @@ wiring.
 
 ## Releases
 
-After delivery-contract validation succeeds, the template runs semantic-release for pushes to
-`main` and manual CI dispatches from `main`. Releases are serialized, and Conventional Commit
-messages determine the next version, release notes, Git tag, and GitHub Release. Product-specific
-validation, artifact builds, and uploads are not included; generated projects should add validation
-to CI and artifact publication to the reusable semantic-release workflow when needed. Every
-release-critical validation job must also be added to the `release` job's `needs`; unrelated CI jobs
-do not delay publication.
+After delivery-contract, project-validation, and Nix checks succeed, the template runs
+semantic-release for pushes to `main` and manual CI dispatches from `main`. Releases are serialized,
+and Conventional Commit messages determine the next version, release notes, Git tag, and GitHub
+Release. Generated projects own their product-specific commands through `scripts/validate-project.py`;
+every release-critical validation job must be added to the `release` job's `needs`.
 
 ## Scope
 
@@ -96,11 +113,11 @@ full text. Third-party bundled skill provenance and licensing notes are listed i
 Nix is optional. Contributors can use the repository's normal validation directly:
 
 ```bash
-scripts/validate-template.sh
+python3 scripts/validate-template.py
 ```
 
 For contributors who use Nix, the repository also includes a language-neutral development shell
-with the tools used to maintain the template: `shellcheck`, `actionlint`, `deadnix`, `statix`,
+with the tools used to maintain the template: `actionlint`, `deadnix`, `statix`,
 `nixfmt`, Git, `uv`, and Cachix.
 
 ```bash

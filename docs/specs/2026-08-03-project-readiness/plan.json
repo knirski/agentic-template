@@ -1,0 +1,355 @@
+{
+  "feature": "project-readiness",
+  "spec": "docs/specs/2026-08-03-project-readiness/design.md",
+  "goal": "Make incomplete generated-project setup deterministic and gate releases on one configured project-validation command.",
+  "phases": [
+    {
+      "id": "P1",
+      "name": "Deterministic Readiness",
+      "tasks": [
+        {
+          "id": "T1",
+          "name": "Add failing readiness fixtures",
+          "depends_on": [],
+          "inputs": [
+            "REQ-001 and its US-1 acceptance criteria",
+            "Approved PRD and README contracts from design.md",
+            "PRD marker <!-- agentic-template:placeholder:prd -->",
+            "README marker <!-- agentic-template:placeholder:readme -->",
+            "Hook sentinel agentic-template:unconfigured:validate-project"
+          ],
+          "description": "Create table-driven temporary-repository fixtures before implementing the checker. Cover markers and known boilerplate, exact ordered PRD headings, requirement subsections and references, README structure, hook configuration, simultaneous failures, stable diagnostic identifiers, affected paths, actionable remediation, and readiness exit statuses. Use a hostile hook canary and before/after fixture snapshot to detect execution or mutation by readiness inspection.",
+          "files": {
+            "create": [
+              "scripts/test-project-readiness.py"
+            ],
+            "modify": []
+          },
+          "validation": {
+            "tests": [
+              "Untouched, marker-only-deletion, and known-boilerplate fixtures fail",
+              "Heading order, duplication, case, and additional-section fixtures behave as specified",
+              "Requirement declaration, reference, malformed ID, duplicate ID, missing body, and fenced-example fixtures behave as specified",
+              "README title, Setup, Validation, and canonical-command fixtures behave as specified",
+              "Missing, non-executable, sentinel-bearing, and configured hook fixtures behave as specified",
+              "Multiple independent failures are reported together and internal errors are separate",
+              "A hostile hook canary is not triggered and fixture content and executable modes are unchanged"
+            ],
+            "acceptance": [
+              "Tests initially fail because scripts/check-project-readiness.py does not exist",
+              "Every document and hook acceptance criterion has positive and negative coverage",
+              "Tests assert diagnostic identifiers, affected paths, remediation presence, and statuses without freezing complete prose",
+              "Canary and snapshot assertions prove the checker does not execute scripts/validate-project.py or mutate the fixture"
+            ]
+          }
+        },
+        {
+          "id": "T2",
+          "name": "Implement readiness inspection and initial hook",
+          "depends_on": [
+            "T1"
+          ],
+          "inputs": [
+            "REQ-001, REQ-006, and their mapped design criteria",
+            "Failing readiness fixtures from T1",
+            "Python 3.11+ and the standard library available on the supported GitHub-hosted Linux runner",
+            "Readiness status contract: 0 ready, 1 unready, 2 usage or internal error"
+          ],
+          "description": "Implement read-only, no-argument Python readiness inspection from the repository root. Parse headings outside fenced code blocks, report all independent failures with stable identifiers, affected paths, and next actions, and distinguish observable unready state from internal errors. Add the executable adopter-owned Python hook with its exact sentinel, setup guidance, and status 1. Implement the Python template contract validator and require all public Python scripts without invoking the hook.",
+          "files": {
+            "create": [
+              "scripts/check-project-readiness.py",
+              "scripts/validate-project.py",
+              "scripts/validate-template.py"
+            ],
+            "modify": [
+              "flake.nix",
+              ".github/workflows/ci.yml"
+            ]
+          },
+          "validation": {
+            "tests": [
+              "scripts/test-project-readiness.py",
+              "scripts/test-portable-validation.sh",
+              "Python compilation and tests"
+            ],
+            "acceptance": [
+              "Readiness inspection never mutates files or executes the project hook",
+              "All independent readiness failures are emitted before status 1",
+              "Usage and evaluation failures emit INTERNAL_READINESS_ERROR and status 2",
+              "The initial hook is executable, includes the exact sentinel, prints setup guidance, and exits 1",
+              "No Ripgrep or Nix dependency is introduced"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P2",
+      "name": "Aggregate and Workflow Contract",
+      "tasks": [
+        {
+          "id": "T3",
+          "name": "Add canonical repository validation",
+          "depends_on": [
+            "T2"
+          ],
+          "inputs": [
+            "REQ-002 and its US-2 acceptance criteria",
+            "Existing template validation behavior",
+            "Readiness checker and status contract from T2",
+            "Adopter-owned project hook boundary"
+          ],
+          "description": "Test and implement the no-argument generated-project Python validation command. Run template validation, readiness inspection, and project validation in order; print stable stage labels; stop before later stages after failure; and preserve the exact first failing status.",
+          "files": {
+            "create": [
+              "scripts/test-repository-validation.py",
+              "scripts/validate-repository.py"
+            ],
+            "modify": []
+          },
+          "validation": {
+            "tests": [
+              "Each stage can fail independently",
+              "A minimally configured repository passes all stages",
+              "Arbitrary non-zero project-hook statuses propagate exactly",
+              "Later stages do not run after an earlier failure"
+            ],
+            "acceptance": [
+              "Stage order and labels are stable and observable",
+              "Template validation and readiness inspection are read-only; adopter-hook toolchain and artifact effects remain adopter-owned",
+              "Readiness inspection tests remain separate from hook execution tests",
+              "Python compilation and tests pass"
+            ]
+          }
+        },
+        {
+          "id": "T4",
+          "name": "Test and wire active CI and release topology",
+          "depends_on": [
+            "T3"
+          ],
+          "inputs": [
+            "REQ-003, REQ-006, and their mapped design criteria",
+            "Existing CI workflow and delivery-contract tests",
+            "Source identity knirski/agentic-template",
+            "Approved release-gate and least-privilege contract"
+          ],
+          "description": "Add tests scoped to active YAML job structure and wire the exact project-validation job with display name Project validation. Source mode runs readiness and aggregate fixtures only when github.repository matches the explicit workflow constant; generated mode runs python3 scripts/validate-repository.py. Run on ubuntu-latest for the ordinary pull_request, push, and manual workflow events; prohibit pull_request_target execution of contributor code, attached environments, checkout ref overrides from privileged events, failure-tolerant validation, secrets, write permissions, and persisted checkout credentials. Add project-validation to the release dependency list and reject release conditions that can run after its failure.",
+          "files": {
+            "create": [
+              "scripts/test-delivery-contract.py"
+            ],
+            "modify": [
+              ".github/workflows/ci.yml",
+              "flake.nix"
+            ]
+          },
+          "validation": {
+            "tests": [
+              "Commented matches and unrelated jobs cannot satisfy the workflow contract",
+              "Missing generated-mode invocation or incorrect source comparison fails",
+              "Elevated permissions, persisted credentials, or secret references fail",
+              "Unsupported runner or event trust, attached environment, and unsafe checkout ref overrides fail",
+              "continue-on-error on the validation job or canonical command step fails",
+              "A release job without project-validation in active needs or with a failure-bypassing condition fails",
+              "Source and generated branches invoke their intended commands",
+              "Every pull request emits the stable Project validation check name"
+            ],
+            "acceptance": [
+              "scripts/test-delivery-contract.py passes for the real workflow",
+              "Actionlint passes",
+              "Existing source release dependencies remain intact",
+              "The validation job receives no secrets or write-capable permissions",
+              "The adopter hook runs only inside the approved GitHub-hosted event and runner boundary"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "name": "Generation Path Conformance",
+      "tasks": [
+        {
+          "id": "T5",
+          "name": "Add GitHub snapshot conformance",
+          "depends_on": [
+            "T3",
+            "T4"
+          ],
+          "inputs": [
+            "REQ-004, REQ-005, and their mapped design criteria",
+            "GitHub repository-template same-tree snapshot behavior",
+            "Path-specific maintenance-artifact allowance",
+            "Generated-project failure and minimal-success contracts"
+          ],
+          "description": "Build a deterministic release-tree manifest from paths already tracked by Git plus the plan's explicit new generated-project scripts, then copy their current working-tree content and executable modes into a temporary repository without Copier exclusions. Exclude Git metadata, ignored files, and unrelated untracked files; assert all required validation scripts are present. Prove the untouched snapshot fails, minimally configure PRD, README, and the hook, then prove aggregate validation passes. Add this and the source-maintainer fixture suites to source CI and Nix checks.",
+          "files": {
+            "create": [
+              "scripts/test-github-template-readiness.py"
+            ],
+            "modify": [
+              ".github/workflows/ci.yml",
+              "flake.nix"
+            ]
+          },
+          "validation": {
+            "tests": [
+              "Direct-copy untouched snapshot emits expected readiness identifiers",
+              "Direct-copy minimally configured snapshot passes aggregate validation",
+              "Maintenance artifacts retained by GitHub do not change readiness",
+              "Ignored and unrelated untracked canaries are excluded while required new scripts and executable modes are preserved",
+              "Source CI and Nix checks execute readiness, aggregate, and GitHub snapshot suites"
+            ],
+            "acceptance": [
+              "The fixture applies no Copier behavior",
+              "Both failure and success paths pass locally",
+              "nix flake check includes the new source-maintainer evidence"
+            ]
+          }
+        },
+        {
+          "id": "T6",
+          "name": "Strengthen Copier copy and update coverage",
+          "depends_on": [
+            "T3",
+            "T4"
+          ],
+          "inputs": [
+            "REQ-004, REQ-005, and their mapped design criteria",
+            "Pinned Copier 9.17.0 behavior",
+            "ADR 0001 Copier ownership boundary",
+            "Copier-specific packaging and update-lineage contract"
+          ],
+          "description": "Prove an untouched Copier-generated project fails and a minimally configured project passes. Configure Copier to skip an existing adopter-owned hook during updates, customize that hook, and change the same hook in the newer template version. Accept preservation only when the update succeeds, adopter content remains, and non-conflicting upstream content appears. Accept conflict only when Copier's pinned status or diagnostic and explicit conflict evidence are present and adopter content remains recoverable. Fail closed on any other error or content loss. Exclude only declared Copier-specific maintenance fixtures and keep update claims scoped to Copier-generated projects.",
+          "files": {
+            "create": [],
+            "modify": [
+              "scripts/test-copier.py",
+              "copier.yml"
+            ]
+          },
+          "validation": {
+            "tests": [
+              "Untouched Copier output fails with expected readiness identifiers",
+              "Minimally configured Copier output passes aggregate validation",
+              "Preservation requires success, retained adopter content, and applied non-conflicting upstream content",
+              "Conflict requires pinned Copier conflict status or diagnostic, explicit conflict evidence, and recoverable adopter content",
+              "Unrelated Copier failures are not accepted as conflicts",
+              "A silent-overwrite simulation fails",
+              "Declared maintenance-only fixtures are absent from Copier output"
+            ],
+            "acceptance": [
+              "scripts/test-copier.py passes with Copier 9.17.0",
+              "The test records and asserts the observed pinned update behavior",
+              "No custom update or file-ownership mechanism is introduced",
+              "GitHub snapshot packaging is not constrained by Copier exclusions"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "name": "Onboarding and Compatibility",
+      "tasks": [
+        {
+          "id": "T7",
+          "name": "Align project-facing documentation",
+          "depends_on": [
+            "T4",
+            "T5",
+            "T6"
+          ],
+          "inputs": [
+            "REQ-001 through REQ-006 and their mapped design criteria",
+            "Approved six-step onboarding sequence",
+            "Release-gate and merge-gate distinction",
+            "GitHub snapshot and Copier update distinction",
+            "Diagnostic, exit-status, and compatibility policies"
+          ],
+          "description": "Add the README marker and align documentation on the canonical generated-project command, source fixture commands, PRD and README structure, adopter-owned hook, diagnostics, guarantee limits, manual ruleset setup using the exact Project validation check name, and semantic-major compatibility rule. Qualify every Copier prerequisite and update claim so GitHub snapshots remain an independent one-time generation path. Extend the delivery-contract test to own semantic documentation assertions. Keep deferred follow-ups outside current onboarding promises.",
+          "files": {
+            "create": [
+              "docs/project-readiness.md"
+            ],
+            "modify": [
+              "README.md",
+              "AGENTS.md",
+              ".github/pull_request_template.md",
+              "docs/adr/0001-use-copier-for-template-updates.md",
+              "scripts/test-delivery-contract.py"
+            ]
+          },
+          "validation": {
+            "tests": [
+              "Markdownlint for changed Markdown",
+              "scripts/test-delivery-contract.py documentation path, command, and stable check-name assertions",
+              "Search for stale quality, update-lineage, merge-gate, and source-mode claims"
+            ],
+            "acceptance": [
+              "Generated documentation names python3 scripts/validate-repository.py consistently",
+              "Source documentation names fixture commands instead of a hidden bypass",
+              "The six onboarding actions include manual merge-gate configuration",
+              "Ruleset guidance names the exact Project validation check emitted for every pull request",
+              "GitHub snapshots are described as one-time and Copier projects as update-capable",
+              "No deferred follow-up appears as current implementation behavior"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "name": "Integrated Verification",
+      "tasks": [
+        {
+          "id": "T8",
+          "name": "Verify the complete readiness contract",
+          "depends_on": [
+            "T1",
+            "T2",
+            "T3",
+            "T4",
+            "T5",
+            "T6",
+            "T7"
+          ],
+          "inputs": [
+            "REQ-001 through REQ-006 and their mapped design criteria",
+            "All preceding implementation outputs",
+            "Repository completion and verification instructions",
+            "Approved project-readiness design"
+          ],
+          "description": "Run repository-defined validation and inspect the full diff for scope, ownership, security, compatibility, and generated-state violations. Confirm source CI behavior and both generated-project paths have local evidence. Run substantive code review and address approved findings through the normal review workflow.",
+          "files": {
+            "create": [],
+            "modify": []
+          },
+          "validation": {
+            "tests": [
+              "scripts/validate-template.py",
+              "scripts/test-project-readiness.py",
+              "scripts/test-repository-validation.py",
+              "scripts/test-github-template-readiness.py",
+              "scripts/test-copier.py",
+              "Python compilation and tests",
+              "Actionlint for all workflows",
+              "nix flake check",
+              "Markdownlint for changed Markdown",
+              "git diff --check",
+              "Targeted stale-contract searches"
+            ],
+            "acceptance": [
+              "All repository-defined validation passes with fresh output",
+              "The final diff contains no secrets, local settings, generated agent state, or unrelated changes",
+              "Source mode and both generation paths have failure and success evidence",
+              "verification-before-completion evidence is reported before any completion claim"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
