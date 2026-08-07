@@ -44,8 +44,9 @@ precede SHOULD_FIX items.
 
 ## Setup
 
-Install Python 3.14+ and Git. Copier is optional for one-time GitHub snapshots and required only
-when the project needs update lineage.
+Install Python 3.14+, Git, and uv. uv is a developer prerequisite for the repository's source
+checks and locked dependency environment. Copier is optional for one-time GitHub snapshots and
+required only when the project needs update lineage.
 
 ## Validation
 
@@ -78,8 +79,6 @@ Actions**. Never commit the key.
 Configure these user-provided secrets under **Settings → Secrets and variables → Actions**:
 
 - `GEMINI_API_KEY` — required by both PR Agent workflows. Create it in Google AI Studio.
-- `CACHIX_AUTH_TOKEN` — required for pushes to `main` to publish the development-shell closure to
-  Cachix. Pull requests use pull-only access and do not need this secret.
 
 `GITHUB_TOKEN` and `GH_TOKEN` are supplied automatically by GitHub Actions for the PR Agent and
 semantic-release workflows; do not create or commit them manually.
@@ -90,7 +89,7 @@ wiring.
 
 ## Releases
 
-After delivery-contract, project-validation, and Nix checks succeed, the template runs
+After Python source, delivery-contract, project-validation, and workflow-lint checks succeed, the template runs
 semantic-release for pushes to `main` and manual CI dispatches from `main`. Releases are serialized,
 and Conventional Commit messages determine the next version, release notes, Git tag, and GitHub
 Release. Generated projects own their product-specific commands through `scripts/validate_project.py`;
@@ -108,47 +107,26 @@ See `NOTICE.md` for bundled skill provenance.
 This repository is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the
 full text. Third-party bundled skill provenance and licensing notes are listed in `NOTICE.md`.
 
-## Optional Nix development shell
+CI uses Astral's pinned `setup-uv` action to provide Python 3.14 and uv, with uv caching enabled.
+The source checks run from the locked environment:
 
-Nix is optional. Contributors can use the repository's normal validation directly:
-
-```bash
+```console
 uv sync --all-groups --locked
 uv run python scripts/validate_template.py
-```
-
-For contributors who use Nix, the repository also includes a language-neutral development shell
-with the tools used to maintain the template: `actionlint`, `deadnix`, `statix`,
-`nixfmt`, Git, `uv`, and Cachix.
-
-Nix provides Python 3.14 and uv. After entering the shell, install the locked source dependencies
-and use `uv run` for source checks:
-
-```bash
-nix develop
-uv sync --all-groups --locked
 uv run ruff check
 uv run ruff format --check
 uv run ty check
+```
+
+GitHub Actions workflows are checked independently with actionlint. Nix is not required for local
+development, CI, release gating, or template generation, but remains available as an optional
+maintainer toolchain for users who prefer it:
+
+```console
+nix develop
 nix flake check
 nix fmt
 ```
 
-The CI workflow uses the `knirski-agentic-template` Cachix cache. When adapting this template,
-replace that cache name with the name of your own Cachix cache in the workflow and local commands.
-Pull-only access does not require credentials when the cache is public. Publishing the
-development-shell closure requires a
-Cachix authentication token. Set `CACHIX_AUTH_TOKEN` locally, authenticate once, and push a
-closure with:
-
-```bash
-export CACHIX_AUTH_TOKEN='...'
-cachix authtoken "$CACHIX_AUTH_TOKEN"
-profile="${TMPDIR:-/tmp}/agentic-template-dev-profile"
-nix develop . --profile "$profile" -c true
-cachix push knirski-agentic-template "$profile"
-```
-
-For GitHub Actions, add `CACHIX_AUTH_TOKEN` as a repository secret. CI uses it only for pushes to
-`main`; pull requests receive pull-only Cachix access and never receive the secret. Formatting is
-checked without modifying files by the `formatting` check included in `nix flake check`.
+The optional Nix shell provides the pinned workflow and Nix lint tools alongside Python 3.14 and uv.
+Cachix publishing is also optional and requires the configured authentication token.

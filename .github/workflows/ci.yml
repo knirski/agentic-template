@@ -20,12 +20,12 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Set up Python 3.14
-        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+      - name: Set up uv and Python 3.14
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
+          version: "0.12.1"
           python-version: "3.14"
-      - name: Install uv
-        run: python -m pip install uv==0.12.1
+          enable-cache: true
       - name: Install locked source dependencies
         run: uv sync --all-groups --locked
       - name: Run source checks
@@ -43,12 +43,14 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Set up Python 3.14
-        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+      - name: Set up uv and Python 3.14
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
+          version: "0.12.1"
           python-version: "3.14"
+          enable-cache: true
       - name: Validate generic delivery files
-        run: python3.14 scripts/validate_template.py
+        run: uv run --no-project --python 3.14 scripts/validate_template.py
 
   project-validation:
     name: Project validation
@@ -60,45 +62,36 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Set up Python 3.14
-        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+      - name: Set up uv and Python 3.14
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
+          version: "0.12.1"
           python-version: "3.14"
+          enable-cache: true
       - name: Validate generated-project contract
         if: github.repository != 'knirski/agentic-template'
-        run: python3.14 scripts/validate_repository.py
+        run: uv run --no-project --python 3.14 scripts/validate_repository.py
       - name: Validate source fixtures
         if: github.repository == 'knirski/agentic-template'
         run: |
-          python3.14 tests/test_project_readiness.py
-          python3.14 tests/test_repository_validation.py
-          python3.14 tests/test_github_template_readiness.py
+          uv run --no-project --python 3.14 tests/test_project_readiness.py
+          uv run --no-project --python 3.14 tests/test_repository_validation.py
+          uv run --no-project --python 3.14 tests/test_github_template_readiness.py
 
-  nix:
-    name: Nix tooling and checks
+  workflow-lint:
+    name: Workflow lint
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Set up Nix and Cachix
-        uses: ./.github/actions/setup-nix
-        with:
-          cachix-auth-token: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && secrets.CACHIX_AUTH_TOKEN || '' }}
-      - name: Run flake checks
-        run: nix flake check
-      - name: Validate repository contract in the Python 3.14 dev shell
-        run: nix develop --command python3.14 scripts/validate_template.py
-      - name: Push dev-shell closure to Cachix
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          nix develop . --profile /tmp/agentic-template-dev-profile -c true
-          cachix push knirski-agentic-template /tmp/agentic-template-dev-profile
+      - name: Run actionlint
+        uses: docker://docker.io/rhysd/actionlint:1.7.7
 
   release:
     name: Semantic Release
-    needs: [delivery-contract, project-validation, nix]
+    needs: [python-source, delivery-contract, project-validation, workflow-lint]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: write
