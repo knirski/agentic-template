@@ -113,7 +113,9 @@ class IdentityTests(unittest.TestCase):
                 ),
             )
 
-    def test_directory_tree_identity_includes_topology_and_directory_modes(self) -> None:
+    def test_directory_tree_identity_includes_topology_and_directory_modes(
+        self,
+    ) -> None:
         file_entry = FileEntry(RepoPath("nested/file"), b"payload", PosixMode.FILE)
         directory_entry = DirectoryEntry(RepoPath("nested"), PosixMode.DIRECTORY)
         identity = directory_tree_hash(
@@ -174,11 +176,15 @@ class IdentityTests(unittest.TestCase):
         self.assertIsInstance(absent, FileState)
         self.assertFalse(absent.present)
         self.assertTrue(empty.present)
-        self.assertNotEqual(file_state_hash(b"file", absent), file_state_hash(b"file", empty))
+        self.assertNotEqual(
+            file_state_hash(b"file", absent), file_state_hash(b"file", empty)
+        )
         with self.assertRaises(ValueError):
             file_state_identity(None, text=True, mode=PosixMode.FILE)
 
-    def test_target_source_and_manifest_identities_are_tagged_and_immutable(self) -> None:
+    def test_target_source_and_manifest_identities_are_tagged_and_immutable(
+        self,
+    ) -> None:
         target = target_identity(b"/workspace/project", device=8, inode=42)
         self.assertIsInstance(target, TargetIdentity)
         self.assertEqual(

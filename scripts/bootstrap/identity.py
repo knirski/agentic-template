@@ -166,7 +166,10 @@ def directory_tree_hash(kind: bytes, state: DirectoryState | None) -> str:
         return tagged_digest(kind + b"/absent", b"")
     sorted_entries = sorted(
         state.entries,
-        key=lambda entry: (entry.path.value.encode("utf-8"), _entry_payload(entry)["kind"]),
+        key=lambda entry: (
+            entry.path.value.encode("utf-8"),
+            _entry_payload(entry)["kind"],
+        ),
     )
     seen_paths: set[str] = set()
     for entry in sorted_entries:
