@@ -83,6 +83,7 @@ structured plan.json when approved.
       "tasks": [
         {
           "id": "T1",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Implement UserEntity with validation",
           "depends_on": [],
           "inputs": [
@@ -142,6 +143,18 @@ structured plan.json when approved.
 | description | string | What to build, key decisions, constraints |
 | files | {create, modify} | Files to create and modify |
 | validation | {tests, acceptance} | How to verify the task is done |
+| execution | Execution | Either inline task state or a tracker reference |
+
+Each task carries its own `execution` discriminated union:
+
+- `{"mode": "inline", "status": "pending", "completion": null}` keeps execution state in
+  the task. Status is one of `pending`, `in_progress`, `blocked`, or `completed`. A completed
+  task must include completion date, commit(s), and concrete validation evidence.
+- `{"mode": "tracker", "tracker": {"provider": "github", "location": "owner/repo"},
+  "ref": "https://github.com/owner/repo/issues/1"}` points that task at its external execution
+  record; the tracker owns its live status.
+
+Do not mix modes within a task or infer completion from file presence or commit messages alone.
 
 ---
 
@@ -251,6 +264,8 @@ After creating plan.json, verify:
 - Every task has an ID and depends_on field
 - Dependencies form a valid DAG (no cycles)
 - Every task has inputs, description, and validation
+- Every task has execution metadata in the selected mode, with complete inline state or a tracker
+  reference
 - File paths are complete and specific
 - Validation criteria are concrete and testable
 

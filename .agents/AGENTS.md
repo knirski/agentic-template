@@ -36,3 +36,25 @@ The repository-root `AGENTS.md` still applies. These rules govern `.agents/`.
   path-scoped diff.
 - Never add credentials, local settings, generated agent state, or unrelated
   upstream changes.
+
+## Patching Atelier skills
+
+When an Atelier skill update is available:
+
+1. Run `npx skills update -p` only during scheduled maintenance or before a template release.
+2. Inspect the proposed diff and compare each changed skill with its upstream source recorded in
+   `NOTICE.md`; do not accept a wholesale overwrite.
+3. Apply the upstream change to the matching `.agents/skills/<skill>/SKILL.md`, then reapply local
+   adaptations deliberately. Preserve repository-specific instructions, examples, paths, and
+   cross-references unless the upstream change intentionally replaces them.
+4. If the update changes a skill name, trigger, required step, caller, or referenced path, update
+   all affected callers and guidance in the same patch. If provenance, licensing, or attribution
+   changes, update `NOTICE.md` before accepting the skill update.
+5. For changes to triggers, decisions, required steps, safety rules, or output, run the same
+   fresh-context scenario against the old and new behavior. For mechanical changes, run focused
+   contract checks instead.
+6. Run `python3.14 tests/test_template_contract.py`, the relevant uv-managed checks, and inspect
+   the path-scoped diff before completion.
+
+For a skill not managed by the CLI, use the same review and preservation process against the
+upstream source named in `NOTICE.md`, editing the repository copy directly.
