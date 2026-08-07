@@ -7,6 +7,10 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from scripts.bootstrap.readiness import MechanicalReadinessResult
 
 
 @dataclass(frozen=True)
@@ -24,7 +28,7 @@ class Finding:
         return "blocking"
 
     def render(self, root: Path | None = None) -> str:
-        root = root or Path.cwd()
+        root = root or ROOT
         return f"{self.code}: {self.path.relative_to(root)}: {self.message}; next: {self.next_action}"
 
 
@@ -386,7 +390,9 @@ def evaluate_readiness(
     return tuple(sorted(findings, key=lambda finding: finding.identity()))
 
 
-def mechanical_readiness(findings: tuple[Finding, ...]) -> object:
+def mechanical_readiness(
+    findings: tuple[Finding, ...],
+) -> MechanicalReadinessResult:
     """Return the shared structured result used by bootstrap gating."""
     from scripts.bootstrap.readiness import (
         Finding as CoreFinding,
@@ -401,8 +407,8 @@ def mechanical_readiness(findings: tuple[Finding, ...]) -> object:
         tuple(
             CoreFinding(
                 code=finding.code,
-                subject_at=SubjectPath(finding.path.as_posix()),
-                subject=finding.path.as_posix(),
+                subject_at=SubjectPath(finding.path.relative_to(ROOT).as_posix()),
+                subject=finding.path.relative_to(ROOT).as_posix(),
                 rule=finding.code,
                 severity="blocking",
                 message=finding.message,
