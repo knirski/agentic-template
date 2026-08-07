@@ -379,5 +379,5 @@ def decide_project(intent: ProjectIntent, state: SystemState) -> CommandDecision
             )
         return _project_action(intent, state)
     if isinstance(state, ProtectedTargetAvailable):
-        return RefuseMutation(_transition(TransitionErrorKind.UNSUPPORTED_TARGET))
+        return _refuse_for(intent, _transition(TransitionErrorKind.UNSUPPORTED_TARGET))
     return assert_never(state)

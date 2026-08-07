@@ -52,6 +52,7 @@ from scripts.bootstrap.state import (
     OrdinaryProject,
     OutputAvailable,
     ProjectAvailable,
+    ProtectedTargetAvailable,
     RecognizedScaffold,
     RecordedProjectState,
     SnapshotExistingProject,
@@ -119,6 +120,14 @@ class StateAndDecisionTests(unittest.TestCase):
         self.assertIsInstance(
             decide_project(InspectStatus(StatusOptions()), state), DescribeStatus
         )
+
+    def test_protected_target_planning_refusal_stays_in_planning_family(self) -> None:
+        state = ProtectedTargetAvailable(
+            worktree(protected=True).context,
+            RecognizedScaffold("github", NoSnapshotCleanup(), EmptyManifestFree(), ()),
+        )
+        decision = decide_project(PlanApply(ApplyPlanOptions()), state)
+        self.assertIsInstance(decision, RefusePlan)
 
     def test_unsupported_target_is_refused_and_recovery_is_noop(self) -> None:
         state = TargetUnavailable(UnsupportedGitTarget("not_a_worktree"))
