@@ -9,7 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-
+from typing import override
 
 ROOT = Path(__file__).resolve().parent.parent
 REQUIRED_GENERATED = {
@@ -46,6 +46,7 @@ Run `python3 scripts/validate_repository.py`.
 
 
 class GitHubSnapshot(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.project = Path(self.tmp.name) / "project"
@@ -82,6 +83,7 @@ class GitHubSnapshot(unittest.TestCase):
             path = self.project / relative
             path.chmod(path.stat().st_mode | 0o600)
 
+    @override
     def tearDown(self) -> None:
         self.tmp.cleanup()
 

@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-
+from typing import override
 
 ROOT = Path(__file__).resolve().parent.parent
 CHECKER = ROOT / "scripts/check_project_readiness.py"
@@ -50,6 +50,7 @@ print('project validation passed')
 
 
 class ReadinessFixtures(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
@@ -60,6 +61,7 @@ class ReadinessFixtures(unittest.TestCase):
         self.write("README.md", VALID_README)
         self.write("scripts/validate_project.py", VALID_HOOK, executable=True)
 
+    @override
     def tearDown(self) -> None:
         self.tmp.cleanup()
 

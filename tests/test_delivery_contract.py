@@ -7,7 +7,6 @@ import re
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / ".github/workflows/ci.yml"
 RELEASE = ROOT / ".github/workflows/semantic-release.yml"
@@ -90,4 +89,4 @@ if __name__ == "__main__":
             f"DELIVERY_CONTRACT_ERROR: {exc}; next: fix the active workflow contract",
             file=sys.stderr,
         )
-        raise SystemExit(1)
+        raise SystemExit(1) from exc

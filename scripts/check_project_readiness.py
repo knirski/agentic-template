@@ -8,7 +8,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 PRD = ROOT / "docs" / "prd.md"
 README = ROOT / "README.md"
