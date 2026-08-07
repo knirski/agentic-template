@@ -2,6 +2,45 @@
   "feature": "deterministic-project-bootstrap",
   "spec": "docs/specs/2026-08-05-deterministic-project-bootstrap/design.md",
   "goal": "Build a deterministic, capability-profile-driven bootstrap compiler with pure rendering, typed transition decisions, recoverable transactions, separate mechanical/readiness reporting, and shared Copier/GitHub validation.",
+  "execution": {
+    "mode": "inline",
+    "tasks": {
+      "T1": {"status": "pending", "completion": null},
+      "T2": {"status": "pending", "completion": null},
+      "T3": {"status": "pending", "completion": null},
+      "T4": {
+        "status": "completed",
+        "completion": {
+          "completed_at": "2026-08-07",
+          "commit": "3de8933bbbdfc84e4bd40533edfc9e5e732c34d6",
+          "evidence": [
+            "uv run pytest -q tests/test_bootstrap_decisions.py (13 passed)",
+            "uv run pytest -q tests/test_bootstrap_foundations.py tests/test_bootstrap_determinism.py tests/test_bootstrap_decisions.py tests/test_script_cores.py (42 passed)",
+            "uv run ruff check (clean)",
+            "uv run ty check scripts/bootstrap tests/test_bootstrap_decisions.py (clean)"
+          ]
+        }
+      },
+      "T5": {"status": "pending", "completion": null},
+      "T6": {"status": "pending", "completion": null},
+      "T7": {"status": "pending", "completion": null},
+      "T8": {"status": "pending", "completion": null},
+      "T9": {"status": "pending", "completion": null},
+      "T10": {"status": "pending", "completion": null},
+      "T11": {"status": "pending", "completion": null},
+      "T11b": {"status": "pending", "completion": null},
+      "T12": {"status": "pending", "completion": null},
+      "T13": {"status": "pending", "completion": null},
+      "T14": {"status": "pending", "completion": null},
+      "T15": {"status": "pending", "completion": null},
+      "T16": {"status": "pending", "completion": null},
+      "T17": {"status": "pending", "completion": null},
+      "T18": {"status": "pending", "completion": null},
+      "T19": {"status": "pending", "completion": null},
+      "T20": {"status": "pending", "completion": null},
+      "T21": {"status": "pending", "completion": null}
+    }
+  },
   "phases": [
     {
       "id": "P1",

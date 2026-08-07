@@ -76,6 +76,12 @@ structured plan.json when approved.
   "feature": "user-authentication",
   "spec": "docs/specs/2026-03-08-user-auth/design.md",
   "goal": "Add email/password authentication with session management",
+  "execution": {
+    "mode": "inline",
+    "tasks": {
+      "T1": {"status": "pending", "completion": null}
+    }
+  },
   "phases": [
     {
       "id": "P1",
@@ -121,6 +127,7 @@ structured plan.json when approved.
 | feature | string | Kebab-case feature name |
 | spec | string | Path to the approved design.md |
 | goal | string | One-sentence goal |
+| execution | Execution | Either inline task state or tracker references |
 | phases | Phase[] | Implementation phases in dependency order |
 
 #### Phase fields
@@ -142,6 +149,18 @@ structured plan.json when approved.
 | description | string | What to build, key decisions, constraints |
 | files | {create, modify} | Files to create and modify |
 | validation | {tests, acceptance} | How to verify the task is done |
+
+`execution` is a discriminated union:
+
+- `{"mode": "inline", "tasks": {"T1": {"status": "pending", "completion": null}}}` keeps
+  execution state in `plan.json`. Every task must have an entry; status is one of `pending`,
+  `in_progress`, `blocked`, or `completed`. A completed task must include completion date,
+  commit(s), and concrete validation evidence.
+- `{"mode": "tracker", "tracker": {"provider": "github", "location": "owner/repo"},
+  "task_refs": {"T1": "https://github.com/owner/repo/issues/1"}}` points each task at its
+  external execution record. Every task must have a reference, and the tracker owns live status.
+
+Do not mix modes or infer completion from file presence or commit messages alone.
 
 ---
 
@@ -251,6 +270,7 @@ After creating plan.json, verify:
 - Every task has an ID and depends_on field
 - Dependencies form a valid DAG (no cycles)
 - Every task has inputs, description, and validation
+- `execution.mode` is `inline` or `tracker`, with complete inline state or tracker references
 - File paths are complete and specific
 - Validation criteria are concrete and testable
 
