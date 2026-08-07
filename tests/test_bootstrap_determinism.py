@@ -34,7 +34,16 @@ class PathTests(unittest.TestCase):
         self.assertEqual(result, Ok(RepoPath("docs/readme.md")))
 
     def test_rejects_noncanonical_path_shapes(self) -> None:
-        for value in ("", "/absolute", "a//b", "a/./b", "a/../b", r"a\\b", "a/"):
+        for value in (
+            "",
+            "/absolute",
+            "a//b",
+            "a/./b",
+            "a/../b",
+            r"a\\b",
+            "a/",
+            "\ud800",
+        ):
             self.assertIsInstance(parse_path(value), Err)
 
     def test_normalizes_mixed_line_endings_to_one_trailing_lf(self) -> None:
