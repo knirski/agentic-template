@@ -6,6 +6,8 @@ import errno
 from dataclasses import dataclass
 from enum import StrEnum
 
+from scripts.bootstrap.result import Err, Ok, Result
+
 
 class UsageErrorKind(StrEnum):
     UNKNOWN_COMMAND = "unknown_command"
@@ -79,6 +81,16 @@ class TransactionPrimitive(StrEnum):
     CLEANUP_STATE = "cleanup_state"
 
 
+class TransactionErrorKind(StrEnum):
+    INVALID_JOURNAL = "invalid_journal"
+    INVALID_STATE_ROOT = "invalid_state_root"
+    PRECONDITION_CHANGED = "precondition_changed"
+    BACKUP_INVALID = "backup_invalid"
+    PRIMITIVE_FAILED = "transaction_primitive_failed"
+    FSYNC_FAILED = "fsync_failed"
+    ATOMIC_REPLACE_FAILED = "atomic_replace_failed"
+
+
 class ErrnoClass(StrEnum):
     PERMISSION = "permission"
     READ_ONLY = "read_only"
@@ -126,12 +138,23 @@ class InputError:
     subject: str = ""
 
 
+@dataclass(frozen=True, slots=True, order=True)
+class SignalNumber:
+    value: int
+
+    @classmethod
+    def from_int(cls, value: int) -> Result[SignalNumber, InputError]:
+        if not 1 <= value <= 255:
+            return Err(InputError(InputErrorKind.SCHEMA_VIOLATION, "signal"))
+        return Ok(cls(value))
+
+
 @dataclass(frozen=True, slots=True)
 class ObservationError:
     kind: ObservationErrorKind
     subject: str = ""
     process: ProcessError | None = None
-    signal: int | None = None
+    signal: SignalNumber | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,9 +171,24 @@ class TransitionError:
 
 @dataclass(frozen=True, slots=True)
 class TransactionError:
-    primitive: TransactionPrimitive
-    errno_class: ErrnoClass
+    kind: TransactionErrorKind
+    primitive: TransactionPrimitive | None = None
+    errno_class: ErrnoClass | None = None
     subject: str = ""
+
+    @classmethod
+    def primitive_failed(
+        cls,
+        primitive: TransactionPrimitive,
+        errno_class: ErrnoClass,
+        subject: str = "",
+    ) -> TransactionError:
+        return cls(
+            kind=TransactionErrorKind.PRIMITIVE_FAILED,
+            primitive=primitive,
+            errno_class=errno_class,
+            subject=subject,
+        )
 
 
 @dataclass(frozen=True, slots=True)

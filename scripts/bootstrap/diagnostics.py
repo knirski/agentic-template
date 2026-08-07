@@ -12,7 +12,9 @@ from scripts.bootstrap.errors import (
     InputError,
     ObservationError,
     ProcessError,
+    SignalNumber,
     TransactionError,
+    TransactionErrorKind,
     TransitionError,
     UsageError,
 )
@@ -81,7 +83,12 @@ def _category(error: CommandError) -> DiagnosticCategory:
 
 def _kind_name(error: CommandError) -> str:
     if isinstance(error, TransactionError):
-        return error.primitive.value
+        if (
+            error.kind is TransactionErrorKind.PRIMITIVE_FAILED
+            and error.primitive is not None
+        ):
+            return f"{error.kind.value}_{error.primitive.value}"
+        return error.kind.value
     if isinstance(error, CoreInternalFailure):
         return error.code.value
     if isinstance(
@@ -139,7 +146,7 @@ class HookExited:
 
 @dataclass(frozen=True, slots=True)
 class HookSignalled:
-    signal: int
+    signal: SignalNumber
     stdout: bytes = b""
     stderr: bytes = b""
 

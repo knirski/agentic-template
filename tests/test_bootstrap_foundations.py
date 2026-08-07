@@ -3,6 +3,9 @@ from __future__ import annotations
 import dataclasses
 import unittest
 
+from hypothesis import given
+from hypothesis import strategies as st
+
 from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
 from scripts.bootstrap.diagnostics import (
     ActionRequired,
@@ -23,7 +26,9 @@ from scripts.bootstrap.errors import (
     InternalFailure,
     ObservationError,
     ObservationErrorKind,
+    SignalNumber,
     TransactionError,
+    TransactionErrorKind,
     TransactionPrimitive,
     TransitionError,
     TransitionErrorKind,
@@ -49,6 +54,13 @@ class ResultTests(unittest.TestCase):
     def test_accumulate_preserves_all_independent_errors(self) -> None:
         result = accumulate((Err("first"), Ok(2), Err("last")))
         self.assertEqual(result, Err(("first", "last")))
+
+    @given(st.lists(st.integers(), max_size=20))
+    def test_accumulate_preserves_arbitrary_success_order(
+        self, values: list[int]
+    ) -> None:
+        result = accumulate(tuple(Ok(value) for value in values))
+        self.assertEqual(result, Ok(tuple(values)))
 
 
 class ValuesTests(unittest.TestCase):
@@ -94,6 +106,12 @@ class ValuesTests(unittest.TestCase):
             if isinstance(over, Err):
                 self.assertEqual(over.error.observed, limit + 1)
 
+    def test_signal_number_accepts_only_process_signal_range(self) -> None:
+        self.assertEqual(SignalNumber.from_int(1), Ok(SignalNumber(1)))
+        self.assertEqual(SignalNumber.from_int(255), Ok(SignalNumber(255)))
+        self.assertIsInstance(SignalNumber.from_int(0), Err)
+        self.assertIsInstance(SignalNumber.from_int(256), Err)
+
 
 class BlobStoreTests(unittest.TestCase):
     def test_equal_content_is_interned_once_and_ids_are_sha256(self) -> None:
@@ -137,8 +155,15 @@ class DiagnosticTests(unittest.TestCase):
             *(ContractError(kind, "template") for kind in ContractErrorKind),
             *(TransitionError(kind, "project") for kind in TransitionErrorKind),
             *(
-                TransactionError(kind, ErrnoClass.OTHER_SANITIZED_ERRNO)
-                for kind in TransactionPrimitive
+                TransactionError.primitive_failed(
+                    primitive, ErrnoClass.OTHER_SANITIZED_ERRNO
+                )
+                for primitive in TransactionPrimitive
+            ),
+            *(
+                TransactionError(kind)
+                for kind in TransactionErrorKind
+                if kind is not TransactionErrorKind.PRIMITIVE_FAILED
             ),
             InternalFailure(InternalCode.UNCLASSIFIED_EXCEPTION),
         ]
