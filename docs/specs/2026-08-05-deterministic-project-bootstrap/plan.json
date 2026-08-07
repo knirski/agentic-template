@@ -14,7 +14,7 @@
           "inputs": [
             "design dependency policy; modern-python guidance; current standalone Python scripts."
           ],
-          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks; CI installs the pinned uv release and Python 3.14 with Astral's `setup-uv` action, while generated projects use portable Python/uv validation and do not inherit source-only uv metadata.",
+          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks; CI installs the pinned uv release and Python 3.14 with Astral's `setup-uv` action. Nix and its flake remain optional maintainer tooling, while generated projects use portable Python/uv validation and do not inherit source-only uv metadata.",
           "files": {
             "create": [
               "pyproject.toml",
@@ -22,20 +22,17 @@
               ".python-version"
             ],
             "modify": [
+              "flake.nix",
               ".github/workflows/ci.yml",
               "README.md",
               "copier.yml"
             ],
-            "remove": [
-              "flake.nix",
-              "flake.lock",
-              ".github/actions/setup-nix"
-            ]
+            "remove": []
           },
           "validation": {
             "tests": [
               "`uv lock --check`",
-              "`uv sync --all-groups`",
+              "`uv sync --all-groups --locked`",
               "`uv run ruff check`",
               "`uv run ruff format --check`",
               "`uv run ty check`",

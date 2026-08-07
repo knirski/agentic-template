@@ -111,7 +111,7 @@ CI uses Astral's pinned `setup-uv` action to provide Python 3.14 and uv, with uv
 The source checks run from the locked environment:
 
 ```console
-uv sync --all-groups
+uv sync --all-groups --locked
 uv run python scripts/validate_template.py
 uv run ruff check
 uv run ruff format --check
@@ -119,4 +119,14 @@ uv run ty check
 ```
 
 GitHub Actions workflows are checked independently with actionlint. Nix is not required for local
-development, CI, release gating, or template generation.
+development, CI, release gating, or template generation, but remains available as an optional
+maintainer toolchain for users who prefer it:
+
+```console
+nix develop
+nix flake check
+nix fmt
+```
+
+The optional Nix shell provides the pinned workflow and Nix lint tools alongside Python 3.14 and uv.
+Cachix publishing is also optional and requires the configured authentication token.

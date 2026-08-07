@@ -253,7 +253,7 @@ permissions, and allowed declared source-only steps.
 
 ### Correction in revision 14
 
-| Nix remained a required source-maintainer dependency after the generated baseline was made portable | The repository source and its CI use uv, Python 3.14, and actionlint directly. Nix, flakes, Cachix, and Nix release gates are removed from the source baseline; only the explicitly selected generated-project `nix` capability may render Nix artifacts and CI contributions. |
+| Nix remained a required source-maintainer dependency after the generated baseline was made portable | The repository source and its CI use uv, Python 3.14, and actionlint directly. Nix, flakes, Cachix, and Nix release gates are optional maintainer tooling rather than source prerequisites; only the explicitly selected generated-project `nix` capability may render Nix artifacts and CI contributions. |
 
 ### Unchanged load-bearing decisions
 
