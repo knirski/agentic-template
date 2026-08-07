@@ -14,7 +14,7 @@
           "inputs": [
             "design dependency policy; existing `flake.nix`; modern-python guidance; current standalone Python scripts."
           ],
-          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks, make the Nix dev shell explicitly provide uv with a short install/sync workflow, and add an explicit Python 3.14 validation lane in Nix/CI rather than relying on an unversioned `python3`.",
+          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks and keep the Nix dev shell explicitly maintainer-only: it provides uv and Python 3.14 for template maintainers, while generated projects use portable Python/uv validation and do not inherit source-only uv or Nix requirements.",
           "files": {
             "create": [
               "pyproject.toml",
@@ -24,7 +24,8 @@
             "modify": [
               "flake.nix",
               ".github/workflows/ci.yml",
-              "README.md"
+              "README.md",
+              "copier.yml"
             ],
             "remove": []
           },
@@ -36,7 +37,8 @@
               "`uv run ruff format --check`",
               "`uv run ty check`",
               "`nix develop` exposes `uv`",
-              "Python 3.14 source checks and dependency-free canonical generated-validator lanes both execute successfully."
+              "Python 3.14 source checks and dependency-free canonical generated-validator lanes both execute successfully",
+              "generated-project fixtures do not require the maintainer-only Nix shell or source-only uv metadata"
             ],
             "acceptance": []
           }
@@ -474,7 +476,7 @@
           "inputs": [
             "updated ADR 0001; Copier ownership exclusions; GitHub snapshot cleanup inventory; generated workflow and validation boundaries."
           ],
-          "description": "First update ADR 0001 to state that Copier owns source lifecycle updates while bootstrap owns derived-output reconciliation. Then wire Copier to retain source lifecycle inputs while excluding generated managed/seed/cleanup outputs, including the source `pyproject.toml` and `uv.lock` boundary. Add GitHub snapshot cleanup and ownership declarations; the GitHub cleanup inventory must include the source root `pyproject.toml` and `uv.lock`, while Copier excludes them from generated projects. Ensure both paths initialize a Git working tree before bootstrap, recognize only their legal scaffold shapes, and share the same compiler and transaction shell.",
+          "description": "First update ADR 0001 to state that Copier owns source lifecycle updates while bootstrap owns derived-output reconciliation. Then wire Copier to retain source lifecycle inputs while excluding generated managed/seed/cleanup outputs, including the source `pyproject.toml`, `.python-version`, `uv.lock`, flake files, maintainer-only Nix actions, and maintainer-only workflows. Split the generated portable workflow baseline from source-maintainer CI and release gating so generated projects do not require Nix; only the selected `nix` capability may render Nix artifacts or CI contributions. Add GitHub snapshot cleanup and ownership declarations; the GitHub cleanup inventory must include source uv and Nix maintenance inputs, while Copier excludes them from generated projects. Ensure both paths initialize a Git working tree before bootstrap, recognize only their legal scaffold shapes, and share the same compiler and transaction shell.",
           "files": {
             "create": [
               ".agentic-template/source-ownership.json",
@@ -486,7 +488,10 @@
               "copier.yml",
               "docs/adr/0001-use-copier-for-template-updates.md",
               ".github/workflows/ci.yml",
-              "flake.nix"
+              ".github/workflows/template-ci.yml",
+              "flake.nix",
+              "flake.lock",
+              ".github/actions/setup-nix"
             ],
             "remove": []
           },
@@ -494,7 +499,7 @@
             "tests": [
               "ADR 0001 contains the approved ownership split before integration",
               "direct GitHub snapshot and Copier fixtures",
-              "source `pyproject.toml`/`uv.lock` do not leak into generated projects",
+              "source uv metadata, flake files, maintainer-only Nix actions, and maintainer-only workflows do not leak into generated projects",
               "seed preservation",
               "cleanup valid/mismatch/leave cases",
               "no stale Copier excludes",
@@ -558,7 +563,7 @@
           "inputs": [
             "semantic-release, Nix, Cachix-with-Nix dependency, and Qodo/Gemini capability contracts; settings and secret preflight rules; release graph; generated dependency metadata from T14."
           ],
-          "description": "Add the four declarative capability contributions, profile expansions, settings normalization, compiled workflow/document outputs, release dependencies, read-only secret preflights, and available/unavailable activation behavior. Keep capability-specific dependency commands behind their declared uv invocation metadata and ensure unselected capabilities emit no artifacts.",
+          "description": "Add the four declarative capability contributions, profile expansions, settings normalization, compiled workflow/document outputs, release dependencies, read-only secret preflights, and available/unavailable activation behavior. Keep capability-specific dependency commands behind their declared uv invocation metadata. Treat Nix as maintainer-only unless the `nix` capability is selected: the portable generated baseline has no Nix job or release dependency, while selected Nix and Cachix capabilities render their own artifacts and gates. Ensure unselected capabilities emit no artifacts or workflow jobs.",
           "files": {
             "create": [
               "scripts/bootstrap/capability_fragments.py",
@@ -586,7 +591,7 @@
               "structural preflight policy",
               "local non-secret canary",
               "privileged jobs are blocked when preflight is unavailable",
-              "release graph gating",
+              "release graph gating, including absence of Nix from portable projects",
               "adopter fixtures use uv to install and run capability-specific commands while canonical validators remain directly runnable and bootstrap itself never installs packages."
             ],
             "acceptance": []
@@ -601,7 +606,7 @@
           "inputs": [
             "compiled integrated workflow; canonical workflow/job/step normal form; PyYAML source-only loader contract; source allowlist ownership."
           ],
-          "description": "Add the strict Actions YAML loader, complete semantic normalization, raw SHA-comment checks, trust predicates, allowlist expiry/difference checks, and source-versus-rendered workflow comparison. Keep PyYAML source-only unless a future capability explicitly declares it, and ensure all loader failures are typed diagnostics.",
+          "description": "Add the strict Actions YAML loader, complete semantic normalization, raw SHA-comment checks, trust predicates, allowlist expiry/difference checks, and source-versus-rendered workflow comparison. Keep PyYAML source-only unless a future capability explicitly declares it, separate maintainer-only source CI from the portable generated baseline, and ensure the generated baseline requires no Nix while selected Nix/Cachix capabilities contribute only their declared jobs and release gates. Ensure all loader failures are typed diagnostics.",
           "files": {
             "create": [
               "scripts/bootstrap/actions_yaml.py",

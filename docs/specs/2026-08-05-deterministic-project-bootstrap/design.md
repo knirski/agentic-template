@@ -244,6 +244,10 @@ permissions, and allowed declared source-only steps.
 
 | Python support range | Python 3.14 is the minimum and primary validation lane; source and generated metadata use `requires-python = ">=3.14"`, so later Python 3.x releases remain supported unless a future compatibility decision narrows the range |
 
+### Correction in revision 13
+
+| Nix was treated as a global generated-project CI and release prerequisite | Nix is maintainer-only source tooling by default. The generated portable baseline uses Python 3.14 and uv without requiring Nix, flake files, Cachix, or a Nix CI job. Only the explicitly selected `nix` capability may add generated Nix artifacts and CI contributions; the `cachix-publish` capability depends on it. Maintainer-only Nix workflows and source uv metadata are excluded from generated projects. |
+
 ### Unchanged load-bearing decisions
 
 Snapshot profiles and `InitialAnswers` freeze at creation; `CapabilityAdditions` records later IDs and
@@ -260,8 +264,9 @@ compiler with a dependency-light functional core and uv-managed project dependen
 
 The current template detects incomplete generated-project setup but does not perform it. A generated
 repository inherits a fixed integration set and requires manual replacement of the README, PRD, and
-validation hook. CI and the release graph assume Nix, Cachix, semantic-release, and Gemini review
-whether or not an adopter wants them. This yields five problems: no reviewable transition from
+validation hook. The maintainer CI and release graph currently assume Nix, Cachix, semantic-release,
+and Gemini review whether or not an adopter wants them, and those source-maintainer assumptions must
+not leak into generated projects. This yields five problems: no reviewable transition from
 scaffold to ready project; optional integrations coupled to the source tree; two generation paths
 drifting into separate setup implementations; no strict file-ownership boundary; and durable
 operational guidance lost to README customization.
@@ -1413,7 +1418,7 @@ v1 does not support; a separate ID per backend keeps "add a new capability" avai
 | Capability | Principal managed output | External activation |
 | --- | --- | --- |
 | `semantic-release` | `.releaserc`, reusable release workflow, gated release job contribution | None beyond normal token permissions |
-| `nix` | `flake.nix`, `flake.lock`, Nix setup action, Nix CI check contribution | None |
+| `nix` | `flake.nix`, `flake.lock`, Nix setup action, Nix CI check contribution | None; absent from the portable generated baseline |
 | `cachix-publish` | Cachix configuration and publish contributions; depends on `nix`; requires a non-secret cache-name setting | Existing cache plus `CACHIX_AUTH_TOKEN`; Cachix work skips when unavailable while Nix continues uncached |
 | `pr-agent-gemini` | `.pr_agent.toml`, review and trusted-command workflows, activation preflights, setup documentation | `GEMINI_API_KEY` |
 
@@ -2105,7 +2110,8 @@ recovery stop at the first failure where continuing could mutate state or destro
 - Any exit-1 outcome after installation states that files were installed and the project is not yet
   locally ready.
 - The hook is installed at `scripts/validate-project` with mode `0755`.
-- The result does not depend on Nix unless `nix` is selected.
+- The generated portable result does not depend on Nix; Nix artifacts and CI gates appear only when
+  the `nix` capability is selected. Maintainer source validation may use Nix independently.
 - Every decision names a next action reachable for the generation path.
 
 ### US-3: Select an intent-based snapshot profile
@@ -2119,7 +2125,8 @@ recovery stop at the first failure where continuing could mutate state or destro
 ### US-4: Materialize only the effective capabilities
 
 - Each profile selects exactly its documented set; `cachix-publish` resolves `nix`.
-- Unselected capability artifacts and CI jobs are absent.
+- Unselected capability artifacts and CI jobs are absent; in particular, portable generated projects
+  contain no Nix job, Nix release dependency, flake, or Cachix contribution.
 - Cycles, output collisions, unknown settings, and undeclared ownership fail before mutation.
 
 ### US-5: Preserve product, licensing, and provenance ownership
