@@ -83,8 +83,10 @@ def _category(error: CommandError) -> DiagnosticCategory:
 
 def _kind_name(error: CommandError) -> str:
     if isinstance(error, TransactionError):
-        if error.kind is TransactionErrorKind.PRIMITIVE_FAILED:
-            assert error.primitive is not None
+        if (
+            error.kind is TransactionErrorKind.PRIMITIVE_FAILED
+            and error.primitive is not None
+        ):
             return f"{error.kind.value}_{error.primitive.value}"
         return error.kind.value
     if isinstance(error, CoreInternalFailure):
