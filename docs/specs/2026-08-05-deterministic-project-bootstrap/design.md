@@ -53,6 +53,9 @@ Owner decisions, recorded so review does not reopen them.
 - An installation may survive adopter-hook failure, but the command then exits nonzero and the project
   is not locally ready.
 - All template-owned Python scripts share the functional-core/imperative-shell boundary defined here.
+- Bash scripts and ShellCheck are not part of the repository or generated-project toolchain. Repository
+  automation uses Python entry points or native action steps; “imperative shell” below names the
+  effectful architectural boundary and does not prescribe a shell language.
 - V1 has no legacy generated-project population. The `.py` hook path, compatibility releases,
   migration fixtures, and adoption lifecycle are absent rather than supported conditionally.
 
