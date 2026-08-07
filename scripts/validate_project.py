@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import sys
 
-
 SENTINEL = "agentic-template:unconfigured:validate-project"
 
 

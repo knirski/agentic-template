@@ -10,19 +10,21 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-
+from typing import override
 
 ROOT = Path(__file__).resolve().parent.parent
 AGGREGATE = ROOT / "scripts/validate_repository.py"
 
 
 class AggregateFixtures(unittest.TestCase):
+    @override
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         (self.root / "scripts").mkdir()
         shutil.copy2(AGGREGATE, self.root / "scripts/validate_repository.py")
 
+    @override
     def tearDown(self) -> None:
         self.tmp.cleanup()
 

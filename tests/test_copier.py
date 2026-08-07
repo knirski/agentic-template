@@ -9,7 +9,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-
 VERSION = "9.17.0"
 ROOT = Path(__file__).resolve().parent.parent
 VALID_PRD = """# Product\n## Problem\nProblem.\n## Goals\nGoals.\n## Non-goals\nNo.\n## Users and workflows\nUsers.\n## Requirements\n### REQ-001: Works\nBody.\n## Quality attributes\nReliable.\n## Release criteria\nGreen.\n## Open questions\nNone.\n"""
@@ -25,7 +24,7 @@ def run(
 def main() -> int:
     copier = shutil.which("copier")
     command = [copier] if copier else ["uvx", "--from", f"copier=={VERSION}", "copier"]
-    if copier and run(command + ["--version"]).stdout.strip() != f"copier {VERSION}":
+    if copier and run([*command, "--version"]).stdout.strip() != f"copier {VERSION}":
         print(f"Copier {VERSION} is required", file=sys.stderr)
         return 1
     if not copier and not shutil.which("uvx"):
@@ -56,8 +55,15 @@ def main() -> int:
                 print(result.stderr, file=sys.stderr)
                 return result.returncode
         result = run(
-            command
-            + ["copy", str(source), str(project), "--vcs-ref", "v0.1.0", "--defaults"]
+            [
+                *command,
+                "copy",
+                str(source),
+                str(project),
+                "--vcs-ref",
+                "v0.1.0",
+                "--defaults",
+            ]
         )
         if result.returncode:
             print(result.stderr, file=sys.stderr)
@@ -111,21 +117,26 @@ def main() -> int:
         source_hook = source / "scripts/validate_project.py"
         with source_hook.open("a", encoding="utf-8") as handle:
             handle.write("\n# template hook update\n")
-        run(git + ["add", "NOTICE.md", "scripts/validate_project.py"])
-        run(git + ["commit", "-m", "template v0.2.0"])
-        run(git + ["tag", "v0.2.0"])
+        run([*git, "add", "NOTICE.md", "scripts/validate_project.py"])
+        run([*git, "commit", "-m", "template v0.2.0"])
+        run([*git, "tag", "v0.2.0"])
         with (project / "README.md").open("a", encoding="utf-8") as handle:
             handle.write("\nLocal project customization.\n")
         with project_hook.open("a", encoding="utf-8") as handle:
             handle.write("\n# local hook customization\n")
         expected_hook_text = project_hook.read_text(encoding="utf-8")
         run(
-            project_git
-            + ["add", "README.md", "docs/prd.md", "scripts/validate_project.py"]
+            [
+                *project_git,
+                "add",
+                "README.md",
+                "docs/prd.md",
+                "scripts/validate_project.py",
+            ]
         )
-        run(project_git + ["commit", "-m", "project customization"])
+        run([*project_git, "commit", "-m", "project customization"])
         result = run(
-            command + ["update", "--vcs-ref", "v0.2.0", "--defaults"], cwd=project
+            [*command, "update", "--vcs-ref", "v0.2.0", "--defaults"], cwd=project
         )
         hook_text = project_hook.read_text(encoding="utf-8")
         conflict_evidence = (
