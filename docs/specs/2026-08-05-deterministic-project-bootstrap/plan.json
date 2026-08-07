@@ -187,7 +187,7 @@
         },
         {
           "id": "T6",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {"mode": "inline", "status": "completed", "completion": {"completed_at": "2026-08-07", "evidence": ["ADR, domain terminology, NOTICE.md, and licensing/provenance audit added", "audit covers all 18 bundled skills and all three licensing modes", "upstream licence evidence recorded for MIT and CC BY-SA 4.0 sources", "audit accepted current layout after NOTICE.md provenance correction"]}},
           "name": "Record the architecture, ownership, and licensing gates",
           "depends_on": [
             "T4"

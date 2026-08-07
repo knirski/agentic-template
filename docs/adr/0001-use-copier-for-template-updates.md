@@ -11,7 +11,10 @@ requiring this repository to own its own merge and filesystem safety implementat
 
 Project-readiness validation is separate from Copier ownership. The template ships Python 3.14+
 standard-library validators and an adopter-owned `scripts/validate_project.py` hook; Copier remains
-responsible for preserving and reporting conflicts during updates.
+responsible for preserving and reporting conflicts during updates. Copier updates the
+fingerprinted generated-lifecycle compiler inputs; bootstrap alone reconciles the resulting
+bootstrap-managed output, and only on the Copier-generated project path. It does not rewrite
+seed-once adopter output such as product files, licences, or bundled-skill provenance notices.
 
 Semantic-release Git tags are the template versions, and Copier-generated projects retain Copier's
 `.copier-answers.yml` metadata. GitHub-generated projects are one-time snapshots without Copier
@@ -30,3 +33,5 @@ update-capable generation in exchange for a smaller and more maintainable templa
 - Users install Copier and its prerequisites when they choose update-capable Copier generation.
 - Updates are selected by semantic-release tags and can be pinned with `--vcs-ref`.
 - The repository owns the Copier configuration and smoke tests, while Copier owns update mechanics.
+  Ownership classes and the imperative-shell boundary are defined in
+  [ADR 0002](0002-functional-core-domain-ownership.md).
