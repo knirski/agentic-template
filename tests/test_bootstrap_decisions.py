@@ -44,19 +44,27 @@ from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.state import (
     CanonicalTemplateSource,
     CleanupContractMismatch,
+    CopierConflicted,
     CopierExistingProject,
     CopierSourceSame,
     EmptyManifestFree,
+    ExistingProject,
+    ManagedDrift,
     ManagedVerified,
     NoSnapshotCleanup,
     OrdinaryProject,
     OutputAvailable,
+    PathDelta,
     ProjectAvailable,
     ProtectedTargetAvailable,
     RecognizedScaffold,
     RecordedProjectState,
     SnapshotExistingProject,
+    SnapshotRepair,
+    SnapshotSourceChanged,
     SnapshotSourceSame,
+    SnapshotSourceUnrecoverable,
+    SourceDelta,
     SupportedWorktree,
     TargetSnapshot,
     TargetUnavailable,
@@ -162,6 +170,80 @@ class StateAndDecisionTests(unittest.TestCase):
             Apply(ApplyOptions(leave_maintenance_artifacts=True)), state
         )
         self.assertIsInstance(installed, InitialInstall)
+
+    def test_apply_refuses_unrecoverable_snapshot_and_copier_conflicts(self) -> None:
+        managed = ManagedVerified()
+        snapshot = ProjectAvailable(
+            worktree(),
+            ExistingProject(
+                SnapshotExistingProject(
+                    RecordedProjectState(GenerationPath.GITHUB),
+                    SnapshotSourceUnrecoverable(
+                        SourceDelta((RepoPath("source.txt"),)),
+                        "source history is unavailable",
+                        managed,
+                    ),
+                    TargetSnapshot(()),
+                )
+            ),
+        )
+        copier = ProjectAvailable(
+            worktree(),
+            ExistingProject(
+                CopierExistingProject(
+                    RecordedProjectState(GenerationPath.COPIER),
+                    CopierConflicted(PathDelta((RepoPath(".rej"),))),
+                    TargetSnapshot(()),
+                )
+            ),
+        )
+
+        refused_snapshot = decide_project(Apply(ApplyOptions()), snapshot)
+        self.assertIsInstance(refused_snapshot, RefuseMutation)
+        if isinstance(refused_snapshot, RefuseMutation):
+            self.assertIsInstance(refused_snapshot.error, TransitionError)
+            if isinstance(refused_snapshot.error, TransitionError):
+                self.assertEqual(
+                    refused_snapshot.error.kind, TransitionErrorKind.TEMPLATE_CHANGED
+                )
+
+        refused_copier = decide_project(Apply(ApplyOptions()), copier)
+        self.assertIsInstance(refused_copier, RefuseMutation)
+        if isinstance(refused_copier, RefuseMutation):
+            self.assertIsInstance(refused_copier.error, TransitionError)
+            if isinstance(refused_copier.error, TransitionError):
+                self.assertEqual(
+                    refused_copier.error.kind, TransitionErrorKind.COPIER_CONFLICTS
+                )
+
+        for state in (snapshot, copier):
+            planned = decide_project(PlanApply(ApplyPlanOptions()), state)
+            self.assertIsInstance(planned, RefusePlan)
+
+    def test_source_change_takes_precedence_over_managed_drift(self) -> None:
+        managed_drift = ManagedDrift(PathDelta((RepoPath("managed.txt"),)))
+        snapshot = ProjectAvailable(
+            worktree(),
+            ExistingProject(
+                SnapshotExistingProject(
+                    RecordedProjectState(GenerationPath.GITHUB),
+                    SnapshotSourceChanged(
+                        SourceDelta((RepoPath("source.txt"),)),
+                        SnapshotRepair("repair", (RepoPath("source.txt"),)),
+                        managed_drift,
+                    ),
+                    TargetSnapshot(()),
+                )
+            ),
+        )
+        decision = decide_project(Apply(ApplyOptions()), snapshot)
+        self.assertIsInstance(decision, RefuseMutation)
+        if isinstance(decision, RefuseMutation):
+            self.assertIsInstance(decision.error, TransitionError)
+            if isinstance(decision.error, TransitionError):
+                self.assertEqual(
+                    decision.error.kind, TransitionErrorKind.TEMPLATE_CHANGED
+                )
 
     def test_planning_refusal_stays_in_the_planning_decision_family(self) -> None:
         state = TargetUnavailable(UnsupportedGitTarget("not_a_worktree"))
