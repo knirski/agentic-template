@@ -15,6 +15,7 @@ lint = [
 ]
 test = [
     "hypothesis>=6.165.2",
+    "mutmut>=3.7.0",
     "pytest>=9.1.1",
     "pyyaml>=6.0.3",
 ]
@@ -42,3 +43,18 @@ unused-type-ignore-comment = "error"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.mutmut]
+source_paths = [
+    "scripts/bootstrap",
+    "scripts/check_project_readiness.py",
+    "scripts/validate_repository.py",
+]
+pytest_add_cli_args_test_selection = [
+    "tests/test_bootstrap_foundations.py",
+    "tests/test_bootstrap_determinism.py",
+    "tests/test_bootstrap_decisions.py",
+    "tests/test_script_cores.py",
+    "-k",
+    "not test_accumulate_preserves_arbitrary_success_order",
+]
