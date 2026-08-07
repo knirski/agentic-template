@@ -5,9 +5,45 @@
   "execution": {
     "mode": "inline",
     "tasks": {
-      "T1": {"status": "pending", "completion": null},
-      "T2": {"status": "pending", "completion": null},
-      "T3": {"status": "pending", "completion": null},
+      "T1": {
+        "status": "completed",
+        "completion": {
+          "completed_at": "2026-08-07",
+          "commits": ["e0887ea", "a3b09e2"],
+          "evidence": [
+            "uv lock --check (passed)",
+            "uv sync --all-groups --locked (passed)",
+            "uv run ruff check (clean)",
+            "uv run ruff format --check (30 files already formatted)",
+            "uv run ty check (clean)",
+            "Python 3.14 source checks and repository validation passed"
+          ]
+        }
+      },
+      "T2": {
+        "status": "completed",
+        "completion": {
+          "completed_at": "2026-08-07",
+          "commits": ["676a35c", "98ab574"],
+          "evidence": [
+            "uv run pytest -q tests/test_bootstrap_foundations.py (11 passed)",
+            "uv run ty check (clean)",
+            "uv run ruff check (clean)"
+          ]
+        }
+      },
+      "T3": {
+        "status": "completed",
+        "completion": {
+          "completed_at": "2026-08-07",
+          "commits": ["bc908a7", "f9d9c98"],
+          "evidence": [
+            "uv run pytest -q tests/test_bootstrap_determinism.py (14 passed)",
+            "uv run ty check (clean)",
+            "uv run ruff check (clean)"
+          ]
+        }
+      },
       "T4": {
         "status": "completed",
         "completion": {
