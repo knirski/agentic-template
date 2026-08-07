@@ -41,3 +41,4 @@ unused-type-ignore-comment = "error"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
