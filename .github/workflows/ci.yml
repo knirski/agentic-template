@@ -15,6 +15,9 @@ jobs:
     name: Python 3.14 source checks
     if: github.repository == 'knirski/agentic-template'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -30,10 +33,16 @@ jobs:
         run: uv sync --all-groups --locked
       - name: Run source checks
         run: |
-          uv run pytest
+          uv run pytest --cov=scripts --cov-report=term-missing --cov-report=xml
           uv run ruff check
           uv run ruff format --check
           uv run ty check
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6.0.2
+        with:
+          files: ./coverage.xml
+          use_oidc: true
+          fail_ci_if_error: false
 
   delivery-contract:
     name: Delivery contract
