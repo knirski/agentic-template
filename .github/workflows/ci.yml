@@ -45,7 +45,7 @@ jobs:
           python-version: "3.14"
           enable-cache: true
       - name: Validate generic delivery files
-        run: python3.14 scripts/validate_template.py
+        run: uv run --no-project --python 3.14 scripts/validate_template.py
 
   project-validation:
     name: Project validation
@@ -65,25 +65,24 @@ jobs:
           enable-cache: true
       - name: Validate generated-project contract
         if: github.repository != 'knirski/agentic-template'
-        run: python3.14 scripts/validate_repository.py
+        run: uv run --no-project --python 3.14 scripts/validate_repository.py
       - name: Validate source fixtures
         if: github.repository == 'knirski/agentic-template'
         run: |
-          python3.14 tests/test_project_readiness.py
-          python3.14 tests/test_repository_validation.py
-          python3.14 tests/test_github_template_readiness.py
+          uv run --no-project --python 3.14 tests/test_project_readiness.py
+          uv run --no-project --python 3.14 tests/test_repository_validation.py
+          uv run --no-project --python 3.14 tests/test_github_template_readiness.py
 
   workflow-lint:
     name: Workflow lint
     runs-on: ubuntu-latest
-    container: docker.io/rhysd/actionlint:1.7.7
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
       - name: Run actionlint
-        run: actionlint
+        uses: docker://docker.io/rhysd/actionlint:1.7.7
 
   release:
     name: Semantic Release
