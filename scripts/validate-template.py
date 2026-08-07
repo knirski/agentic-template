@@ -10,14 +10,35 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 REQUIRED_FILES = [
-    "AGENTS.md", ".agents/AGENTS.md", "README.md", "copier.yml", "docs/prd.md",
-    "docs/agents/domain.md", "docs/agents/issue-tracker.md", ".github/ISSUE_TEMPLATE/bug.yml",
-    ".github/ISSUE_TEMPLATE/feature.yml", ".github/pull_request_template.md", ".github/workflows/ci.yml",
-    ".github/workflows/pr-agent-commands.yml", ".github/workflows/pr-agent.yml",
-    ".github/workflows/semantic-release.yml", ".pr_agent.toml", ".releaserc",
-    "scripts/check-project-readiness.py", "scripts/validate-project.py", "scripts/validate-repository.py",
+    "AGENTS.md",
+    ".agents/AGENTS.md",
+    "README.md",
+    "copier.yml",
+    "docs/prd.md",
+    "docs/agents/domain.md",
+    "docs/agents/issue-tracker.md",
+    ".github/ISSUE_TEMPLATE/bug.yml",
+    ".github/ISSUE_TEMPLATE/feature.yml",
+    ".github/pull_request_template.md",
+    ".github/workflows/ci.yml",
+    ".github/workflows/pr-agent-commands.yml",
+    ".github/workflows/pr-agent.yml",
+    ".github/workflows/semantic-release.yml",
+    ".pr_agent.toml",
+    ".releaserc",
+    "scripts/check-project-readiness.py",
+    "scripts/validate-project.py",
+    "scripts/validate-repository.py",
 ]
-REQUIRED_SKILLS = ["atelier-orchestrator", "code-commit", "code-pull-request", "code-review", "loop-on-ci", "pr-review-loop", "verification-before-completion"]
+REQUIRED_SKILLS = [
+    "atelier-orchestrator",
+    "code-commit",
+    "code-pull-request",
+    "code-review",
+    "loop-on-ci",
+    "pr-review-loop",
+    "verification-before-completion",
+]
 
 
 def main(argv: list[str]) -> int:
@@ -43,7 +64,10 @@ def main(argv: list[str]) -> int:
         ):
             failures.append(f"invalid skill frontmatter: {path.relative_to(ROOT)}")
     for failure in failures:
-        print(f"TEMPLATE_CONTRACT_ERROR: {failure}; next: restore the template contract", file=sys.stderr)
+        print(
+            f"TEMPLATE_CONTRACT_ERROR: {failure}; next: restore the template contract",
+            file=sys.stderr,
+        )
     return 1 if failures else 0
 
 

@@ -11,7 +11,7 @@ software changes with coding agents.
 2. Replace the marked contract in `docs/prd.md` with the project's product requirements.
 3. Replace this marked README with the project title, setup, and validation instructions.
 4. Replace `scripts/validate-project.py` with the project's formatting, linting, tests, and build checks.
-5. Run `python3 scripts/validate-repository.py` and address every readiness diagnostic.
+5. Run `python3.14 scripts/validate-repository.py` and address every readiness diagnostic.
 6. Require the `Project validation` check in the default-branch ruleset.
 
 The template is maintained with [Copier](https://copier.readthedocs.io/):
@@ -52,7 +52,7 @@ when the project needs update lineage.
 Generated projects use one validation boundary:
 
 ```console
-python3 scripts/validate-repository.py
+python3.14 scripts/validate-repository.py
 ```
 
 It runs the template contract, readiness inspection, and adopter-owned project validation in that
@@ -113,15 +113,23 @@ full text. Third-party bundled skill provenance and licensing notes are listed i
 Nix is optional. Contributors can use the repository's normal validation directly:
 
 ```bash
-python3 scripts/validate-template.py
+uv sync --all-groups
+uv run python scripts/validate-template.py
 ```
 
 For contributors who use Nix, the repository also includes a language-neutral development shell
 with the tools used to maintain the template: `actionlint`, `deadnix`, `statix`,
 `nixfmt`, Git, `uv`, and Cachix.
 
+Nix provides Python 3.14 and uv. After entering the shell, install the locked source dependencies
+and use `uv run` for source checks:
+
 ```bash
 nix develop
+uv sync --all-groups
+uv run ruff check
+uv run ruff format --check
+uv run ty check
 nix flake check
 nix fmt
 ```

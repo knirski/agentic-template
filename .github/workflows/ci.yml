@@ -11,14 +11,39 @@ permissions:
   contents: read
 
 jobs:
+  python-source:
+    name: Python 3.14 source checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Python 3.14
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: "3.14"
+      - name: Install uv
+        run: python -m pip install uv==0.12.1
+      - name: Install locked source dependencies
+        run: uv sync --all-groups
+      - name: Run source checks
+        run: |
+          uv run pytest
+          uv run ruff check
+          uv run ruff format --check
+          uv run ty check
+
   delivery-contract:
     name: Delivery contract
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Python 3.14
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: "3.14"
       - name: Validate generic delivery files
-        run: python3 scripts/validate-template.py
+        run: python3.14 scripts/validate-template.py
 
   project-validation:
     name: Project validation
@@ -30,15 +55,19 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+      - name: Set up Python 3.14
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: "3.14"
       - name: Validate generated-project contract
         if: github.repository != 'knirski/agentic-template'
-        run: python3 scripts/validate-repository.py
+        run: python3.14 scripts/validate-repository.py
       - name: Validate source fixtures
         if: github.repository == 'knirski/agentic-template'
         run: |
-          python3 scripts/test-project-readiness.py
-          python3 scripts/test-repository-validation.py
-          python3 scripts/test-github-template-readiness.py
+          python3.14 scripts/test-project-readiness.py
+          python3.14 scripts/test-repository-validation.py
+          python3.14 scripts/test-github-template-readiness.py
 
   nix:
     name: Nix tooling and checks
@@ -54,8 +83,8 @@ jobs:
           cachix-auth-token: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && secrets.CACHIX_AUTH_TOKEN || '' }}
       - name: Run flake checks
         run: nix flake check
-      - name: Validate repository contract in the dev shell
-        run: nix develop --command python3 scripts/validate-template.py
+      - name: Validate repository contract in the Python 3.14 dev shell
+        run: nix develop --command python3.14 scripts/validate-template.py
       - name: Push dev-shell closure to Cachix
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |

@@ -51,11 +51,15 @@ class GitHubSnapshot(unittest.TestCase):
         self.project = Path(self.tmp.name) / "project"
         if shutil.which("git"):
             self.project.mkdir()
-            tracked = subprocess.run(
-                ["git", "-C", str(ROOT), "ls-files", "-z"],
-                check=True,
-                capture_output=True,
-            ).stdout.decode().split("\0")
+            tracked = (
+                subprocess.run(
+                    ["git", "-C", str(ROOT), "ls-files", "-z"],
+                    check=True,
+                    capture_output=True,
+                )
+                .stdout.decode()
+                .split("\0")
+            )
             manifest = set(filter(None, tracked)) | REQUIRED_GENERATED
             for relative in sorted(manifest):
                 source = ROOT / relative
@@ -64,7 +68,13 @@ class GitHubSnapshot(unittest.TestCase):
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(source, target)
         else:
-            shutil.copytree(ROOT, self.project, ignore=shutil.ignore_patterns(".git", ".direnv", "__pycache__", "result"))
+            shutil.copytree(
+                ROOT,
+                self.project,
+                ignore=shutil.ignore_patterns(
+                    ".git", ".direnv", "__pycache__", "result"
+                ),
+            )
         self.assertFalse((self.project / ".git").exists())
         self.assertFalse((self.project / ".direnv").exists())
         self.assertFalse((self.project / "untracked-canary.txt").exists())
@@ -76,10 +86,22 @@ class GitHubSnapshot(unittest.TestCase):
         self.tmp.cleanup()
 
     def run_checker(self) -> subprocess.CompletedProcess[str]:
-        return subprocess.run([sys.executable, "scripts/check-project-readiness.py"], cwd=self.project, text=True, capture_output=True, check=False)
+        return subprocess.run(
+            [sys.executable, "scripts/check-project-readiness.py"],
+            cwd=self.project,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
 
     def run_validator(self) -> subprocess.CompletedProcess[str]:
-        return subprocess.run([sys.executable, "scripts/validate-repository.py"], cwd=self.project, text=True, capture_output=True, check=False)
+        return subprocess.run(
+            [sys.executable, "scripts/validate-repository.py"],
+            cwd=self.project,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
 
     def test_untouched_snapshot_fails_then_minimal_configuration_passes(self) -> None:
         untouched = self.run_checker()

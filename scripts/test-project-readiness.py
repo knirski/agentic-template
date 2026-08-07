@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import stat
 import subprocess
@@ -43,7 +42,7 @@ VALID_README = """# Example Product
 Install the product.
 
 ## Validation
-Run `python3 scripts/validate-repository.py`.
+Run `python3.14 scripts/validate-repository.py`.
 """
 VALID_HOOK = """#!/usr/bin/env python3
 print('project validation passed')
@@ -82,7 +81,10 @@ class ReadinessFixtures(unittest.TestCase):
 
     def snapshot(self) -> dict[str, tuple[bytes, int]]:
         return {
-            str(path.relative_to(self.root)): (path.read_bytes(), path.stat().st_mode & 0o777)
+            str(path.relative_to(self.root)): (
+                path.read_bytes(),
+                path.stat().st_mode & 0o777,
+            )
             for path in self.root.rglob("*")
             if path.is_file()
         }
@@ -92,17 +94,40 @@ class ReadinessFixtures(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_markers_and_boilerplate_fail_with_actionable_diagnostics(self) -> None:
-        self.write("docs/prd.md", VALID_PRD.replace("# Product", "<!-- agentic-template:placeholder:prd -->\nThis file is authoritative for the Agentic Delivery Template.\n# Product"))
-        self.write("README.md", VALID_README.replace("# Example Product", "<!-- agentic-template:placeholder:readme -->\n# Agentic Delivery Template"))
+        self.write(
+            "docs/prd.md",
+            VALID_PRD.replace(
+                "# Product",
+                "<!-- agentic-template:placeholder:prd -->\nThis file is authoritative for the Agentic Delivery Template.\n# Product",
+            ),
+        )
+        self.write(
+            "README.md",
+            VALID_README.replace(
+                "# Example Product",
+                "<!-- agentic-template:placeholder:readme -->\n# Agentic Delivery Template",
+            ),
+        )
         result = self.run_checker()
         self.assertEqual(result.returncode, 1)
-        for code, path in (("READINESS_PRD_MARKER", "docs/prd.md"), ("READINESS_PRD_BOILERPLATE", "docs/prd.md"), ("READINESS_README_MARKER", "README.md"), ("READINESS_README_BOILERPLATE", "README.md")):
+        for code, path in (
+            ("READINESS_PRD_MARKER", "docs/prd.md"),
+            ("READINESS_PRD_BOILERPLATE", "docs/prd.md"),
+            ("READINESS_README_MARKER", "README.md"),
+            ("READINESS_README_BOILERPLATE", "README.md"),
+        ):
             self.assertIn(code, result.stderr)
             self.assertIn(path, result.stderr)
             self.assertIn("next:", result.stderr)
 
     def test_requirements_and_heading_contracts(self) -> None:
-        self.write("docs/prd.md", VALID_PRD.replace("## Goals", "## Goals\n## Goals").replace("### REQ-001: Deliver value", "### REQ-001: Deliver value\n### REQ-001: Duplicate"))
+        self.write(
+            "docs/prd.md",
+            VALID_PRD.replace("## Goals", "## Goals\n## Goals").replace(
+                "### REQ-001: Deliver value",
+                "### REQ-001: Deliver value\n### REQ-001: Duplicate",
+            ),
+        )
         result = self.run_checker()
         self.assertEqual(result.returncode, 1)
         self.assertIn("READINESS_PRD_HEADING_DUPLICATE", result.stderr)
@@ -117,14 +142,23 @@ class ReadinessFixtures(unittest.TestCase):
         self.assertIn("READINESS_README_SECTION_EMPTY", result.stderr)
 
     def test_empty_requirement_title_fails(self) -> None:
-        self.write("docs/prd.md", VALID_PRD.replace("### REQ-001: Deliver value", "### REQ-001:"))
+        self.write(
+            "docs/prd.md",
+            VALID_PRD.replace("### REQ-001: Deliver value", "### REQ-001:"),
+        )
         result = self.run_checker()
         self.assertEqual(result.returncode, 1)
         self.assertIn("READINESS_REQUIREMENT_TITLE", result.stderr)
 
     def test_heading_case_and_command_section_are_strict(self) -> None:
         self.write("docs/prd.md", VALID_PRD.replace("## Problem", "## problem"))
-        self.write("README.md", VALID_README.replace("## Validation\nRun `python3 scripts/validate-repository.py`.", "## Validation\nRun another command.\n\n## Setup\npython3 scripts/validate-repository.py"))
+        self.write(
+            "README.md",
+            VALID_README.replace(
+                "## Validation\nRun `python3.14 scripts/validate-repository.py`.",
+                "## Validation\nRun another command.\n\n## Setup\npython3.14 scripts/validate-repository.py",
+            ),
+        )
         result = self.run_checker()
         self.assertEqual(result.returncode, 1)
         self.assertIn("READINESS_PRD_HEADING_MISSING", result.stderr)
@@ -137,7 +171,10 @@ class ReadinessFixtures(unittest.TestCase):
         self.assertIn("INTERNAL_READINESS_ERROR", result.stderr)
 
     def test_fenced_declaration_does_not_count(self) -> None:
-        prd = VALID_PRD.replace("### REQ-001: Deliver value\nThe requirement body and acceptance evidence.", "```markdown\n### REQ-001: Example\n```\n")
+        prd = VALID_PRD.replace(
+            "### REQ-001: Deliver value\nThe requirement body and acceptance evidence.",
+            "```markdown\n### REQ-001: Example\n```\n",
+        )
         self.write("docs/prd.md", prd)
         result = self.run_checker()
         self.assertEqual(result.returncode, 1)
@@ -146,7 +183,10 @@ class ReadinessFixtures(unittest.TestCase):
     def test_hook_is_inspected_without_execution_or_mutation(self) -> None:
         canary = self.root / "canary"
         hook = self.root / "scripts/validate-project.py"
-        hook.write_text(f"#!/usr/bin/env python3\nfrom pathlib import Path\nPath({str(canary)!r}).write_text('executed')\n{HOOK_SENTINEL!r}\n", encoding="utf-8")
+        hook.write_text(
+            f"#!/usr/bin/env python3\nfrom pathlib import Path\nPath({str(canary)!r}).write_text('executed')\n{HOOK_SENTINEL!r}\n",
+            encoding="utf-8",
+        )
         hook.chmod(hook.stat().st_mode | stat.S_IXUSR)
         before = self.snapshot()
         result = self.run_checker()

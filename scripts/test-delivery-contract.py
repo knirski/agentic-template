@@ -20,18 +20,26 @@ def fail(message: str) -> None:
 def main() -> int:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     release = RELEASE.read_text(encoding="utf-8")
-    project_job = workflow.split("  project-validation:\n", 1)[-1].split("\n  nix:\n", 1)[0]
+    project_job = workflow.split("  project-validation:\n", 1)[-1].split(
+        "\n  nix:\n", 1
+    )[0]
     release_job = workflow.split("\n  release:\n", 1)[-1]
     if "name: Project validation" not in workflow:
         fail("project-validation must expose the stable Project validation check name")
-    if "python3 scripts/validate-repository.py" not in workflow:
-        fail("generated mode must invoke python3 scripts/validate-repository.py")
-    if "python3 scripts/test-project-readiness.py" not in workflow:
+    if "python3.14 scripts/validate-repository.py" not in workflow:
+        fail("generated mode must invoke python3.14 scripts/validate-repository.py")
+    if "python3.14 scripts/test-project-readiness.py" not in workflow:
         fail("source mode must run readiness fixtures")
     if "AGENTIC_TEMPLATE_SOURCE_REPOSITORY: knirski/agentic-template" not in workflow:
         fail("source identity constant is missing")
-    if "pull_request:" not in workflow or "workflow_dispatch:" not in workflow or "push:" not in workflow:
-        fail("validation workflow must support ordinary pull_request, push, and manual events")
+    if (
+        "pull_request:" not in workflow
+        or "workflow_dispatch:" not in workflow
+        or "push:" not in workflow
+    ):
+        fail(
+            "validation workflow must support ordinary pull_request, push, and manual events"
+        )
     if "pull_request_target" in workflow:
         fail("project validation must not use pull_request_target")
     if re.search(r"continue-on-error:\s*true", project_job):
@@ -48,7 +56,10 @@ def main() -> int:
         fail("project validation must not override checkout ref")
     if re.search(r"permissions:.*write", project_job, re.S):
         fail("project validation must not have write permissions")
-    if "project-validation" not in release and "project-validation" not in workflow.split("release:", 1)[-1]:
+    if (
+        "project-validation" not in release
+        and "project-validation" not in workflow.split("release:", 1)[-1]
+    ):
         # The reusable release workflow is gated by the caller's release needs.
         fail("release graph must depend on project-validation")
     if "needs: [delivery-contract, project-validation, nix]" not in workflow:
@@ -63,5 +74,8 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except (AssertionError, OSError) as exc:
-        print(f"DELIVERY_CONTRACT_ERROR: {exc}; next: fix the active workflow contract", file=sys.stderr)
+        print(
+            f"DELIVERY_CONTRACT_ERROR: {exc}; next: fix the active workflow contract",
+            file=sys.stderr,
+        )
         raise SystemExit(1)

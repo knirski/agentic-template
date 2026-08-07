@@ -26,7 +26,10 @@ def main(argv: list[str]) -> int:
             command = [sys.executable, str(script)] if use_python else [str(script)]
             result = subprocess.run(command, cwd=ROOT, check=False)
         except OSError as exc:
-            print(f"REPOSITORY_VALIDATION_INTERNAL_ERROR: {script.relative_to(ROOT)}: {exc}; next: restore the validation script", file=sys.stderr)
+            print(
+                f"REPOSITORY_VALIDATION_INTERNAL_ERROR: {script.relative_to(ROOT)}: {exc}; next: restore the validation script",
+                file=sys.stderr,
+            )
             return 2
         if result.returncode:
             return result.returncode

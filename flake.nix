@@ -26,7 +26,7 @@
             git
             nixfmt
             statix
-            python3
+            python314
             uv
           ];
 
@@ -35,6 +35,7 @@
             echo "  nix flake check     run Nix and repository checks"
             echo "  nix fmt             format Nix files"
             echo "  cachix push ...     publish a built closure (CACHIX_AUTH_TOKEN required)"
+            echo "  uv sync --all-groups     install locked source dependencies"
             echo "  uv tool install copier   install the template updater"
           '';
         };
@@ -95,13 +96,13 @@
               '';
 
           repository-validation =
-            pkgs.runCommand "agentic-template-repository-validation" { nativeBuildInputs = [ pkgs.python3 ]; }
+            pkgs.runCommand "agentic-template-repository-validation" { nativeBuildInputs = [ pkgs.python314 ]; }
               ''
                 cd ${source}
-                if [ -f scripts/test-project-readiness.py ]; then python3 scripts/test-project-readiness.py; fi
-                if [ -f scripts/test-repository-validation.py ]; then python3 scripts/test-repository-validation.py; fi
-                if [ -f scripts/test-github-template-readiness.py ]; then python3 scripts/test-github-template-readiness.py; fi
-                if [ -f scripts/test-delivery-contract.py ]; then python3 scripts/test-delivery-contract.py; fi
+                if [ -f scripts/test-project-readiness.py ]; then python3.14 scripts/test-project-readiness.py; fi
+                if [ -f scripts/test-repository-validation.py ]; then python3.14 scripts/test-repository-validation.py; fi
+                if [ -f scripts/test-github-template-readiness.py ]; then python3.14 scripts/test-github-template-readiness.py; fi
+                if [ -f scripts/test-delivery-contract.py ]; then python3.14 scripts/test-delivery-contract.py; fi
                 touch $out
               '';
         }

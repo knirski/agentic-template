@@ -2,6 +2,9 @@ answers_file: .copier-answers.yml
 
 _exclude:
   - .github/workflows/copier-smoke.yml
+  - .python-version
+  - pyproject.toml
+  - uv.lock
   - scripts/test-copier.sh
   - scripts/test-copier.py
   - tools

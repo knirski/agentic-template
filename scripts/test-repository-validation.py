@@ -28,14 +28,27 @@ class AggregateFixtures(unittest.TestCase):
 
     def write_stage(self, name: str, status: int, marker: str) -> None:
         path = self.root / "scripts" / name
-        path.write_text(f"#!{sys.executable}\nfrom pathlib import Path\nPath({str(self.root / marker)!r}).write_text('ran')\nraise SystemExit({status})\n", encoding="utf-8")
+        path.write_text(
+            f"#!{sys.executable}\nfrom pathlib import Path\nPath({str(self.root / marker)!r}).write_text('ran')\nraise SystemExit({status})\n",
+            encoding="utf-8",
+        )
         path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
     def run_command(self, *args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(["python3", "scripts/validate-repository.py", *args], cwd=self.root, text=True, capture_output=True, check=False)
+        return subprocess.run(
+            ["python3", "scripts/validate-repository.py", *args],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
 
     def test_stages_run_in_order_and_success_propagates(self) -> None:
-        for name, marker in (("validate-template.py", "template"), ("check-project-readiness.py", "readiness"), ("validate-project.py", "project")):
+        for name, marker in (
+            ("validate-template.py", "template"),
+            ("check-project-readiness.py", "readiness"),
+            ("validate-project.py", "project"),
+        ):
             self.write_stage(name, 0, marker)
         result = self.run_command()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -44,7 +57,9 @@ class AggregateFixtures(unittest.TestCase):
         self.assertTrue((self.root / "readiness").exists())
         self.assertTrue((self.root / "project").exists())
 
-    def test_first_failure_status_is_preserved_and_later_stages_do_not_run(self) -> None:
+    def test_first_failure_status_is_preserved_and_later_stages_do_not_run(
+        self,
+    ) -> None:
         self.write_stage("validate-template.py", 0, "template")
         self.write_stage("check-project-readiness.py", 7, "readiness")
         self.write_stage("validate-project.py", 0, "project")
