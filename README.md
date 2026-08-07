@@ -44,8 +44,9 @@ precede SHOULD_FIX items.
 
 ## Setup
 
-Install Python 3.14+ and Git. Copier is optional for one-time GitHub snapshots and required only
-when the project needs update lineage.
+Install Python 3.14+, Git, and uv. uv is a developer prerequisite for the repository's source
+checks and locked dependency environment. Copier is optional for one-time GitHub snapshots and
+required only when the project needs update lineage.
 
 ## Validation
 
