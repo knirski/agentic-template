@@ -166,6 +166,18 @@ The adopter's explicit bootstrap choice for the generated project's root licensi
 separate from the preserved provenance and license obligations of bundled template artifacts.
 _Avoid_: Template source license, bundled skill provenance, implicit license inheritance
 
+**Seed-once legal/provenance output**:
+Root licence, notice, and preserved bundled-skill licence material initialized by bootstrap and then
+owned by the adopter. Bootstrap records the supplied licence input identity when applicable but does
+not rewrite legal text during reconciliation or infer its legal effect.
+_Avoid_: Bootstrap-managed artifact, generated-lifecycle source, implicit licence inheritance
+
+**Generated-lifecycle source**:
+The fingerprinted template-owned compiler inputs, policy, validators, capability definitions, and
+durable adopter documentation that Copier may update. Bootstrap reconciles derived managed output
+from this source only for Copier-generated projects.
+_Avoid_: Bootstrap-managed output, seed-once adopter output, Copier answers
+
 **Durable adopter documentation**:
 Template-maintained operational guidance that remains useful after the generated project's README
 and product requirements document become adopter-owned. It explains delivery, updates,
