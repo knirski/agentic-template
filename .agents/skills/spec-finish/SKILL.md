@@ -19,9 +19,9 @@ Before starting, verify:
 2. Working directory has no unresolved staged or unstaged changes
 3. Tests pass
 
-“Complete” means every inline task has `execution.tasks.<id>.status: "completed"` with evidence,
-or every task reference in tracker mode points to a completed tracker record. If execution mode,
-state, or references are incomplete, return to `spec-implement` before finishing.
+“Complete” means every task's inline execution status is `completed` with evidence, or every
+tracker-mode task points to a completed tracker record. If any task's execution mode, state, or
+reference is incomplete, return to `spec-implement` before finishing.
 
 If not complete, go back to `spec-implement`.
 

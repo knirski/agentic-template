@@ -90,11 +90,11 @@ For each task, find the next unblocked task directly from `plan.json`. When trac
 exist, use `docs/agents/issue-tracker.md` to keep their execution state in sync; tracker state
 never overrides the plan's dependency graph.
 
-When `execution.mode` is `inline`, before starting a task set its
-`execution.tasks.<id>.status` to `in_progress`. After focused validation passes, set it to
-`completed` and record completion date, commit(s), and concrete evidence. If blocked, set it to
-`blocked` and record the blocker. When `execution.mode` is `tracker`, update the referenced tracker
-issue instead; every task must have a `task_refs` entry. Never mix the two modes.
+When a task's `execution.mode` is `inline`, before starting it set its `execution.status` to
+`in_progress`. After focused validation passes, set it to `completed` and record completion date,
+commit(s), and concrete evidence. If blocked, set it to `blocked` and record the blocker. When a
+task's mode is `tracker`, update its referenced issue instead; every task must have an execution
+reference. Never mix modes within a task.
 
 When a tracker exists, mark it in progress according to `docs/agents/issue-tracker.md`.
 
@@ -131,8 +131,8 @@ approval does not bypass its approval gate. Comprehensive **code-review** happen
 When a tracker exists, mark the task complete according to
 `docs/agents/issue-tracker.md`.
 
-When `execution.mode` is `inline`, the `plan.json` execution entry is required; do not replace it
-with an informal progress note or infer completion from git history. When it is `tracker`, keep the
+When a task uses inline mode, its `plan.json` execution entry is required; do not replace it with
+an informal progress note or infer completion from git history. Tracker-mode tasks must keep their
 issue references complete and use the tracker as the live status authority.
 
 ### Referencing existing code
@@ -241,8 +241,8 @@ When all planned work is done, verify and present it.
 
 1. **Run full test suite** — all tests must pass, not just the new ones
 2. **Run type check / lint** — clean output, no new warnings
-3. **Verify completion** — every inline task is `completed`, or every referenced tracker issue is
-   complete; close every tracker entry when tracking is used
+3. **Verify completion** — every task's inline execution status is `completed`, or every referenced
+   tracker issue is complete; close every tracker entry when tracking is used
 4. **Diff review** — review the full diff against the intended base branch. Look for:
    - Files that changed but shouldn't have
    - Debug code or temporary hacks left behind

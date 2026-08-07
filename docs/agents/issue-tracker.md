@@ -6,8 +6,9 @@ GitHub Issues is the default tracker for user-visible work, defects, and follow-
 
 - `docs/prd.md` owns product scope and acceptance criteria.
 - GitHub Issues own backlog intent, discussion, and cross-PR status.
-- For Spec-backed work, `plan.json` owns task decomposition and dependencies. Its `execution`
-  field either stores inline task state or points each task to the configured tracker issue.
+- For Spec-backed work, `plan.json` owns task decomposition and dependencies. Each task's
+  `execution` field either stores inline task state or points that task to the configured tracker
+  issue.
 - Pull requests own the reviewable implementation and validation evidence.
 
 Do not duplicate a Spec-backed task graph in issue checklists. Link the issue to the spec and PR, and
