@@ -83,6 +83,14 @@ def required_contract_failures(
     return tuple(failures)
 
 
+def validate_contract(
+    root: Path, skill_texts: tuple[tuple[Path, str], ...]
+) -> tuple[str, ...]:
+    """Pure policy result for the observed template contract."""
+    failures = required_contract_failures(root, skill_texts)
+    return failures
+
+
 def main(argv: list[str]) -> int:
     if argv:
         print("usage: scripts/validate_template.py", file=sys.stderr)

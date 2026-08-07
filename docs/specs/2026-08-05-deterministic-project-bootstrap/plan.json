@@ -146,7 +146,7 @@
         },
         {
           "id": "T5",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {"mode": "inline", "status": "completed", "completion": {"completed_at": "2026-08-07", "evidence": ["uv run pytest -q (69 passed)", "uv run ruff check (clean)", "uv run ruff format --check (37 files already formatted)", "uv run ty check (clean)", "python3 scripts/validate_repository.py (expected source-scaffold exit 1; template contract passed and readiness findings were emitted in canonical order)", "T5 pure readiness, contract, validation-program, and presentation tests added"]}},
           "name": "Implement readiness, compatibility definitions, and aggregate validation core",
           "depends_on": [
             "T4",

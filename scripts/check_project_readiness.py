@@ -8,6 +8,26 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+
+@dataclass(frozen=True)
+class Finding:
+    code: str
+    path: Path
+    message: str
+    next_action: str
+
+    def identity(self) -> tuple[str, str, str, str]:
+        return (self.code, self.path.as_posix(), self.path.as_posix(), self.code)
+
+    @property
+    def severity(self) -> str:
+        return "blocking"
+
+    def render(self, root: Path | None = None) -> str:
+        root = root or Path.cwd()
+        return f"{self.code}: {self.path.relative_to(root)}: {self.message}; next: {self.next_action}"
+
+
 ROOT = Path(__file__).resolve().parent.parent
 PRD = ROOT / "docs" / "prd.md"
 README = ROOT / "README.md"
@@ -25,20 +45,6 @@ REQUIRED_HEADINGS = (
     "Release criteria",
     "Open questions",
 )
-
-
-@dataclass(frozen=True)
-class Finding:
-    code: str
-    path: Path
-    message: str
-    next_action: str
-
-    def render(self, root: Path = ROOT) -> str:
-        return (
-            f"{self.code}: {self.path.relative_to(root)}: {self.message}; "
-            f"next: {self.next_action}"
-        )
 
 
 @dataclass(frozen=True)
@@ -377,13 +383,40 @@ def evaluate_readiness(
     if readme is not None:
         findings.extend(evaluate_readme(*readme))
     findings.extend(evaluate_hook(hook))
-    return tuple(findings)
+    return tuple(sorted(findings, key=lambda finding: finding.identity()))
+
+
+def mechanical_readiness(findings: tuple[Finding, ...]) -> object:
+    """Return the shared structured result used by bootstrap gating."""
+    from scripts.bootstrap.readiness import (
+        Finding as CoreFinding,
+    )
+    from scripts.bootstrap.readiness import (
+        MechanicalReadinessResult,
+        SubjectPath,
+    )
+
+    return MechanicalReadinessResult(
+        1,
+        tuple(
+            CoreFinding(
+                code=finding.code,
+                subject_at=SubjectPath(finding.path.as_posix()),
+                subject=finding.path.as_posix(),
+                rule=finding.code,
+                severity="blocking",
+                message=finding.message,
+                next_action=finding.next_action,
+            )
+            for finding in findings
+        ),
+    )
 
 
 def exit_code(findings: tuple[Finding, ...]) -> int:
     if any(finding.code == "INTERNAL_READINESS_ERROR" for finding in findings):
         return 2
-    return 1 if findings else 0
+    return 1 if any(finding.severity == "blocking" for finding in findings) else 0
 
 
 def read_text(path: Path, findings: list[Finding]) -> str | None:

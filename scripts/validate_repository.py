@@ -5,7 +5,39 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+
+
+@dataclass(frozen=True)
+class StagePassed:
+    exit_code: int = 0
+
+
+@dataclass(frozen=True)
+class _ValidationState:
+    next_stage: str | None
+
+
+@dataclass(frozen=True)
+class ValidationProgram:
+    stages: tuple[str, ...]
+
+    def start(self) -> _ValidationState:
+        return _ValidationState(self.stages[0] if self.stages else None)
+
+    def advance(
+        self, state: _ValidationState, _observation: StagePassed
+    ) -> _ValidationState:
+        index = (
+            self.stages.index(state.next_stage) + 1
+            if state.next_stage
+            else len(self.stages)
+        )
+        return _ValidationState(
+            self.stages[index] if index < len(self.stages) else None
+        )
+
 
 ROOT = Path(__file__).resolve().parent.parent
 STAGES = (
@@ -23,10 +55,16 @@ def stage_failed(returncode: int) -> bool:
     return returncode != 0
 
 
+def validation_program() -> ValidationProgram:
+    return ValidationProgram(tuple(label for label, _, _ in STAGES))
+
+
 def main(argv: list[str]) -> int:
     if argv:
         print("usage: scripts/validate_repository.py", file=sys.stderr)
         return 2
+    program = validation_program()
+    state = program.start()
     for label, script, use_python in STAGES:
         print(f"==> {label}", flush=True)
         try:
@@ -40,6 +78,9 @@ def main(argv: list[str]) -> int:
             return 2
         if stage_failed(result.returncode):
             return result.returncode
+        state = program.advance(state, StagePassed())
+        if state.next_stage is None:
+            break
     return 0
 
 
