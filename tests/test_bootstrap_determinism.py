@@ -75,6 +75,16 @@ class IdentityTests(unittest.TestCase):
             actual, tree_hash(b"tree", ((RepoPath("a"), b"1", PosixMode.EXECUTABLE),))
         )
 
+    def test_tree_hash_rejects_duplicate_paths(self) -> None:
+        with self.assertRaises(ValueError):
+            tree_hash(
+                b"tree",
+                (
+                    (RepoPath("a"), b"1", PosixMode.FILE),
+                    (RepoPath("a"), b"2", PosixMode.FILE),
+                ),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
