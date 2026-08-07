@@ -24,6 +24,26 @@ reviewable conventional commits. Creating a PR and merging remain explicit user-
 Generated projects use `python3 scripts/validate_repository.py` as their canonical validation
 boundary. The template source uses the readiness and generation-path fixture suites.
 
+## Python implementation guidance
+
+- Use the repository's modern Python toolchain: manage dependencies with `uv`, format and lint
+  with Ruff, type-check with `ty`, and run tests through `uv run`.
+- Prefer current Python features supported by the repository's `requires-python` floor, explicit
+  type annotations, small functions, immutable values, and transformations that are easy to test.
+- Where practical, structure Python commands as a functional core with an imperative shell: keep
+  policy, parsing, validation, and state transitions pure and deterministic; keep filesystem,
+  process, environment, clock, network, and terminal effects at thin, explicit boundaries.
+- Prefer explicit typed outcomes and returned diagnostics over hidden mutation, ambient global
+  state, or exceptions used for ordinary control flow. Keep command entrypoints responsible for
+  argument parsing, effect orchestration, presentation, and exit codes.
+- Apply these principles pragmatically, not religiously. Do not add wrappers, abstractions,
+  functional-programming ceremony, or artificial immutability when a direct standard-library
+  implementation is clearer, safer, or materially simpler. Preserve existing contracts and favor
+  the smallest design that makes behavior deterministic and testable.
+- For standalone dependency-bearing scripts, use PEP 723 inline metadata. For project code, keep
+  dependencies in `pyproject.toml` and `uv.lock`, using `uv add`/`uv remove` rather than manual
+  environment or requirements-file management.
+
 Use `spec-finish` for completion of Spec-backed Plans. It coordinates the post-implementation
 workflow, while `verification-before-completion` remains the universal evidence gate for completion
 claims, commits, and PRs, including work that does not use `spec-finish`.

@@ -12,14 +12,22 @@ import sys
 SENTINEL = "agentic-template:unconfigured:validate-project"
 
 
+def has_unexpected_arguments(argv: list[str]) -> bool:
+    return bool(argv)
+
+
+def sentinel_message() -> str:
+    return (
+        f"{SENTINEL}: replace this hook with the project's formatting, linting, "
+        "tests, and build checks"
+    )
+
+
 def main(argv: list[str]) -> int:
-    if argv:
+    if has_unexpected_arguments(argv):
         print("usage: scripts/validate_project.py", file=sys.stderr)
         return 2
-    print(
-        f"{SENTINEL}: replace this hook with the project's formatting, linting, tests, and build checks",
-        file=sys.stderr,
-    )
+    print(sentinel_message(), file=sys.stderr)
     return 1
 
 
