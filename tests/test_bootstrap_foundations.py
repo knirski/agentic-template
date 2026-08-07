@@ -56,7 +56,9 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(result, Err(("first", "last")))
 
     @given(st.lists(st.integers(), max_size=20))
-    def test_accumulate_preserves_arbitrary_success_order(self, values: list[int]) -> None:
+    def test_accumulate_preserves_arbitrary_success_order(
+        self, values: list[int]
+    ) -> None:
         result = accumulate(tuple(Ok(value) for value in values))
         self.assertEqual(result, Ok(tuple(values)))
 
