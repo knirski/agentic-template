@@ -2,29 +2,11 @@
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 import unittest
 from pathlib import Path
-from types import ModuleType
 
-ROOT = Path(__file__).resolve().parent.parent
-
-
-def load_script(name: str) -> ModuleType:
-    path = ROOT / "scripts" / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise AssertionError(f"cannot load {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-readiness = load_script("check_project_readiness")
-repository = load_script("validate_repository")
-
+from scripts import check_project_readiness as readiness
+from scripts import validate_repository as repository
 
 VALID_PRD = """# Product
 

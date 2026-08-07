@@ -118,6 +118,11 @@ uv run ruff format --check
 uv run ty check
 ```
 
+Focused mutation testing runs against the deterministic bootstrap and validation cores. It is
+available locally with `uv run mutmut run` and runs weekly or on demand through the separate
+Mutation testing GitHub Actions workflow; it is intentionally not part of the fast required PR
+checks.
+
 GitHub Actions workflows are checked independently with actionlint. Nix is not required for local
 development, CI, release gating, or template generation, but remains available as an optional
 maintainer toolchain for users who prefer it:
