@@ -103,6 +103,7 @@
                 if [ -f tests/test_repository_validation.py ]; then python3.14 tests/test_repository_validation.py; fi
                 if [ -f tests/test_github_template_readiness.py ]; then python3.14 tests/test_github_template_readiness.py; fi
                 if [ -f tests/test_delivery_contract.py ]; then python3.14 tests/test_delivery_contract.py; fi
+                if [ -f tests/test_template_contract.py ]; then python3.14 tests/test_template_contract.py; fi
                 touch $out
               '';
         }

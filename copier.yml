@@ -4,7 +4,6 @@ _exclude:
   - .github/workflows/copier-smoke.yml
   - .python-version
   - pyproject.toml
-  - scripts/validate-template.sh
   - tests
   - uv.lock
   - tools
