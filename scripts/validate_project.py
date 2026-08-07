@@ -14,9 +14,12 @@ SENTINEL = "agentic-template:unconfigured:validate-project"
 
 def main(argv: list[str]) -> int:
     if argv:
-        print("usage: scripts/validate-project.py", file=sys.stderr)
+        print("usage: scripts/validate_project.py", file=sys.stderr)
         return 2
-    print(f"{SENTINEL}: replace this hook with the project's formatting, linting, tests, and build checks", file=sys.stderr)
+    print(
+        f"{SENTINEL}: replace this hook with the project's formatting, linting, tests, and build checks",
+        file=sys.stderr,
+    )
     return 1
 
 

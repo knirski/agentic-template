@@ -13,10 +13,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 REQUIRED_GENERATED = {
-    "scripts/check-project-readiness.py",
-    "scripts/validate-project.py",
-    "scripts/validate-repository.py",
-    "scripts/validate-template.py",
+    "scripts/check_project_readiness.py",
+    "scripts/validate_project.py",
+    "scripts/validate_repository.py",
+    "scripts/validate_template.py",
 }
 PRD = """# Product
 ## Problem
@@ -41,7 +41,7 @@ README = """# Product
 ## Setup
 Setup.
 ## Validation
-Run `python3 scripts/validate-repository.py`.
+Run `python3 scripts/validate_repository.py`.
 """
 
 
@@ -51,11 +51,15 @@ class GitHubSnapshot(unittest.TestCase):
         self.project = Path(self.tmp.name) / "project"
         if shutil.which("git"):
             self.project.mkdir()
-            tracked = subprocess.run(
-                ["git", "-C", str(ROOT), "ls-files", "-z"],
-                check=True,
-                capture_output=True,
-            ).stdout.decode().split("\0")
+            tracked = (
+                subprocess.run(
+                    ["git", "-C", str(ROOT), "ls-files", "-z"],
+                    check=True,
+                    capture_output=True,
+                )
+                .stdout.decode()
+                .split("\0")
+            )
             manifest = set(filter(None, tracked)) | REQUIRED_GENERATED
             for relative in sorted(manifest):
                 source = ROOT / relative
@@ -64,11 +68,17 @@ class GitHubSnapshot(unittest.TestCase):
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(source, target)
         else:
-            shutil.copytree(ROOT, self.project, ignore=shutil.ignore_patterns(".git", ".direnv", "__pycache__", "result"))
+            shutil.copytree(
+                ROOT,
+                self.project,
+                ignore=shutil.ignore_patterns(
+                    ".git", ".direnv", "__pycache__", "result"
+                ),
+            )
         self.assertFalse((self.project / ".git").exists())
         self.assertFalse((self.project / ".direnv").exists())
         self.assertFalse((self.project / "untracked-canary.txt").exists())
-        for relative in ("docs/prd.md", "README.md", "scripts/validate-project.py"):
+        for relative in ("docs/prd.md", "README.md", "scripts/validate_project.py"):
             path = self.project / relative
             path.chmod(path.stat().st_mode | 0o600)
 
@@ -76,10 +86,22 @@ class GitHubSnapshot(unittest.TestCase):
         self.tmp.cleanup()
 
     def run_checker(self) -> subprocess.CompletedProcess[str]:
-        return subprocess.run([sys.executable, "scripts/check-project-readiness.py"], cwd=self.project, text=True, capture_output=True, check=False)
+        return subprocess.run(
+            [sys.executable, "scripts/check_project_readiness.py"],
+            cwd=self.project,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
 
     def run_validator(self) -> subprocess.CompletedProcess[str]:
-        return subprocess.run([sys.executable, "scripts/validate-repository.py"], cwd=self.project, text=True, capture_output=True, check=False)
+        return subprocess.run(
+            [sys.executable, "scripts/validate_repository.py"],
+            cwd=self.project,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
 
     def test_untouched_snapshot_fails_then_minimal_configuration_passes(self) -> None:
         untouched = self.run_checker()
@@ -88,7 +110,7 @@ class GitHubSnapshot(unittest.TestCase):
         self.assertIn("READINESS_README_BOILERPLATE", untouched.stderr)
         (self.project / "docs/prd.md").write_text(PRD, encoding="utf-8")
         (self.project / "README.md").write_text(README, encoding="utf-8")
-        hook = self.project / "scripts/validate-project.py"
+        hook = self.project / "scripts/validate_project.py"
         hook.write_text(f"#!{sys.executable}\nprint('ok')\n", encoding="utf-8")
         hook.chmod(hook.stat().st_mode | 0o100)
         configured = self.run_validator()

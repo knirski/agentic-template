@@ -53,6 +53,9 @@ Owner decisions, recorded so review does not reopen them.
 - An installation may survive adopter-hook failure, but the command then exits nonzero and the project
   is not locally ready.
 - All template-owned Python scripts share the functional-core/imperative-shell boundary defined here.
+- Bash scripts and ShellCheck are not part of the repository or generated-project toolchain. Repository
+  automation uses Python entry points or native action steps; “imperative shell” below names the
+  effectful architectural boundary and does not prescribe a shell language.
 - V1 has no legacy generated-project population. The `.py` hook path, compatibility releases,
   migration fixtures, and adoption lifecycle are absent rather than supported conditionally.
 
@@ -150,7 +153,7 @@ permissions, and allowed declared source-only steps.
 | Recomputing every derived field before trusting the manifest made `TemplateChanged` and render-contract violation unreachable, and shadowed pending-journal detection | The manifest has no derived section; validity is parse, schema, and checksum only; journal detection precedes manifest trust |
 | `RenderInput` carried tree hashes and identities, so `render(RenderInput)` could not produce bytes without ambient reads | `render(RenderInput, BlobMap)` over decoded definitions and fragment bodies |
 | Primary state could not reconstruct `RenderInput`: no per-slot digests, no licensing digest, and `retained_paths` absent from the render input | All three are primary state, and `retained_paths` enters `RenderInput` |
-| `source-ci-allowlist.json` was fingerprinted and validated by `validate-template.py` while also being excluded by Copier and deleted by snapshot install | Removed from the fingerprint and from generated-project validation; source-only fixture input |
+| `source-ci-allowlist.json` was fingerprinted and validated by `validate_template.py` while also being excluded by Copier and deleted by snapshot install | Removed from the fingerprint and from generated-project validation; source-only fixture input |
 | The journal entered COMMITTED before gating, so a crash preserved ungated output and an interrupted rollback completed forward | Durable `PLANNED`/`MUTATING`/`RESTORED`/`SEALED` phases; gating inside `MUTATING`; `SEALED` only after gating passes |
 | `O_CREAT \| O_EXCL` plus `flock` cannot detect an abandoned lock, and unlink-and-recreate splits lock domains | A never-unlinked lock inode opened without `O_EXCL`, then `flock(LOCK_EX \| LOCK_NB)` |
 | Journal phase updates had no atomicity requirement, permitting torn JSON | Temp-write, fsync, rename, fsync parent |
@@ -244,6 +247,10 @@ permissions, and allowed declared source-only steps.
 
 | Python support range | Python 3.14 is the minimum and primary validation lane; source and generated metadata use `requires-python = ">=3.14"`, so later Python 3.x releases remain supported unless a future compatibility decision narrows the range |
 
+### Correction in revision 13
+
+| Nix was treated as a global generated-project CI and release prerequisite | Nix is maintainer-only source tooling by default. The generated portable baseline uses Python 3.14 and uv without requiring Nix, flake files, Cachix, or a Nix CI job. Only the explicitly selected `nix` capability may add generated Nix artifacts and CI contributions; the `cachix-publish` capability depends on it. Maintainer-only Nix workflows and source uv metadata are excluded from generated projects. |
+
 ### Unchanged load-bearing decisions
 
 Snapshot profiles and `InitialAnswers` freeze at creation; `CapabilityAdditions` records later IDs and
@@ -260,8 +267,9 @@ compiler with a dependency-light functional core and uv-managed project dependen
 
 The current template detects incomplete generated-project setup but does not perform it. A generated
 repository inherits a fixed integration set and requires manual replacement of the README, PRD, and
-validation hook. CI and the release graph assume Nix, Cachix, semantic-release, and Gemini review
-whether or not an adopter wants them. This yields five problems: no reviewable transition from
+validation hook. The maintainer CI and release graph currently assume Nix, Cachix, semantic-release,
+and Gemini review whether or not an adopter wants them, and those source-maintainer assumptions must
+not leak into generated projects. This yields five problems: no reviewable transition from
 scaffold to ready project; optional integrations coupled to the source tree; two generation paths
 drifting into separate setup implementations; no strict file-ownership boundary; and durable
 operational guidance lost to README customization.
@@ -1167,7 +1175,7 @@ normalized setting for capabilities first introduced by the operation, and names
 
 ### Structured readiness result
 
-`check-project-readiness.py` and the engine share one contract, so gating comparison is structural
+`check_project_readiness.py` and the engine share one contract, so gating comparison is structural
 rather than textual.
 
 ```text
@@ -1213,7 +1221,7 @@ Three comparisons, each proving one thing, evaluated in order:
 1. **Artifact verification.** Every planned file's observed raw installed bytes, normalized identity,
    kind, and install mode must equal the plan's new values; every planned directory operation must have
    its declared result. No exemption applies.
-2. **Template-contract evaluation must succeed.** The shell does not spawn `validate-template.py`
+2. **Template-contract evaluation must succeed.** The shell does not spawn `validate_template.py`
    inside the transaction. It observes the post-install inputs and calls the same pure rules used by
    that CLI. No exemptions.
 3. **Readiness comparison**, by operation:
@@ -1263,7 +1271,7 @@ ReadinessRuleDefinition =
 ```
 
 `PredicateKind` is a closed union implemented by total pure evaluators. Tightening a predicate requires
-changing its canonical definition. `validate-template.py` compares complete canonical definitions with
+changing its canonical definition. `validate_template.py` compares complete canonical definitions with
 the frozen schema-v1 baseline and rejects a new or changed blocking definition over adopter-owned state,
 an informational-to-blocking transition, a new required seed-once path, or a blocking rule whose
 declared satisfier is unavailable to every legal operation.
@@ -1404,7 +1412,7 @@ Within v1 an existing capability ID may update artifacts and documentation but m
 remove a dependency, remove a setting, change a setting's type or meaning, make an optional setting
 required, change external-prerequisite semantics incompatibly, or transfer ownership of an existing
 path. Adding an optional setting with a deterministic default is compatible. A frozen fixture records
-the v1 surface; `validate-template.py` compares the live catalog against it. A closure change under a
+the v1 surface; `validate_template.py` compares the live catalog against it. A closure change under a
 nominally compatible catalog surfaces as `CatalogIncompatible`.
 
 `pr-agent-gemini` encodes the backend in the ID, because changing a setting is reconfiguration, which
@@ -1413,7 +1421,7 @@ v1 does not support; a separate ID per backend keeps "add a new capability" avai
 | Capability | Principal managed output | External activation |
 | --- | --- | --- |
 | `semantic-release` | `.releaserc`, reusable release workflow, gated release job contribution | None beyond normal token permissions |
-| `nix` | `flake.nix`, `flake.lock`, Nix setup action, Nix CI check contribution | None |
+| `nix` | `flake.nix`, `flake.lock`, Nix setup action, Nix CI check contribution | None; absent from the portable generated baseline |
 | `cachix-publish` | Cachix configuration and publish contributions; depends on `nix`; requires a non-secret cache-name setting | Existing cache plus `CACHIX_AUTH_TOKEN`; Cachix work skips when unavailable while Nix continues uncached |
 | `pr-agent-gemini` | `.pr_agent.toml`, review and trusted-command workflows, activation preflights, setup documentation | `GEMINI_API_KEY` |
 
@@ -1911,7 +1919,7 @@ This is the only value called `ProjectReadinessOutcome`. The transaction gate co
 `MechanicalReadinessResult`; an empty mechanical finding set never implies that the hook ran. Hook
 evidence is **point-in-time evidence**: never written to the manifest, never cached, never replayed.
 `status` does not execute it and claims no outcome, reporting mechanical readiness and then
-`adopter hook: not evaluated; run python3 scripts/validate-repository.py`.
+`adopter hook: not evaluated; run python3 scripts/validate_repository.py`.
 
 ## CLI contract
 
@@ -2105,7 +2113,8 @@ recovery stop at the first failure where continuing could mutate state or destro
 - Any exit-1 outcome after installation states that files were installed and the project is not yet
   locally ready.
 - The hook is installed at `scripts/validate-project` with mode `0755`.
-- The result does not depend on Nix unless `nix` is selected.
+- The generated portable result does not depend on Nix; Nix artifacts and CI gates appear only when
+  the `nix` capability is selected. Maintainer source validation may use Nix independently.
 - Every decision names a next action reachable for the generation path.
 
 ### US-3: Select an intent-based snapshot profile
@@ -2119,7 +2128,8 @@ recovery stop at the first failure where continuing could mutate state or destro
 ### US-4: Materialize only the effective capabilities
 
 - Each profile selects exactly its documented set; `cachix-publish` resolves `nix`.
-- Unselected capability artifacts and CI jobs are absent.
+- Unselected capability artifacts and CI jobs are absent; in particular, portable generated projects
+  contain no Nix job, Nix release dependency, flake, or Cachix contribution.
 - Cycles, output collisions, unknown settings, and undeclared ownership fail before mutation.
 
 ### US-5: Preserve product, licensing, and provenance ownership
@@ -2193,7 +2203,7 @@ recovery stop at the first failure where continuing could mutate state or destro
 ### US-11: Extend project validation without editing managed CI
 
 - Bootstrap seeds `.github/workflows/project-validation.yml`, then treats it as adopter-owned.
-- Its initial form exposes `workflow_call` and runs `python3 scripts/validate-repository.py`.
+- Its initial form exposes `workflow_call` and runs `python3 scripts/validate_repository.py`.
 - Managed CI calls it as a stable `Project validation` job, passing no secrets, granting
   `contents: read`, and waiting for the complete called workflow.
 - Selected release automation depends on it and on all selected managed checks.
@@ -2267,7 +2277,7 @@ recovery stop at the first failure where continuing could mutate state or destro
 Managed CI calls `.github/workflows/project-validation.yml` as a stable `Project validation` job,
 declaring `contents: read`, passing no named or inherited secrets, and using no privileged environment.
 The seeded adopter workflow declares `on.workflow_call`, checks out without persisted credentials, runs
-on the supported GitHub-hosted runner, invokes `python3 scripts/validate-repository.py`, and uses no
+on the supported GitHub-hosted runner, invokes `python3 scripts/validate_repository.py`, and uses no
 secret and no write-capable permission.
 
 Adopters may add jobs, matrices, and toolchain setup inside it. GitHub constrains reusable-workflow
@@ -2367,13 +2377,13 @@ in every location; timestamps and sexagesimals disabled. `on: push`, `on: [push]
 and is rejected rather than treated as `push`. Parser fixtures pin every YAML 1.1/1.2 edge named here.
 `actionlint` continues to lint the source and
 every generated workflow fixture. No claim is made that a standard-library checker can generally parse
-Actions YAML; `check-project-readiness.py`'s checks remain deliberately bounded — presence, recognizable
+Actions YAML; `check_project_readiness.py`'s checks remain deliberately bounded — presence, recognizable
 `workflow_call`, canonical command, absence of secret passing and privileged environment declarations,
 and the managed caller's exact hash — and are documented as bounded rather than semantic.
 
 ## Validation boundaries
 
-### `scripts/validate-template.py`
+### `scripts/validate_template.py`
 
 Its shell observes the lifecycle-source and declared ownership paths; its pure decoder and rules
 validate reusable machinery without assuming a bootstrapped instance: bundle, addition, plan, and manifest
@@ -2387,7 +2397,7 @@ never executes the adopter hook.
 It does **not** validate source-only inputs. Revision 4 required it to validate the source-CI allowlist,
 a file no generated project retains.
 
-### `scripts/check-project-readiness.py`
+### `scripts/check_project_readiness.py`
 
 Its shell reads only the readiness observation specification; its pure core emits a
 `MechanicalReadinessResult`.
@@ -2403,12 +2413,12 @@ A source mismatch is reported as "reconcile required" on the Copier path. On a s
 exact changed paths and either a verified baseline-commit restore or regeneration. A managed inventory
 mismatch is drift, with `restore` as the next action.
 
-### `scripts/validate-project` and `scripts/validate-repository.py`
+### `scripts/validate-project` and `scripts/validate_repository.py`
 
 `scripts/validate-project` is the canonical adopter executable, invoked directly. Native Windows
 execution is not a v1 guarantee.
 
-`scripts/validate-repository.py` remains the canonical ordered boundary: template contract, project
+`scripts/validate_repository.py` remains the canonical ordered boundary: template contract, project
 readiness, adopter project validation. A pure `ValidationProgram` decides the next stage from typed
 `StageObservation` values; the shell only launches the selected executable and captures its result.
 Stages 1 and 2 expose the same pure rules used by bootstrap gating; stage 3 is adopter-owned, and its

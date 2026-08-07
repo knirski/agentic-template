@@ -66,7 +66,7 @@ Acceptance criteria:
   blocks does not count.
 - `README.md` rejects the retained marker, template title, and known introductory boilerplate.
 - The README contains exactly one non-template level-one project title plus non-empty `## Setup` and
-  `## Validation` sections. The Validation section names `scripts/validate-repository.py`.
+  `## Validation` sections. The Validation section names `scripts/validate_repository.py`.
 - The project-validation hook exists, is executable, and no longer contains the template's
   unconfigured sentinel.
 - Every failure includes a stable diagnostic identifier, the affected path, and a concrete next
@@ -81,7 +81,7 @@ CI exercise the same generated-project contract.
 
 Acceptance criteria:
 
-- `scripts/validate-repository.py` runs the template contract, readiness inspection, and the
+- `scripts/validate_repository.py` runs the template contract, readiness inspection, and the
   adopter-owned project hook in that order.
 - The aggregate command prints stage boundaries, stops after the first failing stage, and preserves
   that stage's exact non-zero status.
@@ -101,7 +101,7 @@ Acceptance criteria:
 
 - Source CI selects fixture mode only when `github.repository` matches the explicit source identity
   configured in the workflow.
-- Source maintainers use readiness fixtures locally; `scripts/validate-repository.py` remains a
+- Source maintainers use readiness fixtures locally; `scripts/validate_repository.py` remains a
   generated-project command.
 - A GitHub-style snapshot fixture and a Copier-generated fixture both fail while untouched and pass
   after minimal valid configuration.
@@ -170,13 +170,13 @@ to the adopter.
 
 Four scripts have separate ownership:
 
-- `scripts/validate-template.py` is template-owned. It checks required template files and active CI
+- `scripts/validate_template.py` is template-owned. It checks required template files and active CI
   topology, including the validation job, command invocation, permissions, and release dependency.
-- `scripts/check-project-readiness.py` is template-owned. It inspects the PRD, README, and hook
+- `scripts/check_project_readiness.py` is template-owned. It inspects the PRD, README, and hook
   configuration without executing the hook.
-- `scripts/validate-project.py` is adopter-owned. The initial executable stub explains that setup is
+- `scripts/validate_project.py` is adopter-owned. The initial executable stub explains that setup is
   incomplete; the adopter replaces it with product-specific commands.
-- `scripts/validate-repository.py` is template-owned. It composes the preceding three checks for a
+- `scripts/validate_repository.py` is template-owned. It composes the preceding three checks for a
   generated project.
 
 The readiness checker returns `0` when ready, `1` for one or more observable readiness failures, and
@@ -198,7 +198,7 @@ The workflow-level source identity is explicitly set to
 `github.repository`. It is never derived from the current repository.
 
 - In the template source, `project-validation` runs generated-project fixtures.
-- In every other repository, it runs `python3 scripts/validate-repository.py`.
+- In every other repository, it runs `python3 scripts/validate_repository.py`.
 
 There is no local source-mode bypass in the aggregate command. This makes an untouched GitHub
 snapshot fail automatically while keeping source CI green through evidence about generated
@@ -261,8 +261,8 @@ Readiness guidance uses this fixed sequence:
 
 1. Replace the marked `docs/prd.md` contract with the project's requirements.
 2. Replace the marked README with the project title, setup, and validation instructions.
-3. Replace `scripts/validate-project.py` with the project's validation commands.
-4. Run `python3 scripts/validate-repository.py` locally and address its diagnostic identifiers.
+3. Replace `scripts/validate_project.py` with the project's validation commands.
+4. Run `python3 scripts/validate_repository.py` locally and address its diagnostic identifiers.
 5. Confirm CI invokes the command and release depends on `project-validation`.
 6. Configure `Project validation` as a required status check in the default-branch ruleset.
 

@@ -6,8 +6,8 @@ repository as configured:
 1. Replace the marked `docs/prd.md` contract while retaining its required headings and at least one
    `### REQ-001: Title` declaration with a body.
 2. Replace the marked README with one project title and non-empty `Setup` and `Validation` sections.
-3. Replace `scripts/validate-project.py` with the project's own validation commands.
-4. Run `python3 scripts/validate-repository.py` locally and fix every diagnostic.
+3. Replace `scripts/validate_project.py` with the project's own validation commands.
+4. Run `python3 scripts/validate_repository.py` locally and fix every diagnostic.
 5. Confirm CI emits the `Project validation` check and the release job depends on it.
 6. Configure `Project validation` as a required status check in the default-branch ruleset.
 

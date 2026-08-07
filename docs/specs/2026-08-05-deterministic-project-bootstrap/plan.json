@@ -14,7 +14,7 @@
           "inputs": [
             "design dependency policy; existing `flake.nix`; modern-python guidance; current standalone Python scripts."
           ],
-          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks, make the Nix dev shell explicitly provide uv with a short install/sync workflow, and add an explicit Python 3.14 validation lane in Nix/CI rather than relying on an unversioned `python3`.",
+          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks and keep the Nix dev shell explicitly maintainer-only: it provides uv and Python 3.14 for template maintainers, while generated projects use portable Python/uv validation and do not inherit source-only uv or Nix requirements.",
           "files": {
             "create": [
               "pyproject.toml",
@@ -24,7 +24,8 @@
             "modify": [
               "flake.nix",
               ".github/workflows/ci.yml",
-              "README.md"
+              "README.md",
+              "copier.yml"
             ],
             "remove": []
           },
@@ -36,7 +37,8 @@
               "`uv run ruff format --check`",
               "`uv run ty check`",
               "`nix develop` exposes `uv`",
-              "Python 3.14 source checks and dependency-free canonical generated-validator lanes both execute successfully."
+              "Python 3.14 source checks and dependency-free canonical generated-validator lanes both execute successfully",
+              "generated-project fixtures do not require the maintainer-only Nix shell or source-only uv metadata"
             ],
             "acceptance": []
           }
@@ -58,7 +60,7 @@
               "scripts/bootstrap/diagnostics.py",
               "scripts/bootstrap/values.py",
               "scripts/bootstrap/blobs.py",
-              "scripts/test-bootstrap-foundations.py"
+              "tests/test_bootstrap_foundations.py"
             ],
             "modify": [],
             "remove": []
@@ -87,7 +89,7 @@
               "scripts/bootstrap/canonical_json.py",
               "scripts/bootstrap/paths.py",
               "scripts/bootstrap/identity.py",
-              "scripts/test-bootstrap-determinism.py"
+              "tests/test_bootstrap_determinism.py"
             ],
             "modify": [],
             "remove": []
@@ -122,7 +124,7 @@
               "scripts/bootstrap/decisions.py",
               "scripts/bootstrap/observation.py",
               "scripts/bootstrap/ownership.py",
-              "scripts/test-bootstrap-decisions.py"
+              "tests/test_bootstrap_decisions.py"
             ],
             "modify": [],
             "remove": []
@@ -156,13 +158,13 @@
               "scripts/bootstrap/template_contract.py",
               "scripts/bootstrap/validation_program.py",
               "scripts/bootstrap/presentation.py",
-              "scripts/test-bootstrap-readiness.py",
-              "scripts/test-bootstrap-presentation.py"
+              "tests/test_bootstrap_readiness.py",
+              "tests/test_bootstrap_presentation.py"
             ],
             "modify": [
-              "scripts/validate-template.py",
-              "scripts/check-project-readiness.py",
-              "scripts/validate-repository.py"
+              "scripts/validate_template.py",
+              "scripts/check_project_readiness.py",
+              "scripts/validate_repository.py"
             ],
             "remove": []
           },
@@ -234,8 +236,8 @@
               "scripts/bootstrap/profiles.py",
               "scripts/bootstrap/resolver.py",
               "scripts/bootstrap/compatibility.py",
-              "scripts/test-bootstrap-schemas.py",
-              "scripts/test-bootstrap-catalog.py"
+              "tests/test_bootstrap_schemas.py",
+              "tests/test_bootstrap_catalog.py"
             ],
             "modify": [],
             "remove": []
@@ -268,7 +270,7 @@
               "scripts/bootstrap/render.py",
               "scripts/bootstrap/contributions.py",
               "scripts/bootstrap/source_baseline.py",
-              "scripts/test-bootstrap-render.py"
+              "tests/test_bootstrap_render.py"
             ],
             "modify": [],
             "remove": []
@@ -301,7 +303,7 @@
               "scripts/bootstrap/manifest.py",
               "scripts/bootstrap/planner.py",
               "scripts/bootstrap/plan_digest.py",
-              "scripts/test-bootstrap-planner.py"
+              "tests/test_bootstrap_planner.py"
             ],
             "modify": [],
             "remove": []
@@ -341,7 +343,7 @@
               "scripts/bootstrap/fs_effects.py",
               "scripts/bootstrap/journal.py",
               "scripts/bootstrap/locking.py",
-              "scripts/test-bootstrap-state-root.py"
+              "tests/test_bootstrap_state_root.py"
             ],
             "modify": [],
             "remove": []
@@ -371,7 +373,7 @@
           "files": {
             "create": [
               "scripts/bootstrap/transaction.py",
-              "scripts/test-bootstrap-transaction.py"
+              "tests/test_bootstrap_transaction.py"
             ],
             "modify": [],
             "remove": []
@@ -402,7 +404,7 @@
             "create": [
               "scripts/bootstrap/rollback.py",
               "scripts/bootstrap/recovery.py",
-              "scripts/test-bootstrap-recovery.py"
+              "tests/test_bootstrap_recovery.py"
             ],
             "modify": [],
             "remove": []
@@ -443,7 +445,7 @@
               "scripts/bootstrap-project.py",
               "scripts/bootstrap/cli.py",
               "scripts/bootstrap/scaffold.py",
-              "scripts/test-bootstrap-cli.py"
+              "tests/test_bootstrap_cli.py"
             ],
             "modify": [
               "README.md",
@@ -474,19 +476,22 @@
           "inputs": [
             "updated ADR 0001; Copier ownership exclusions; GitHub snapshot cleanup inventory; generated workflow and validation boundaries."
           ],
-          "description": "First update ADR 0001 to state that Copier owns source lifecycle updates while bootstrap owns derived-output reconciliation. Then wire Copier to retain source lifecycle inputs while excluding generated managed/seed/cleanup outputs, including the source `pyproject.toml` and `uv.lock` boundary. Add GitHub snapshot cleanup and ownership declarations; the GitHub cleanup inventory must include the source root `pyproject.toml` and `uv.lock`, while Copier excludes them from generated projects. Ensure both paths initialize a Git working tree before bootstrap, recognize only their legal scaffold shapes, and share the same compiler and transaction shell.",
+          "description": "First update ADR 0001 to state that Copier owns source lifecycle updates while bootstrap owns derived-output reconciliation. Then wire Copier to retain source lifecycle inputs while excluding generated managed/seed/cleanup outputs, including the source `pyproject.toml`, `.python-version`, `uv.lock`, flake files, maintainer-only Nix actions, and maintainer-only workflows. Split the generated portable workflow baseline from source-maintainer CI and release gating so generated projects do not require Nix; only the selected `nix` capability may render Nix artifacts or CI contributions. Replace any remaining Bash workflow adapters with Python entry points or native action steps and remove ShellCheck policy and configuration; no `.sh` entry point is retained. Add GitHub snapshot cleanup and ownership declarations; the GitHub cleanup inventory must include source uv and Nix maintenance inputs, while Copier excludes them from generated projects. Ensure both paths initialize a Git working tree before bootstrap, recognize only their legal scaffold shapes, and share the same compiler and transaction shell.",
           "files": {
             "create": [
               ".agentic-template/source-ownership.json",
               ".agentic-template/maintenance-artifacts.json",
-              "scripts/test-github-template-readiness.py",
-              "scripts/test-copier-bootstrap.py"
+              "tests/test_github_template_readiness.py",
+              "tests/test_copier_bootstrap.py"
             ],
             "modify": [
               "copier.yml",
               "docs/adr/0001-use-copier-for-template-updates.md",
               ".github/workflows/ci.yml",
-              "flake.nix"
+              ".github/workflows/template-ci.yml",
+              "flake.nix",
+              "flake.lock",
+              ".github/actions/setup-nix"
             ],
             "remove": []
           },
@@ -494,10 +499,11 @@
             "tests": [
               "ADR 0001 contains the approved ownership split before integration",
               "direct GitHub snapshot and Copier fixtures",
-              "source `pyproject.toml`/`uv.lock` do not leak into generated projects",
+              "source uv metadata, flake files, maintainer-only Nix actions, and maintainer-only workflows do not leak into generated projects",
               "seed preservation",
               "cleanup valid/mismatch/leave cases",
               "no stale Copier excludes",
+              "no Bash entry points, Bash workflow adapters, or ShellCheck configuration",
               "both paths install supplied and all-scaffold bundles",
               "actionlint and canonical aggregate validation pass."
             ],
@@ -523,7 +529,7 @@
           "files": {
             "create": [
               "scripts/bootstrap/dependencies.py",
-              "scripts/test-generated-dependencies.py",
+              "tests/test_generated_dependencies.py",
               "scripts/fixtures/generated-dependencies/pyproject.toml"
             ],
             "modify": [
@@ -558,12 +564,12 @@
           "inputs": [
             "semantic-release, Nix, Cachix-with-Nix dependency, and Qodo/Gemini capability contracts; settings and secret preflight rules; release graph; generated dependency metadata from T14."
           ],
-          "description": "Add the four declarative capability contributions, profile expansions, settings normalization, compiled workflow/document outputs, release dependencies, read-only secret preflights, and available/unavailable activation behavior. Keep capability-specific dependency commands behind their declared uv invocation metadata and ensure unselected capabilities emit no artifacts.",
+          "description": "Add the four declarative capability contributions, profile expansions, settings normalization, compiled workflow/document outputs, release dependencies, read-only secret preflights, and available/unavailable activation behavior. Keep capability-specific dependency commands behind their declared uv invocation metadata. Treat Nix as maintainer-only unless the `nix` capability is selected: the portable generated baseline has no Nix job or release dependency, while selected Nix and Cachix capabilities render their own artifacts and gates. Ensure unselected capabilities emit no artifacts or workflow jobs.",
           "files": {
             "create": [
               "scripts/bootstrap/capability_fragments.py",
-              "scripts/test-capability-matrix.py",
-              "scripts/test-secret-preflight.py",
+              "tests/test_capability_matrix.py",
+              "tests/test_secret_preflight.py",
               "scripts/fixtures/workflows/semantic-release.yml",
               "scripts/fixtures/workflows/nix.yml",
               "scripts/fixtures/workflows/cachix-publish.yml",
@@ -586,7 +592,7 @@
               "structural preflight policy",
               "local non-secret canary",
               "privileged jobs are blocked when preflight is unavailable",
-              "release graph gating",
+              "release graph gating, including absence of Nix from portable projects",
               "adopter fixtures use uv to install and run capability-specific commands while canonical validators remain directly runnable and bootstrap itself never installs packages."
             ],
             "acceptance": []
@@ -601,16 +607,16 @@
           "inputs": [
             "compiled integrated workflow; canonical workflow/job/step normal form; PyYAML source-only loader contract; source allowlist ownership."
           ],
-          "description": "Add the strict Actions YAML loader, complete semantic normalization, raw SHA-comment checks, trust predicates, allowlist expiry/difference checks, and source-versus-rendered workflow comparison. Keep PyYAML source-only unless a future capability explicitly declares it, and ensure all loader failures are typed diagnostics.",
+          "description": "Add the strict Actions YAML loader, complete semantic normalization, raw SHA-comment checks, trust predicates, allowlist expiry/difference checks, and source-versus-rendered workflow comparison. Keep PyYAML source-only unless a future capability explicitly declares it, separate maintainer-only source CI from the portable generated baseline, and ensure the generated baseline requires no Nix while selected Nix/Cachix capabilities contribute only their declared jobs and release gates. Ensure all loader failures are typed diagnostics.",
           "files": {
             "create": [
               "scripts/bootstrap/actions_yaml.py",
               "scripts/bootstrap/source_ci.py",
-              "scripts/test-source-ci.py",
+              "tests/test_source_ci.py",
               ".agentic-template/source-ci-allowlist.json"
             ],
             "modify": [
-              "scripts/validate-template.py",
+              "scripts/validate_template.py",
               ".github/workflows/ci.yml",
               "pyproject.toml"
             ],
@@ -647,7 +653,7 @@
           "description": "Implement plan/apply add transitions, old-selection inventory verification, expanded selection compilation, persisted capability additions/settings, and incomplete-project gating where pre-existing placeholders are retained but new findings are rejected.",
           "files": {
             "create": [
-              "scripts/test-bootstrap-add.py"
+              "tests/test_bootstrap_add.py"
             ],
             "modify": [
               "scripts/bootstrap/decisions.py",
@@ -682,8 +688,8 @@
           "description": "Implement targeted certified restore without manifest/inventory advancement, Copier-only reconcile, destructive overwrite requiring matching preview digest, source-delta diagnostics, reachable snapshot baseline repair, and regeneration guidance when repair is unavailable.",
           "files": {
             "create": [
-              "scripts/test-bootstrap-restore.py",
-              "scripts/test-bootstrap-reconcile.py"
+              "tests/test_bootstrap_restore.py",
+              "tests/test_bootstrap_reconcile.py"
             ],
             "modify": [
               "scripts/bootstrap/decisions.py",
@@ -768,9 +774,9 @@
               "copier.yml",
               ".github/workflows/ci.yml",
               ".github/workflows/copier-smoke.yml",
-              "scripts/validate-template.py",
-              "scripts/check-project-readiness.py",
-              "scripts/validate-repository.py",
+              "scripts/validate_template.py",
+              "scripts/check_project_readiness.py",
+              "scripts/validate_repository.py",
               "docs/project-readiness.md",
               "README.md",
               "CONTEXT.md",
@@ -778,7 +784,7 @@
               "flake.nix"
             ],
             "remove": [
-              "scripts/validate-project.py"
+              "scripts/validate_project.py"
             ]
           },
           "validation": {

@@ -18,8 +18,9 @@ The repository-root `AGENTS.md` still applies. These rules govern `.agents/`.
 - Test changes to triggers, decisions, required steps, safety rules, or output
   with the same fresh-context scenario before and after editing. Use focused
   checks for mechanical-only changes.
-- Validate changed examples and scripts. Run ShellCheck on every changed shell script.
-- Before completion, run `scripts/validate-template.sh` and inspect the
+- Validate changed examples and Python scripts with the repository's uv-managed checks. The
+  repository does not support Bash scripts or ShellCheck.
+- Before completion, run `python3.14 tests/test_template_contract.py` and inspect the
   path-scoped diff.
 - Never add credentials, local settings, generated agent state, or unrelated
   upstream changes.
