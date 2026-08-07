@@ -55,6 +55,12 @@ class IdentityTests(unittest.TestCase):
             tagged_digest(b"one", b"two"), tagged_digest(b"onet", b"wo")
         )
 
+    def test_tagged_digest_frames_kind_length_before_payload(self) -> None:
+        self.assertNotEqual(
+            tagged_digest(b"a", b"b\npayload"),
+            tagged_digest(b"a\nb", b"payload"),
+        )
+
     def test_tree_hash_is_sorted_and_mode_sensitive(self) -> None:
         entries = (
             (RepoPath("b"), b"2", PosixMode.FILE),

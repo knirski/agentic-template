@@ -28,7 +28,8 @@ def sha256_hex(data: bytes) -> str:
 
 
 def tagged_digest(kind: bytes, payload: bytes) -> str:
-    return sha256_hex(b"agentic-template/1/" + kind + b"\n" + payload)
+    encoded = b"agentic-template/1/" + len(kind).to_bytes(8, "big") + kind + payload
+    return sha256_hex(encoded)
 
 
 def content_identity(data: bytes, *, text: bool) -> FileContentIdentity:
