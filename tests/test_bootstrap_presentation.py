@@ -42,6 +42,8 @@ class PresentationTests(unittest.TestCase):
         state = program.advance(state, StageFailed(7))
         self.assertIsNone(state.next_stage)
         self.assertEqual(state.exit_code, 7)
+        terminal = program.advance(state, StagePassed())
+        self.assertEqual(terminal, state)
 
     def test_contract_rules_and_corpus_are_frozen_and_comparable(self) -> None:
         self.assertEqual(len(canonical_rules()), 3)
@@ -97,8 +99,7 @@ class PresentationTests(unittest.TestCase):
         program = ValidationProgram(())
         state = program.start()
         self.assertIsNone(state.next_stage)
-        state = program.advance(state, StageFailed(2))
-        self.assertEqual(state.exit_code, 2)
+        self.assertEqual(program.advance(state, StageFailed(2)), state)
 
 
 if __name__ == "__main__":

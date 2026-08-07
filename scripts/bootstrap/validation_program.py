@@ -35,6 +35,8 @@ class ValidationProgram:
     def advance(
         self, state: ValidationState, observation: StageObservation
     ) -> ValidationState:
+        if state.next_stage is None:
+            return state
         observations = (*state.observations, observation)
         if isinstance(observation, StageFailed):
             return ValidationState(None, observation.exit_code, observations)

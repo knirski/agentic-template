@@ -29,6 +29,8 @@ class ValidationProgram:
     def advance(
         self, state: _ValidationState, _observation: StagePassed
     ) -> _ValidationState:
+        if state.next_stage is None:
+            return state
         index = (
             self.stages.index(state.next_stage) + 1
             if state.next_stage
