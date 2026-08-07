@@ -65,9 +65,9 @@ jobs:
       - name: Validate source fixtures
         if: github.repository == 'knirski/agentic-template'
         run: |
-          python3.14 scripts/test-project-readiness.py
-          python3.14 scripts/test-repository-validation.py
-          python3.14 scripts/test-github-template-readiness.py
+          python3.14 tests/test_project_readiness.py
+          python3.14 tests/test_repository_validation.py
+          python3.14 tests/test_github_template_readiness.py
 
   nix:
     name: Nix tooling and checks

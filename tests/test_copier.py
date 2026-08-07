@@ -68,7 +68,7 @@ def main() -> int:
                 ".python-version",
                 "pyproject.toml",
                 "uv.lock",
-                "scripts/test-copier.py",
+                "tests",
             )
         ):
             print("Copier output ownership contract failed", file=sys.stderr)

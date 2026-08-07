@@ -60,7 +60,7 @@
               "scripts/bootstrap/diagnostics.py",
               "scripts/bootstrap/values.py",
               "scripts/bootstrap/blobs.py",
-              "scripts/test-bootstrap-foundations.py"
+              "tests/test_bootstrap_foundations.py"
             ],
             "modify": [],
             "remove": []
@@ -89,7 +89,7 @@
               "scripts/bootstrap/canonical_json.py",
               "scripts/bootstrap/paths.py",
               "scripts/bootstrap/identity.py",
-              "scripts/test-bootstrap-determinism.py"
+              "tests/test_bootstrap_determinism.py"
             ],
             "modify": [],
             "remove": []
@@ -124,7 +124,7 @@
               "scripts/bootstrap/decisions.py",
               "scripts/bootstrap/observation.py",
               "scripts/bootstrap/ownership.py",
-              "scripts/test-bootstrap-decisions.py"
+              "tests/test_bootstrap_decisions.py"
             ],
             "modify": [],
             "remove": []
@@ -158,8 +158,8 @@
               "scripts/bootstrap/template_contract.py",
               "scripts/bootstrap/validation_program.py",
               "scripts/bootstrap/presentation.py",
-              "scripts/test-bootstrap-readiness.py",
-              "scripts/test-bootstrap-presentation.py"
+              "tests/test_bootstrap_readiness.py",
+              "tests/test_bootstrap_presentation.py"
             ],
             "modify": [
               "scripts/validate-template.py",
@@ -236,8 +236,8 @@
               "scripts/bootstrap/profiles.py",
               "scripts/bootstrap/resolver.py",
               "scripts/bootstrap/compatibility.py",
-              "scripts/test-bootstrap-schemas.py",
-              "scripts/test-bootstrap-catalog.py"
+              "tests/test_bootstrap_schemas.py",
+              "tests/test_bootstrap_catalog.py"
             ],
             "modify": [],
             "remove": []
@@ -270,7 +270,7 @@
               "scripts/bootstrap/render.py",
               "scripts/bootstrap/contributions.py",
               "scripts/bootstrap/source_baseline.py",
-              "scripts/test-bootstrap-render.py"
+              "tests/test_bootstrap_render.py"
             ],
             "modify": [],
             "remove": []
@@ -303,7 +303,7 @@
               "scripts/bootstrap/manifest.py",
               "scripts/bootstrap/planner.py",
               "scripts/bootstrap/plan_digest.py",
-              "scripts/test-bootstrap-planner.py"
+              "tests/test_bootstrap_planner.py"
             ],
             "modify": [],
             "remove": []
@@ -343,7 +343,7 @@
               "scripts/bootstrap/fs_effects.py",
               "scripts/bootstrap/journal.py",
               "scripts/bootstrap/locking.py",
-              "scripts/test-bootstrap-state-root.py"
+              "tests/test_bootstrap_state_root.py"
             ],
             "modify": [],
             "remove": []
@@ -373,7 +373,7 @@
           "files": {
             "create": [
               "scripts/bootstrap/transaction.py",
-              "scripts/test-bootstrap-transaction.py"
+              "tests/test_bootstrap_transaction.py"
             ],
             "modify": [],
             "remove": []
@@ -404,7 +404,7 @@
             "create": [
               "scripts/bootstrap/rollback.py",
               "scripts/bootstrap/recovery.py",
-              "scripts/test-bootstrap-recovery.py"
+              "tests/test_bootstrap_recovery.py"
             ],
             "modify": [],
             "remove": []
@@ -445,7 +445,7 @@
               "scripts/bootstrap-project.py",
               "scripts/bootstrap/cli.py",
               "scripts/bootstrap/scaffold.py",
-              "scripts/test-bootstrap-cli.py"
+              "tests/test_bootstrap_cli.py"
             ],
             "modify": [
               "README.md",
@@ -481,8 +481,8 @@
             "create": [
               ".agentic-template/source-ownership.json",
               ".agentic-template/maintenance-artifacts.json",
-              "scripts/test-github-template-readiness.py",
-              "scripts/test-copier-bootstrap.py"
+              "tests/test_github_template_readiness.py",
+              "tests/test_copier_bootstrap.py"
             ],
             "modify": [
               "copier.yml",
@@ -528,7 +528,7 @@
           "files": {
             "create": [
               "scripts/bootstrap/dependencies.py",
-              "scripts/test-generated-dependencies.py",
+              "tests/test_generated_dependencies.py",
               "scripts/fixtures/generated-dependencies/pyproject.toml"
             ],
             "modify": [
@@ -567,8 +567,8 @@
           "files": {
             "create": [
               "scripts/bootstrap/capability_fragments.py",
-              "scripts/test-capability-matrix.py",
-              "scripts/test-secret-preflight.py",
+              "tests/test_capability_matrix.py",
+              "tests/test_secret_preflight.py",
               "scripts/fixtures/workflows/semantic-release.yml",
               "scripts/fixtures/workflows/nix.yml",
               "scripts/fixtures/workflows/cachix-publish.yml",
@@ -611,7 +611,7 @@
             "create": [
               "scripts/bootstrap/actions_yaml.py",
               "scripts/bootstrap/source_ci.py",
-              "scripts/test-source-ci.py",
+              "tests/test_source_ci.py",
               ".agentic-template/source-ci-allowlist.json"
             ],
             "modify": [
@@ -652,7 +652,7 @@
           "description": "Implement plan/apply add transitions, old-selection inventory verification, expanded selection compilation, persisted capability additions/settings, and incomplete-project gating where pre-existing placeholders are retained but new findings are rejected.",
           "files": {
             "create": [
-              "scripts/test-bootstrap-add.py"
+              "tests/test_bootstrap_add.py"
             ],
             "modify": [
               "scripts/bootstrap/decisions.py",
@@ -687,8 +687,8 @@
           "description": "Implement targeted certified restore without manifest/inventory advancement, Copier-only reconcile, destructive overwrite requiring matching preview digest, source-delta diagnostics, reachable snapshot baseline repair, and regeneration guidance when repair is unavailable.",
           "files": {
             "create": [
-              "scripts/test-bootstrap-restore.py",
-              "scripts/test-bootstrap-reconcile.py"
+              "tests/test_bootstrap_restore.py",
+              "tests/test_bootstrap_reconcile.py"
             ],
             "modify": [
               "scripts/bootstrap/decisions.py",

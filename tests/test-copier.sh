@@ -64,8 +64,9 @@ assert_absent "$project/template-manifest.json"
 assert_absent "$project/TEMPLATE_VERSION"
 assert_absent "$project/tools"
 assert_absent "$project/.github/workflows/copier-smoke.yml"
-assert_absent "$project/scripts/test-copier.sh"
-(cd "$project" && bash scripts/validate-template.sh)
+assert_absent "$project/tests"
+assert_absent "$project/scripts/validate-template.sh"
+(cd "$project" && python3 scripts/validate-template.py)
 
 git -C "$source" config user.email test@example.invalid
 printf '\nCopier smoke-test marker.\n' >> "$source/NOTICE.md"

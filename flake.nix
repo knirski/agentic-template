@@ -99,10 +99,10 @@
             pkgs.runCommand "agentic-template-repository-validation" { nativeBuildInputs = [ pkgs.python314 ]; }
               ''
                 cd ${source}
-                if [ -f scripts/test-project-readiness.py ]; then python3.14 scripts/test-project-readiness.py; fi
-                if [ -f scripts/test-repository-validation.py ]; then python3.14 scripts/test-repository-validation.py; fi
-                if [ -f scripts/test-github-template-readiness.py ]; then python3.14 scripts/test-github-template-readiness.py; fi
-                if [ -f scripts/test-delivery-contract.py ]; then python3.14 scripts/test-delivery-contract.py; fi
+                if [ -f tests/test_project_readiness.py ]; then python3.14 tests/test_project_readiness.py; fi
+                if [ -f tests/test_repository_validation.py ]; then python3.14 tests/test_repository_validation.py; fi
+                if [ -f tests/test_github_template_readiness.py ]; then python3.14 tests/test_github_template_readiness.py; fi
+                if [ -f tests/test_delivery_contract.py ]; then python3.14 tests/test_delivery_contract.py; fi
                 touch $out
               '';
         }

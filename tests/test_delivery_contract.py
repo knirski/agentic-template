@@ -28,7 +28,7 @@ def main() -> int:
         fail("project-validation must expose the stable Project validation check name")
     if "python3.14 scripts/validate-repository.py" not in workflow:
         fail("generated mode must invoke python3.14 scripts/validate-repository.py")
-    if "python3.14 scripts/test-project-readiness.py" not in workflow:
+    if "python3.14 tests/test_project_readiness.py" not in workflow:
         fail("source mode must run readiness fixtures")
     if "AGENTIC_TEMPLATE_SOURCE_REPOSITORY: knirski/agentic-template" not in workflow:
         fail("source identity constant is missing")

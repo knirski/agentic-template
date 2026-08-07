@@ -11,8 +11,8 @@ import unittest
 from pathlib import Path
 
 
-HERE = Path(__file__).resolve().parent
-CHECKER = HERE / "check-project-readiness.py"
+ROOT = Path(__file__).resolve().parent.parent
+CHECKER = ROOT / "scripts/check-project-readiness.py"
 HOOK_SENTINEL = "agentic-template:unconfigured:validate-project"
 
 

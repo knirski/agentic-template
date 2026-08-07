@@ -54,6 +54,6 @@ while IFS= read -r skill_file; do
   }
 done < <(find .agents/skills -name SKILL.md -type f | sort)
 
-scripts/test-portable-validation.sh
-scripts/test-delivery-contract.sh
+tests/test-portable-validation.sh
+tests/test-delivery-contract.sh
 git diff --check

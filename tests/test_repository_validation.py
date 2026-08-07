@@ -12,8 +12,8 @@ import unittest
 from pathlib import Path
 
 
-HERE = Path(__file__).resolve().parent
-AGGREGATE = HERE / "validate-repository.py"
+ROOT = Path(__file__).resolve().parent.parent
+AGGREGATE = ROOT / "scripts/validate-repository.py"
 
 
 class AggregateFixtures(unittest.TestCase):
