@@ -77,7 +77,7 @@
         },
         {
           "id": "T3",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {"mode": "inline", "status": "completed", "completion": {"completed_at": "2026-08-07", "commits": ["bc908a7", "f9d9c98"], "evidence": ["uv run pytest -q tests/test_bootstrap_determinism.py (14 passed)", "uv run pytest -q tests/test_bootstrap_determinism.py tests/test_bootstrap_decisions.py (27 passed)", "uv run ruff check (clean)", "uv run ty check (clean)"]}},
           "name": "Implement canonical encoding, paths, JSON, hashes, and identities",
           "depends_on": [
             "T2"
@@ -111,7 +111,7 @@
       "tasks": [
         {
           "id": "T4",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {"mode": "inline", "status": "completed", "completion": {"completed_at": "2026-08-07", "commit": "3de8933bbbdfc84e4bd40533edfc9e5e732c34d6", "evidence": ["uv run pytest -q tests/test_bootstrap_decisions.py (13 passed)", "uv run pytest -q tests/test_bootstrap_foundations.py tests/test_bootstrap_determinism.py tests/test_bootstrap_decisions.py tests/test_script_cores.py (42 passed)", "uv run ruff check (clean)", "uv run ty check scripts/bootstrap tests/test_bootstrap_decisions.py (clean)"]}},
           "name": "Model staged observations and family-specific decision algebras",
           "depends_on": [
             "T3"
