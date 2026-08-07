@@ -10,15 +10,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 STAGES = (
-    ("template contract", ROOT / "scripts/validate-template.py", True),
-    ("project readiness", ROOT / "scripts/check-project-readiness.py", True),
-    ("project validation", ROOT / "scripts/validate-project.py", False),
+    ("template contract", ROOT / "scripts/validate_template.py", True),
+    ("project readiness", ROOT / "scripts/check_project_readiness.py", True),
+    ("project validation", ROOT / "scripts/validate_project.py", False),
 )
 
 
 def main(argv: list[str]) -> int:
     if argv:
-        print("usage: scripts/validate-repository.py", file=sys.stderr)
+        print("usage: scripts/validate_repository.py", file=sys.stderr)
         return 2
     for label, script, use_python in STAGES:
         print(f"==> {label}", flush=True)

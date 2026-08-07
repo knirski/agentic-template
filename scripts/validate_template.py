@@ -26,24 +26,35 @@ REQUIRED_FILES = [
     ".github/workflows/semantic-release.yml",
     ".pr_agent.toml",
     ".releaserc",
-    "scripts/check-project-readiness.py",
-    "scripts/validate-project.py",
-    "scripts/validate-repository.py",
+    "scripts/check_project_readiness.py",
+    "scripts/validate_project.py",
+    "scripts/validate_repository.py",
 ]
 REQUIRED_SKILLS = [
     "atelier-orchestrator",
+    "atelier-setup",
     "code-commit",
+    "code-handoff",
     "code-pull-request",
     "code-review",
+    "code-subagents",
     "loop-on-ci",
+    "modern-python",
+    "oracle-debug",
+    "oracle-domain-modelling",
+    "oracle-grill-me",
     "pr-review-loop",
+    "spec-brainstorm",
+    "spec-finish",
+    "spec-implement",
+    "spec-plan",
     "verification-before-completion",
 ]
 
 
 def main(argv: list[str]) -> int:
     if argv:
-        print("usage: scripts/validate-template.py", file=sys.stderr)
+        print("usage: scripts/validate_template.py", file=sys.stderr)
         return 2
     failures: list[str] = []
     for relative in REQUIRED_FILES:

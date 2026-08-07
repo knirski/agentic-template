@@ -36,10 +36,10 @@
               "A hostile hook canary is not triggered and fixture content and executable modes are unchanged"
             ],
             "acceptance": [
-              "Tests initially fail because scripts/check-project-readiness.py does not exist",
+              "Tests initially fail because scripts/check_project_readiness.py does not exist",
               "Every document and hook acceptance criterion has positive and negative coverage",
               "Tests assert diagnostic identifiers, affected paths, remediation presence, and statuses without freezing complete prose",
-              "Canary and snapshot assertions prove the checker does not execute scripts/validate-project.py or mutate the fixture"
+              "Canary and snapshot assertions prove the checker does not execute scripts/validate_project.py or mutate the fixture"
             ]
           }
         },
@@ -58,9 +58,9 @@
           "description": "Implement read-only, no-argument Python readiness inspection from the repository root. Parse headings outside fenced code blocks, report all independent failures with stable identifiers, affected paths, and next actions, and distinguish observable unready state from internal errors. Add the executable adopter-owned Python hook with its exact sentinel, setup guidance, and status 1. Implement the Python template contract validator and require all public Python scripts without invoking the hook.",
           "files": {
             "create": [
-              "scripts/check-project-readiness.py",
-              "scripts/validate-project.py",
-              "scripts/validate-template.py"
+              "scripts/check_project_readiness.py",
+              "scripts/validate_project.py",
+              "scripts/validate_template.py"
             ],
             "modify": [
               "flake.nix",
@@ -104,7 +104,7 @@
           "files": {
             "create": [
               "scripts/test-repository-validation.py",
-              "scripts/validate-repository.py"
+              "scripts/validate_repository.py"
             ],
             "modify": []
           },
@@ -135,7 +135,7 @@
             "Source identity knirski/agentic-template",
             "Approved release-gate and least-privilege contract"
           ],
-          "description": "Add tests scoped to active YAML job structure and wire the exact project-validation job with display name Project validation. Source mode runs readiness and aggregate fixtures only when github.repository matches the explicit workflow constant; generated mode runs python3 scripts/validate-repository.py. Run on ubuntu-latest for the ordinary pull_request, push, and manual workflow events; prohibit pull_request_target execution of contributor code, attached environments, checkout ref overrides from privileged events, failure-tolerant validation, secrets, write permissions, and persisted checkout credentials. Add project-validation to the release dependency list and reject release conditions that can run after its failure.",
+              "description": "Add tests scoped to active YAML job structure and wire the exact project-validation job with display name Project validation. Source mode runs readiness and aggregate fixtures only when github.repository matches the explicit workflow constant; generated mode runs python3 scripts/validate_repository.py. Run on ubuntu-latest for the ordinary pull_request, push, and manual workflow events; prohibit pull_request_target execution of contributor code, attached environments, checkout ref overrides from privileged events, failure-tolerant validation, secrets, write permissions, and persisted checkout credentials. Add project-validation to the release dependency list and reject release conditions that can run after its failure.",
           "files": {
             "create": [
               "scripts/test-delivery-contract.py"
@@ -289,7 +289,7 @@
               "Search for stale quality, update-lineage, merge-gate, and source-mode claims"
             ],
             "acceptance": [
-              "Generated documentation names python3 scripts/validate-repository.py consistently",
+              "Generated documentation names python3 scripts/validate_repository.py consistently",
               "Source documentation names fixture commands instead of a hidden bypass",
               "The six onboarding actions include manual merge-gate configuration",
               "Ruleset guidance names the exact Project validation check emitted for every pull request",
@@ -329,7 +329,7 @@
           },
           "validation": {
             "tests": [
-              "scripts/validate-template.py",
+              "scripts/validate_template.py",
               "scripts/test-project-readiness.py",
               "scripts/test-repository-validation.py",
               "scripts/test-github-template-readiness.py",

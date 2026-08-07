@@ -162,9 +162,9 @@
               "tests/test_bootstrap_presentation.py"
             ],
             "modify": [
-              "scripts/validate-template.py",
-              "scripts/check-project-readiness.py",
-              "scripts/validate-repository.py"
+              "scripts/validate_template.py",
+              "scripts/check_project_readiness.py",
+              "scripts/validate_repository.py"
             ],
             "remove": []
           },
@@ -616,7 +616,7 @@
               ".agentic-template/source-ci-allowlist.json"
             ],
             "modify": [
-              "scripts/validate-template.py",
+              "scripts/validate_template.py",
               ".github/workflows/ci.yml",
               "pyproject.toml"
             ],
@@ -774,9 +774,9 @@
               "copier.yml",
               ".github/workflows/ci.yml",
               ".github/workflows/copier-smoke.yml",
-              "scripts/validate-template.py",
-              "scripts/check-project-readiness.py",
-              "scripts/validate-repository.py",
+              "scripts/validate_template.py",
+              "scripts/check_project_readiness.py",
+              "scripts/validate_repository.py",
               "docs/project-readiness.md",
               "README.md",
               "CONTEXT.md",
@@ -784,7 +784,7 @@
               "flake.nix"
             ],
             "remove": [
-              "scripts/validate-project.py"
+              "scripts/validate_project.py"
             ]
           },
           "validation": {

@@ -9,7 +9,7 @@ _exclude:
   - tools
 
 _skip_if_exists:
-  - scripts/validate-project.py
+  - scripts/validate_project.py
 
 _message_after_copy: |
   Project created from the Agentic Delivery Template.

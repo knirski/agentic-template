@@ -13,7 +13,7 @@ from pathlib import Path
 VERSION = "9.17.0"
 ROOT = Path(__file__).resolve().parent.parent
 VALID_PRD = """# Product\n## Problem\nProblem.\n## Goals\nGoals.\n## Non-goals\nNo.\n## Users and workflows\nUsers.\n## Requirements\n### REQ-001: Works\nBody.\n## Quality attributes\nReliable.\n## Release criteria\nGreen.\n## Open questions\nNone.\n"""
-VALID_README = """# Product\n## Setup\nSetup.\n## Validation\nRun `python3.14 scripts/validate-repository.py`.\n"""
+VALID_README = """# Product\n## Setup\nSetup.\n## Validation\nRun `python3.14 scripts/validate_repository.py`.\n"""
 
 
 def run(
@@ -73,12 +73,12 @@ def main() -> int:
         ):
             print("Copier output ownership contract failed", file=sys.stderr)
             return 1
-        validation = run([sys.executable, "scripts/validate-template.py"], cwd=project)
+        validation = run([sys.executable, "scripts/validate_template.py"], cwd=project)
         if validation.returncode:
             print(validation.stderr, file=sys.stderr)
             return validation.returncode
         initial_readiness = run(
-            [sys.executable, "scripts/check-project-readiness.py"], cwd=project
+            [sys.executable, "scripts/check_project_readiness.py"], cwd=project
         )
         if initial_readiness.returncode != 1:
             print("untouched Copier output must fail readiness", file=sys.stderr)
@@ -94,13 +94,13 @@ def main() -> int:
             run(project_git + list(args))
         (project / "docs/prd.md").write_text(VALID_PRD, encoding="utf-8")
         (project / "README.md").write_text(VALID_README, encoding="utf-8")
-        project_hook = project / "scripts/validate-project.py"
+        project_hook = project / "scripts/validate_project.py"
         project_hook.write_text(
             "#!/usr/bin/env python3\nprint('ok')\n", encoding="utf-8"
         )
         project_hook.chmod(project_hook.stat().st_mode | 0o100)
         configured = run(
-            [sys.executable, "scripts/validate-repository.py"], cwd=project
+            [sys.executable, "scripts/validate_repository.py"], cwd=project
         )
         if configured.returncode:
             print(configured.stderr, file=sys.stderr)
@@ -108,10 +108,10 @@ def main() -> int:
         shutil.rmtree(project / "scripts/__pycache__", ignore_errors=True)
         with (source / "NOTICE.md").open("a", encoding="utf-8") as handle:
             handle.write("\nCopier smoke-test marker.\n")
-        source_hook = source / "scripts/validate-project.py"
+        source_hook = source / "scripts/validate_project.py"
         with source_hook.open("a", encoding="utf-8") as handle:
             handle.write("\n# template hook update\n")
-        run(git + ["add", "NOTICE.md", "scripts/validate-project.py"])
+        run(git + ["add", "NOTICE.md", "scripts/validate_project.py"])
         run(git + ["commit", "-m", "template v0.2.0"])
         run(git + ["tag", "v0.2.0"])
         with (project / "README.md").open("a", encoding="utf-8") as handle:
@@ -121,7 +121,7 @@ def main() -> int:
         expected_hook_text = project_hook.read_text(encoding="utf-8")
         run(
             project_git
-            + ["add", "README.md", "docs/prd.md", "scripts/validate-project.py"]
+            + ["add", "README.md", "docs/prd.md", "scripts/validate_project.py"]
         )
         run(project_git + ["commit", "-m", "project customization"])
         result = run(

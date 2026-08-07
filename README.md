@@ -10,8 +10,8 @@ software changes with coding agents.
 1. Select **Use this template** on GitHub.
 2. Replace the marked contract in `docs/prd.md` with the project's product requirements.
 3. Replace this marked README with the project title, setup, and validation instructions.
-4. Replace `scripts/validate-project.py` with the project's formatting, linting, tests, and build checks.
-5. Run `python3.14 scripts/validate-repository.py` and address every readiness diagnostic.
+4. Replace `scripts/validate_project.py` with the project's formatting, linting, tests, and build checks.
+5. Run `python3.14 scripts/validate_repository.py` and address every readiness diagnostic.
 6. Require the `Project validation` check in the default-branch ruleset.
 
 The template is maintained with [Copier](https://copier.readthedocs.io/):
@@ -52,7 +52,7 @@ when the project needs update lineage.
 Generated projects use one validation boundary:
 
 ```console
-python3.14 scripts/validate-repository.py
+python3.14 scripts/validate_repository.py
 ```
 
 It runs the template contract, readiness inspection, and adopter-owned project validation in that
@@ -93,7 +93,7 @@ wiring.
 After delivery-contract, project-validation, and Nix checks succeed, the template runs
 semantic-release for pushes to `main` and manual CI dispatches from `main`. Releases are serialized,
 and Conventional Commit messages determine the next version, release notes, Git tag, and GitHub
-Release. Generated projects own their product-specific commands through `scripts/validate-project.py`;
+Release. Generated projects own their product-specific commands through `scripts/validate_project.py`;
 every release-critical validation job must be added to the `release` job's `needs`.
 
 ## Scope
@@ -114,7 +114,7 @@ Nix is optional. Contributors can use the repository's normal validation directl
 
 ```bash
 uv sync --all-groups
-uv run python scripts/validate-template.py
+uv run python scripts/validate_template.py
 ```
 
 For contributors who use Nix, the repository also includes a language-neutral development shell

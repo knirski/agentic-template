@@ -10,7 +10,7 @@ Copier provides version-aware updates, project-change merging, and conflict hand
 requiring this repository to own its own merge and filesystem safety implementation.
 
 Project-readiness validation is separate from Copier ownership. The template ships Python 3.14+
-standard-library validators and an adopter-owned `scripts/validate-project.py` hook; Copier remains
+standard-library validators and an adopter-owned `scripts/validate_project.py` hook; Copier remains
 responsible for preserving and reporting conflicts during updates.
 
 Semantic-release Git tags are the template versions, and Copier-generated projects retain Copier's

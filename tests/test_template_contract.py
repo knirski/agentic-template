@@ -23,7 +23,7 @@ class TemplateContractTests(unittest.TestCase):
         )
 
     def test_template_contract(self) -> None:
-        result = self.run_script("scripts/validate-template.py")
+        result = self.run_script("scripts/validate_template.py")
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_delivery_contract(self) -> None:

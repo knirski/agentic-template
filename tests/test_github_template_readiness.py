@@ -13,10 +13,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 REQUIRED_GENERATED = {
-    "scripts/check-project-readiness.py",
-    "scripts/validate-project.py",
-    "scripts/validate-repository.py",
-    "scripts/validate-template.py",
+    "scripts/check_project_readiness.py",
+    "scripts/validate_project.py",
+    "scripts/validate_repository.py",
+    "scripts/validate_template.py",
 }
 PRD = """# Product
 ## Problem
@@ -41,7 +41,7 @@ README = """# Product
 ## Setup
 Setup.
 ## Validation
-Run `python3 scripts/validate-repository.py`.
+Run `python3 scripts/validate_repository.py`.
 """
 
 
@@ -78,7 +78,7 @@ class GitHubSnapshot(unittest.TestCase):
         self.assertFalse((self.project / ".git").exists())
         self.assertFalse((self.project / ".direnv").exists())
         self.assertFalse((self.project / "untracked-canary.txt").exists())
-        for relative in ("docs/prd.md", "README.md", "scripts/validate-project.py"):
+        for relative in ("docs/prd.md", "README.md", "scripts/validate_project.py"):
             path = self.project / relative
             path.chmod(path.stat().st_mode | 0o600)
 
@@ -87,7 +87,7 @@ class GitHubSnapshot(unittest.TestCase):
 
     def run_checker(self) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            [sys.executable, "scripts/check-project-readiness.py"],
+            [sys.executable, "scripts/check_project_readiness.py"],
             cwd=self.project,
             text=True,
             capture_output=True,
@@ -96,7 +96,7 @@ class GitHubSnapshot(unittest.TestCase):
 
     def run_validator(self) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            [sys.executable, "scripts/validate-repository.py"],
+            [sys.executable, "scripts/validate_repository.py"],
             cwd=self.project,
             text=True,
             capture_output=True,
@@ -110,7 +110,7 @@ class GitHubSnapshot(unittest.TestCase):
         self.assertIn("READINESS_README_BOILERPLATE", untouched.stderr)
         (self.project / "docs/prd.md").write_text(PRD, encoding="utf-8")
         (self.project / "README.md").write_text(README, encoding="utf-8")
-        hook = self.project / "scripts/validate-project.py"
+        hook = self.project / "scripts/validate_project.py"
         hook.write_text(f"#!{sys.executable}\nprint('ok')\n", encoding="utf-8")
         hook.chmod(hook.stat().st_mode | 0o100)
         configured = self.run_validator()

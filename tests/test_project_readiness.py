@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-CHECKER = ROOT / "scripts/check-project-readiness.py"
+CHECKER = ROOT / "scripts/check_project_readiness.py"
 HOOK_SENTINEL = "agentic-template:unconfigured:validate-project"
 
 
@@ -42,7 +42,7 @@ VALID_README = """# Example Product
 Install the product.
 
 ## Validation
-Run `python3.14 scripts/validate-repository.py`.
+Run `python3.14 scripts/validate_repository.py`.
 """
 VALID_HOOK = """#!/usr/bin/env python3
 print('project validation passed')
@@ -55,10 +55,10 @@ class ReadinessFixtures(unittest.TestCase):
         self.root = Path(self.tmp.name)
         (self.root / "docs").mkdir()
         (self.root / "scripts").mkdir()
-        shutil.copy2(CHECKER, self.root / "scripts/check-project-readiness.py")
+        shutil.copy2(CHECKER, self.root / "scripts/check_project_readiness.py")
         self.write("docs/prd.md", VALID_PRD)
         self.write("README.md", VALID_README)
-        self.write("scripts/validate-project.py", VALID_HOOK, executable=True)
+        self.write("scripts/validate_project.py", VALID_HOOK, executable=True)
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
@@ -72,7 +72,7 @@ class ReadinessFixtures(unittest.TestCase):
 
     def run_checker(self, *args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            ["python3", "scripts/check-project-readiness.py", *args],
+            ["python3", "scripts/check_project_readiness.py", *args],
             cwd=self.root,
             text=True,
             capture_output=True,
@@ -155,8 +155,8 @@ class ReadinessFixtures(unittest.TestCase):
         self.write(
             "README.md",
             VALID_README.replace(
-                "## Validation\nRun `python3.14 scripts/validate-repository.py`.",
-                "## Validation\nRun another command.\n\n## Setup\npython3.14 scripts/validate-repository.py",
+                "## Validation\nRun `python3.14 scripts/validate_repository.py`.",
+                "## Validation\nRun another command.\n\n## Setup\npython3.14 scripts/validate_repository.py",
             ),
         )
         result = self.run_checker()
@@ -182,7 +182,7 @@ class ReadinessFixtures(unittest.TestCase):
 
     def test_hook_is_inspected_without_execution_or_mutation(self) -> None:
         canary = self.root / "canary"
-        hook = self.root / "scripts/validate-project.py"
+        hook = self.root / "scripts/validate_project.py"
         hook.write_text(
             f"#!/usr/bin/env python3\nfrom pathlib import Path\nPath({str(canary)!r}).write_text('executed')\n{HOOK_SENTINEL!r}\n",
             encoding="utf-8",

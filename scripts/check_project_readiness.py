@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PRD = ROOT / "docs" / "prd.md"
 README = ROOT / "README.md"
-HOOK = ROOT / "scripts" / "validate-project.py"
+HOOK = ROOT / "scripts" / "validate_project.py"
 PRD_MARKER = "<!-- agentic-template:placeholder:prd -->"
 README_MARKER = "<!-- agentic-template:placeholder:readme -->"
 HOOK_SENTINEL = "agentic-template:unconfigured:validate-project"
@@ -318,14 +318,14 @@ def check_readme(findings: list[Finding]) -> None:
     if (
         validation_start is not None
         and validation_end is not None
-        and "scripts/validate-repository.py" not in validation_text
+        and "scripts/validate_repository.py" not in validation_text
     ):
         findings.append(
             Finding(
                 "READINESS_README_COMMAND",
                 README,
                 "README does not name the canonical validation command",
-                "document python3.14 scripts/validate-repository.py in the Validation section",
+                "document python3.14 scripts/validate_repository.py in the Validation section",
             )
         )
 
@@ -337,7 +337,7 @@ def check_hook(findings: list[Finding]) -> None:
                 "READINESS_HOOK_MISSING",
                 HOOK,
                 "project-validation hook is missing",
-                "create an executable scripts/validate-project.py hook",
+                "create an executable scripts/validate_project.py hook",
             )
         )
         return
@@ -347,7 +347,7 @@ def check_hook(findings: list[Finding]) -> None:
                 "READINESS_HOOK_NOT_EXECUTABLE",
                 HOOK,
                 "project-validation hook is not a regular file",
-                "create an executable scripts/validate-project.py hook",
+                "create an executable scripts/validate_project.py hook",
             )
         )
         return
@@ -357,7 +357,7 @@ def check_hook(findings: list[Finding]) -> None:
                 "READINESS_HOOK_NOT_EXECUTABLE",
                 HOOK,
                 "project-validation hook is not executable",
-                "chmod +x scripts/validate-project.py",
+                "chmod +x scripts/validate_project.py",
             )
         )
     text = read_text(HOOK, findings)
@@ -375,7 +375,7 @@ def check_hook(findings: list[Finding]) -> None:
 def main(argv: list[str]) -> int:
     if argv:
         print(
-            "INTERNAL_READINESS_ERROR: scripts/check-project-readiness.py: unexpected arguments; next: run it without arguments",
+            "INTERNAL_READINESS_ERROR: scripts/check_project_readiness.py: unexpected arguments; next: run it without arguments",
             file=sys.stderr,
         )
         return 2

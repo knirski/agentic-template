@@ -153,7 +153,7 @@ permissions, and allowed declared source-only steps.
 | Recomputing every derived field before trusting the manifest made `TemplateChanged` and render-contract violation unreachable, and shadowed pending-journal detection | The manifest has no derived section; validity is parse, schema, and checksum only; journal detection precedes manifest trust |
 | `RenderInput` carried tree hashes and identities, so `render(RenderInput)` could not produce bytes without ambient reads | `render(RenderInput, BlobMap)` over decoded definitions and fragment bodies |
 | Primary state could not reconstruct `RenderInput`: no per-slot digests, no licensing digest, and `retained_paths` absent from the render input | All three are primary state, and `retained_paths` enters `RenderInput` |
-| `source-ci-allowlist.json` was fingerprinted and validated by `validate-template.py` while also being excluded by Copier and deleted by snapshot install | Removed from the fingerprint and from generated-project validation; source-only fixture input |
+| `source-ci-allowlist.json` was fingerprinted and validated by `validate_template.py` while also being excluded by Copier and deleted by snapshot install | Removed from the fingerprint and from generated-project validation; source-only fixture input |
 | The journal entered COMMITTED before gating, so a crash preserved ungated output and an interrupted rollback completed forward | Durable `PLANNED`/`MUTATING`/`RESTORED`/`SEALED` phases; gating inside `MUTATING`; `SEALED` only after gating passes |
 | `O_CREAT \| O_EXCL` plus `flock` cannot detect an abandoned lock, and unlink-and-recreate splits lock domains | A never-unlinked lock inode opened without `O_EXCL`, then `flock(LOCK_EX \| LOCK_NB)` |
 | Journal phase updates had no atomicity requirement, permitting torn JSON | Temp-write, fsync, rename, fsync parent |
@@ -1175,7 +1175,7 @@ normalized setting for capabilities first introduced by the operation, and names
 
 ### Structured readiness result
 
-`check-project-readiness.py` and the engine share one contract, so gating comparison is structural
+`check_project_readiness.py` and the engine share one contract, so gating comparison is structural
 rather than textual.
 
 ```text
@@ -1221,7 +1221,7 @@ Three comparisons, each proving one thing, evaluated in order:
 1. **Artifact verification.** Every planned file's observed raw installed bytes, normalized identity,
    kind, and install mode must equal the plan's new values; every planned directory operation must have
    its declared result. No exemption applies.
-2. **Template-contract evaluation must succeed.** The shell does not spawn `validate-template.py`
+2. **Template-contract evaluation must succeed.** The shell does not spawn `validate_template.py`
    inside the transaction. It observes the post-install inputs and calls the same pure rules used by
    that CLI. No exemptions.
 3. **Readiness comparison**, by operation:
@@ -1271,7 +1271,7 @@ ReadinessRuleDefinition =
 ```
 
 `PredicateKind` is a closed union implemented by total pure evaluators. Tightening a predicate requires
-changing its canonical definition. `validate-template.py` compares complete canonical definitions with
+changing its canonical definition. `validate_template.py` compares complete canonical definitions with
 the frozen schema-v1 baseline and rejects a new or changed blocking definition over adopter-owned state,
 an informational-to-blocking transition, a new required seed-once path, or a blocking rule whose
 declared satisfier is unavailable to every legal operation.
@@ -1412,7 +1412,7 @@ Within v1 an existing capability ID may update artifacts and documentation but m
 remove a dependency, remove a setting, change a setting's type or meaning, make an optional setting
 required, change external-prerequisite semantics incompatibly, or transfer ownership of an existing
 path. Adding an optional setting with a deterministic default is compatible. A frozen fixture records
-the v1 surface; `validate-template.py` compares the live catalog against it. A closure change under a
+the v1 surface; `validate_template.py` compares the live catalog against it. A closure change under a
 nominally compatible catalog surfaces as `CatalogIncompatible`.
 
 `pr-agent-gemini` encodes the backend in the ID, because changing a setting is reconfiguration, which
@@ -1919,7 +1919,7 @@ This is the only value called `ProjectReadinessOutcome`. The transaction gate co
 `MechanicalReadinessResult`; an empty mechanical finding set never implies that the hook ran. Hook
 evidence is **point-in-time evidence**: never written to the manifest, never cached, never replayed.
 `status` does not execute it and claims no outcome, reporting mechanical readiness and then
-`adopter hook: not evaluated; run python3 scripts/validate-repository.py`.
+`adopter hook: not evaluated; run python3 scripts/validate_repository.py`.
 
 ## CLI contract
 
@@ -2203,7 +2203,7 @@ recovery stop at the first failure where continuing could mutate state or destro
 ### US-11: Extend project validation without editing managed CI
 
 - Bootstrap seeds `.github/workflows/project-validation.yml`, then treats it as adopter-owned.
-- Its initial form exposes `workflow_call` and runs `python3 scripts/validate-repository.py`.
+- Its initial form exposes `workflow_call` and runs `python3 scripts/validate_repository.py`.
 - Managed CI calls it as a stable `Project validation` job, passing no secrets, granting
   `contents: read`, and waiting for the complete called workflow.
 - Selected release automation depends on it and on all selected managed checks.
@@ -2277,7 +2277,7 @@ recovery stop at the first failure where continuing could mutate state or destro
 Managed CI calls `.github/workflows/project-validation.yml` as a stable `Project validation` job,
 declaring `contents: read`, passing no named or inherited secrets, and using no privileged environment.
 The seeded adopter workflow declares `on.workflow_call`, checks out without persisted credentials, runs
-on the supported GitHub-hosted runner, invokes `python3 scripts/validate-repository.py`, and uses no
+on the supported GitHub-hosted runner, invokes `python3 scripts/validate_repository.py`, and uses no
 secret and no write-capable permission.
 
 Adopters may add jobs, matrices, and toolchain setup inside it. GitHub constrains reusable-workflow
@@ -2377,13 +2377,13 @@ in every location; timestamps and sexagesimals disabled. `on: push`, `on: [push]
 and is rejected rather than treated as `push`. Parser fixtures pin every YAML 1.1/1.2 edge named here.
 `actionlint` continues to lint the source and
 every generated workflow fixture. No claim is made that a standard-library checker can generally parse
-Actions YAML; `check-project-readiness.py`'s checks remain deliberately bounded — presence, recognizable
+Actions YAML; `check_project_readiness.py`'s checks remain deliberately bounded — presence, recognizable
 `workflow_call`, canonical command, absence of secret passing and privileged environment declarations,
 and the managed caller's exact hash — and are documented as bounded rather than semantic.
 
 ## Validation boundaries
 
-### `scripts/validate-template.py`
+### `scripts/validate_template.py`
 
 Its shell observes the lifecycle-source and declared ownership paths; its pure decoder and rules
 validate reusable machinery without assuming a bootstrapped instance: bundle, addition, plan, and manifest
@@ -2397,7 +2397,7 @@ never executes the adopter hook.
 It does **not** validate source-only inputs. Revision 4 required it to validate the source-CI allowlist,
 a file no generated project retains.
 
-### `scripts/check-project-readiness.py`
+### `scripts/check_project_readiness.py`
 
 Its shell reads only the readiness observation specification; its pure core emits a
 `MechanicalReadinessResult`.
@@ -2413,12 +2413,12 @@ A source mismatch is reported as "reconcile required" on the Copier path. On a s
 exact changed paths and either a verified baseline-commit restore or regeneration. A managed inventory
 mismatch is drift, with `restore` as the next action.
 
-### `scripts/validate-project` and `scripts/validate-repository.py`
+### `scripts/validate-project` and `scripts/validate_repository.py`
 
 `scripts/validate-project` is the canonical adopter executable, invoked directly. Native Windows
 execution is not a v1 guarantee.
 
-`scripts/validate-repository.py` remains the canonical ordered boundary: template contract, project
+`scripts/validate_repository.py` remains the canonical ordered boundary: template contract, project
 readiness, adopter project validation. A pure `ValidationProgram` decides the next stage from typed
 `StageObservation` values; the shell only launches the selected executable and captures its result.
 Stages 1 and 2 expose the same pure rules used by bootstrap gating; stage 3 is adopter-owned, and its
