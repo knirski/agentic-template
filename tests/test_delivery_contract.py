@@ -21,7 +21,7 @@ def main() -> int:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     release = RELEASE.read_text(encoding="utf-8")
     project_job = workflow.split("  project-validation:\n", 1)[-1].split(
-        "\n  nix:\n", 1
+        "\n  workflow-lint:\n", 1
     )[0]
     release_job = workflow.split("\n  release:\n", 1)[-1]
     if "name: Project validation" not in workflow:
@@ -62,7 +62,10 @@ def main() -> int:
     ):
         # The reusable release workflow is gated by the caller's release needs.
         fail("release graph must depend on project-validation")
-    if "needs: [delivery-contract, project-validation, nix]" not in workflow:
+    if (
+        "needs: [python-source, delivery-contract, project-validation, workflow-lint]"
+        not in workflow
+    ):
         fail("release job must require project-validation")
     if re.search(r"if:.*always\(\)", release_job):
         fail("release job must not bypass failed dependencies")

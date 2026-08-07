@@ -223,7 +223,7 @@ permissions, and allowed declared source-only steps.
 | Revision 6 decision | Revision 7 correction |
 | --- | --- |
 | `ty` was listed as a non-normative future option while Pyright was the type gate | `ty` is the sole normative type checker, managed through uv and configured for strict Python 3.14 checking |
-| Source dependencies were described as Nix-flake-only | Python source dependencies are declared in `pyproject.toml`, locked in `uv.lock`, and run with `uv run`; Nix exposes uv and remains the reproducible host/tooling boundary |
+| Source dependencies were described as Nix-flake-only | Python source dependencies are declared in `pyproject.toml`, locked in `uv.lock`, and run with `uv run`; GitHub Actions uses the pinned Astral `setup-uv` action |
 | Generated-project Python was required to be standard-library-only | Generated projects may declare runtime dependencies in rendered uv metadata; bootstrap does not install packages or execute package setup code |
 | Capabilities had no dependency contribution contract | A capability may declare non-secret runtime dependencies, supported Python range, and invocation metadata alongside its outputs and settings |
 
@@ -250,6 +250,10 @@ permissions, and allowed declared source-only steps.
 ### Correction in revision 13
 
 | Nix was treated as a global generated-project CI and release prerequisite | Nix is maintainer-only source tooling by default. The generated portable baseline uses Python 3.14 and uv without requiring Nix, flake files, Cachix, or a Nix CI job. Only the explicitly selected `nix` capability may add generated Nix artifacts and CI contributions; the `cachix-publish` capability depends on it. Maintainer-only Nix workflows and source uv metadata are excluded from generated projects. |
+
+### Correction in revision 14
+
+| Nix remained a required source-maintainer dependency after the generated baseline was made portable | The repository source and its CI use uv, Python 3.14, and actionlint directly. Nix, flakes, Cachix, and Nix release gates are removed from the source baseline; only the explicitly selected generated-project `nix` capability may render Nix artifacts and CI contributions. |
 
 ### Unchanged load-bearing decisions
 
@@ -568,7 +572,7 @@ still uses a small repository-owned `Ok`/`Err` type, frozen data classes, `Enum`
 `typing.assert_never`; a general FP framework would add domain and dependency surface without adding
 capability.
 
-Source assurance uses a small modern toolchain managed by uv and made available from the Nix dev shell:
+Source assurance uses a small modern toolchain managed by uv:
 
 - **ty** is the one normative type checker, configured through `[tool.ty.environment]` for Python 3.14,
   `[tool.ty.terminal]` with warnings treated as errors, and explicit rules for unresolved references and
@@ -588,9 +592,9 @@ Source assurance uses a small modern toolchain managed by uv and made available 
 - **PyYAML** exists only in the source-CI workflow conformance fixture, behind the custom Actions loader
   defined below.
 
-The template source commits `uv.lock` for its Python packages, while `flake.lock` pins Nix-provided tools.
-The Nix dev shell includes uv explicitly and exposes a documented `uv sync`/`uv run` workflow. Source
-checks run through uv's locked environment; no ambient user-site or PATH package may satisfy a gate.
+The template source commits `uv.lock` for its Python packages. CI installs the pinned uv release and
+Python 3.14 through Astral's `setup-uv` action. Source checks run through uv's locked environment; no
+ambient user-site or PATH package may satisfy a gate.
 Bootstrap renders generated dependency declarations but never resolves or writes a generated `uv.lock`.
 When a generated project selects runtime dependencies, its adopter-facing next action is `uv lock` followed
 by `uv sync`; generated workflows may enforce that lock after the adopter has created it.

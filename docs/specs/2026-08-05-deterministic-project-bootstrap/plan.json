@@ -12,9 +12,9 @@
           "name": "Establish uv source tooling and explicit Python 3.14 validation",
           "depends_on": [],
           "inputs": [
-            "design dependency policy; existing `flake.nix`; modern-python guidance; current standalone Python scripts."
+            "design dependency policy; modern-python guidance; current standalone Python scripts."
           ],
-          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks and keep the Nix dev shell explicitly maintainer-only: it provides uv and Python 3.14 for template maintainers, while generated projects use portable Python/uv validation and do not inherit source-only uv or Nix requirements.",
+          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks; CI installs the pinned uv release and Python 3.14 with Astral's `setup-uv` action, while generated projects use portable Python/uv validation and do not inherit source-only uv metadata.",
           "files": {
             "create": [
               "pyproject.toml",
@@ -22,12 +22,15 @@
               ".python-version"
             ],
             "modify": [
-              "flake.nix",
               ".github/workflows/ci.yml",
               "README.md",
               "copier.yml"
             ],
-            "remove": []
+            "remove": [
+              "flake.nix",
+              "flake.lock",
+              ".github/actions/setup-nix"
+            ]
           },
           "validation": {
             "tests": [
@@ -36,9 +39,8 @@
               "`uv run ruff check`",
               "`uv run ruff format --check`",
               "`uv run ty check`",
-              "`nix develop` exposes `uv`",
               "Python 3.14 source checks and dependency-free canonical generated-validator lanes both execute successfully",
-              "generated-project fixtures do not require the maintainer-only Nix shell or source-only uv metadata"
+              "generated-project fixtures do not require source-only uv metadata or Nix"
             ],
             "acceptance": []
           }
@@ -488,10 +490,7 @@
               "copier.yml",
               "docs/adr/0001-use-copier-for-template-updates.md",
               ".github/workflows/ci.yml",
-              ".github/workflows/template-ci.yml",
-              "flake.nix",
-              "flake.lock",
-              ".github/actions/setup-nix"
+              ".github/workflows/template-ci.yml"
             ],
             "remove": []
           },
@@ -821,7 +820,7 @@
               "`uv run ruff format --check`",
               "`uv run ty check`",
               "`uv lock --check`",
-              "Nix/CI checks",
+              "CI checks, including the standalone actionlint job",
               "`git diff --check`",
               "generated-project canonical validation",
               "complete release gate",
