@@ -16,6 +16,14 @@ STAGES = (
 )
 
 
+def stage_command(script: Path, use_python: bool, python_executable: str) -> list[str]:
+    return [python_executable, str(script)] if use_python else [str(script)]
+
+
+def stage_failed(returncode: int) -> bool:
+    return returncode != 0
+
+
 def main(argv: list[str]) -> int:
     if argv:
         print("usage: scripts/validate_repository.py", file=sys.stderr)
@@ -23,7 +31,7 @@ def main(argv: list[str]) -> int:
     for label, script, use_python in STAGES:
         print(f"==> {label}", flush=True)
         try:
-            command = [sys.executable, str(script)] if use_python else [str(script)]
+            command = stage_command(script, use_python, sys.executable)
             result = subprocess.run(command, cwd=ROOT, check=False)
         except OSError as exc:
             print(
@@ -31,7 +39,7 @@ def main(argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
-        if result.returncode:
+        if stage_failed(result.returncode):
             return result.returncode
     return 0
 

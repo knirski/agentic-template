@@ -52,28 +52,47 @@ REQUIRED_SKILLS = [
 ]
 
 
+def valid_skill_frontmatter(text: str) -> bool:
+    match = re.match(r"\A---\n(?P<body>.*?)\n---(?:\n|\Z)", text, re.S)
+    frontmatter = match.group("body") if match else ""
+    return bool(
+        match
+        and re.search(r"^name:\s*.+$", frontmatter, re.M)
+        and re.search(r"^description:\s*.+$", frontmatter, re.M)
+    )
+
+
+def required_contract_failures(
+    root: Path,
+    skill_texts: tuple[tuple[Path, str], ...],
+) -> tuple[str, ...]:
+    failures = [
+        f"missing required file: {relative}"
+        for relative in REQUIRED_FILES
+        if not (root / relative).is_file()
+    ]
+    failures.extend(
+        f"missing required skill: {(root / '.agents' / 'skills' / skill).relative_to(root)}"
+        for skill in REQUIRED_SKILLS
+        if not (root / ".agents" / "skills" / skill / "SKILL.md").is_file()
+    )
+    failures.extend(
+        f"invalid skill frontmatter: {path.relative_to(root)}"
+        for path, text in skill_texts
+        if not valid_skill_frontmatter(text)
+    )
+    return tuple(failures)
+
+
 def main(argv: list[str]) -> int:
     if argv:
         print("usage: scripts/validate_template.py", file=sys.stderr)
         return 2
-    failures: list[str] = []
-    for relative in REQUIRED_FILES:
-        if not (ROOT / relative).is_file():
-            failures.append(f"missing required file: {relative}")
-    for skill in REQUIRED_SKILLS:
-        path = ROOT / ".agents" / "skills" / skill / "SKILL.md"
-        if not path.is_file():
-            failures.append(f"missing required skill: {path.relative_to(ROOT)}")
-    for path in sorted((ROOT / ".agents" / "skills").glob("*/SKILL.md")):
-        text = path.read_text(encoding="utf-8")
-        match = re.match(r"\A---\n(?P<body>.*?)\n---(?:\n|\Z)", text, re.S)
-        frontmatter = match.group("body") if match else ""
-        if (
-            not match
-            or not re.search(r"^name:\s*.+$", frontmatter, re.M)
-            or not re.search(r"^description:\s*.+$", frontmatter, re.M)
-        ):
-            failures.append(f"invalid skill frontmatter: {path.relative_to(ROOT)}")
+    skill_paths = sorted((ROOT / ".agents" / "skills").glob("*/SKILL.md"))
+    skill_texts = tuple(
+        (path, path.read_text(encoding="utf-8")) for path in skill_paths
+    )
+    failures = required_contract_failures(ROOT, skill_texts)
     for failure in failures:
         print(
             f"TEMPLATE_CONTRACT_ERROR: {failure}; next: restore the template contract",
