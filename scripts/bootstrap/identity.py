@@ -168,7 +168,7 @@ def directory_tree_hash(kind: bytes, state: DirectoryState | None) -> str:
         state.entries,
         key=lambda entry: (
             entry.path.value.encode("utf-8"),
-            _entry_payload(entry)["kind"],
+            "directory" if isinstance(entry, DirectoryEntry) else "file",
         ),
     )
     seen_paths: set[str] = set()
