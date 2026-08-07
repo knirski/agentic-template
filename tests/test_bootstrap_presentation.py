@@ -23,6 +23,7 @@ from scripts.bootstrap.validation_program import (
     StageFailed,
     StagePassed,
     ValidationProgram,
+    ValidationState,
 )
 
 
@@ -44,6 +45,9 @@ class PresentationTests(unittest.TestCase):
         self.assertEqual(state.exit_code, 7)
         terminal = program.advance(state, StagePassed())
         self.assertEqual(terminal, state)
+
+        malformed = ValidationState("missing", None)
+        self.assertIsNone(program.advance(malformed, StagePassed()).next_stage)
 
     def test_contract_rules_and_corpus_are_frozen_and_comparable(self) -> None:
         self.assertEqual(len(canonical_rules()), 3)

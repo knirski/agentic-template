@@ -33,7 +33,7 @@ class ValidationProgram:
             return state
         index = (
             self.stages.index(state.next_stage) + 1
-            if state.next_stage
+            if state.next_stage in self.stages
             else len(self.stages)
         )
         return _ValidationState(

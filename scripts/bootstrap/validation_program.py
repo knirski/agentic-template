@@ -40,7 +40,9 @@ class ValidationProgram:
         observations = (*state.observations, observation)
         if isinstance(observation, StageFailed):
             return ValidationState(None, observation.exit_code, observations)
-        index = len(observations)
+        index = (
+            len(observations) if state.next_stage in self.stages else len(self.stages)
+        )
         next_stage = self.stages[index] if index < len(self.stages) else None
         return ValidationState(
             next_stage, 0 if next_stage is None else None, observations
