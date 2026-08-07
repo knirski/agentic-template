@@ -8,6 +8,13 @@ version = "1.5.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
+dev = [
+    { name = "hypothesis" },
+    { name = "pytest" },
+    { name = "pyyaml" },
+    { name = "ruff" },
+    { name = "ty" },
+]
 lint = [
     { name = "ruff" },
     { name = "ty" },
@@ -21,6 +28,13 @@ test = [
 [package.metadata]
 
 [package.metadata.requires-dev]
+dev = [
+    { name = "hypothesis", specifier = ">=6.165.2" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "ruff", specifier = ">=0.16.1" },
+    { name = "ty", specifier = ">=0.0.69" },
+]
 lint = [
     { name = "ruff", specifier = ">=0.16.1" },
     { name = "ty", specifier = ">=0.0.69" },
