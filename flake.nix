@@ -35,7 +35,7 @@
             echo "  nix flake check     run Nix and repository checks"
             echo "  nix fmt             format Nix files"
             echo "  cachix push ...     publish a built closure (CACHIX_AUTH_TOKEN required)"
-            echo "  uv sync --all-groups     install locked source dependencies"
+            echo "  uv sync --all-groups --locked     install locked source dependencies"
             echo "  uv tool install copier   install the template updater"
           '';
         };

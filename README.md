@@ -113,7 +113,7 @@ full text. Third-party bundled skill provenance and licensing notes are listed i
 Nix is optional. Contributors can use the repository's normal validation directly:
 
 ```bash
-uv sync --all-groups
+uv sync --all-groups --locked
 uv run python scripts/validate_template.py
 ```
 
@@ -126,7 +126,7 @@ and use `uv run` for source checks:
 
 ```bash
 nix develop
-uv sync --all-groups
+uv sync --all-groups --locked
 uv run ruff check
 uv run ruff format --check
 uv run ty check

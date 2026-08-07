@@ -270,14 +270,12 @@ def check_readme(findings: list[Finding]) -> None:
             )
         )
     raw_lines = list(enumerate(text.splitlines(), 1))
-    headings_raw = [
-        (n, line) for n, line in raw_lines if re.match(r"^##\s+.+?\s*$", line)
-    ]
+    headings = [(n, line) for n, line in lines if re.match(r"^##\s+.+?\s*$", line)]
     section_spans: dict[str, tuple[int, int]] = {}
     for section in ("Setup", "Validation"):
         matches = [
             n
-            for n, line in headings_raw
+            for n, line in headings
             if re.fullmatch(rf"##\s+{re.escape(section)}\s*", line, re.I)
         ]
         if len(matches) != 1:
@@ -291,7 +289,7 @@ def check_readme(findings: list[Finding]) -> None:
             )
         else:
             start = matches[0]
-            end = next((n for n, line in headings_raw if n > start), len(raw_lines) + 1)
+            end = next((n for n, line in headings if n > start), len(raw_lines) + 1)
             section_spans[section] = (start, end)
             body = [
                 line
@@ -341,7 +339,7 @@ def check_hook(findings: list[Finding]) -> None:
             )
         )
         return
-    if not HOOK.is_file():
+    if HOOK.is_symlink() or not HOOK.is_file():
         findings.append(
             Finding(
                 "READINESS_HOOK_NOT_EXECUTABLE",

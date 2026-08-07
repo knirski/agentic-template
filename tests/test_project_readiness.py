@@ -164,6 +164,26 @@ class ReadinessFixtures(unittest.TestCase):
         self.assertIn("READINESS_PRD_HEADING_MISSING", result.stderr)
         self.assertIn("READINESS_README_COMMAND", result.stderr)
 
+    def test_fenced_readme_headings_do_not_count_as_sections(self) -> None:
+        self.write(
+            "README.md",
+            "# Example Product\n\n```markdown\n## Setup\nInstall the product.\n\n## Validation\nRun the checks.\n```\n",
+        )
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("READINESS_README_SECTION", result.stderr)
+
+    def test_validation_hook_symlink_is_rejected(self) -> None:
+        target = self.root / "real-validation-hook"
+        target.write_text(VALID_HOOK, encoding="utf-8")
+        target.chmod(target.stat().st_mode | stat.S_IXUSR)
+        hook = self.root / "scripts/validate_project.py"
+        hook.unlink()
+        hook.symlink_to(target)
+        result = self.run_checker()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("READINESS_HOOK_NOT_EXECUTABLE", result.stderr)
+
     def test_internal_read_error_returns_two(self) -> None:
         (self.root / "docs/prd.md").write_bytes(b"\xff")
         result = self.run_checker()
