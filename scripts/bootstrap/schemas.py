@@ -127,13 +127,6 @@ class ProfileInput(StrictModel):
     id: Identifier
     capabilities: tuple[Identifier, ...] | None = None
 
-    @field_validator("capabilities", mode="before")
-    @classmethod
-    def normalize_json_capabilities(
-        cls, value: list[str] | tuple[str, ...] | None
-    ) -> tuple[str, ...] | None:
-        return tuple(value) if isinstance(value, list) else value
-
     @model_validator(mode="after")
     def validate_custom_capabilities(self) -> ProfileInput:
         if (self.id == "custom") != (self.capabilities is not None):
@@ -199,13 +192,6 @@ class AdditionsInput(StrictModel):
         if value != 1:
             raise ValueError("unsupported additions schema version")
         return value
-
-    @field_validator("add_capabilities", mode="before")
-    @classmethod
-    def normalize_json_capabilities(
-        cls, value: list[str] | tuple[str, ...]
-    ) -> tuple[str, ...]:
-        return tuple(value) if isinstance(value, list) else value
 
     @field_validator("add_capabilities")
     @classmethod
