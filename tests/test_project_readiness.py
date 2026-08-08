@@ -57,6 +57,7 @@ class ReadinessFixtures(unittest.TestCase):
         (self.root / "docs").mkdir()
         (self.root / "scripts").mkdir()
         shutil.copy2(CHECKER, self.root / "scripts/check_project_readiness.py")
+        shutil.copytree(ROOT / "scripts/bootstrap", self.root / "scripts/bootstrap")
         self.write("docs/prd.md", VALID_PRD)
         self.write("README.md", VALID_README)
         self.write("scripts/validate_project.py", VALID_HOOK, executable=True)

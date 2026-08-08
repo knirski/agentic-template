@@ -5,43 +5,18 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
-
-@dataclass(frozen=True)
-class StagePassed:
-    exit_code: int = 0
-
-
-@dataclass(frozen=True)
-class _ValidationState:
-    next_stage: str | None
-
-
-@dataclass(frozen=True)
-class ValidationProgram:
-    stages: tuple[str, ...]
-
-    def start(self) -> _ValidationState:
-        return _ValidationState(self.stages[0] if self.stages else None)
-
-    def advance(
-        self, state: _ValidationState, _observation: StagePassed
-    ) -> _ValidationState:
-        if state.next_stage is None:
-            return state
-        index = (
-            self.stages.index(state.next_stage) + 1
-            if state.next_stage in self.stages
-            else len(self.stages)
-        )
-        return _ValidationState(
-            self.stages[index] if index < len(self.stages) else None
-        )
-
-
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from scripts.bootstrap.validation_program import (  # noqa: E402
+    StageFailed,
+    StagePassed,
+    ValidationProgram,
+    stage_failed,
+)
+
 STAGES = (
     ("template contract", ROOT / "scripts/validate_template.py", True),
     ("project readiness", ROOT / "scripts/check_project_readiness.py", True),
@@ -51,10 +26,6 @@ STAGES = (
 
 def stage_command(script: Path, use_python: bool, python_executable: str) -> list[str]:
     return [python_executable, str(script)] if use_python else [str(script)]
-
-
-def stage_failed(returncode: int) -> bool:
-    return returncode != 0
 
 
 def validation_program() -> ValidationProgram:
@@ -67,7 +38,12 @@ def main(argv: list[str]) -> int:
         return 2
     program = validation_program()
     state = program.start()
-    for label, script, use_python in STAGES:
+    stage_by_label = {
+        label: (script, use_python) for label, script, use_python in STAGES
+    }
+    while state.next_stage is not None:
+        label = state.next_stage
+        script, use_python = stage_by_label[label]
         print(f"==> {label}", flush=True)
         try:
             command = stage_command(script, use_python, sys.executable)
@@ -78,12 +54,13 @@ def main(argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
-        if stage_failed(result.returncode):
-            return result.returncode
-        state = program.advance(state, StagePassed())
-        if state.next_stage is None:
-            break
-    return 0
+        observation = (
+            StagePassed(result.returncode)
+            if not stage_failed(result.returncode)
+            else StageFailed(result.returncode)
+        )
+        state = program.advance(state, observation)
+    return 0 if state.exit_code is None else state.exit_code
 
 
 if __name__ == "__main__":

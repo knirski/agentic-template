@@ -15,7 +15,12 @@ def render_text(value: object) -> str:
     if isinstance(value, dict):
         findings = value.get("findings", ())
         lines = [
-            f"{item.get('code')}: {item.get('subject')}"
+            (
+                f"{item.get('code')}: {item.get('subject')}: {item.get('message')}; "
+                f"next: {item.get('next_action')}"
+                if "message" in item and "next_action" in item
+                else f"{item.get('code')}: {item.get('subject')}"
+            )
             for item in findings
             if isinstance(item, dict)
         ]

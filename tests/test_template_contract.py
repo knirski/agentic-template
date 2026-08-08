@@ -7,6 +7,9 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+import scripts.validate_template as validate_template
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -45,6 +48,16 @@ class TemplateContractTests(unittest.TestCase):
         )
         self.assertEqual(shell_files, [], f"shell scripts remain: {shell_files}")
         self.assertEqual(bash_files, [], f"bash shebangs remain: {bash_files}")
+
+    def test_adapter_delegates_contract_policy_to_bootstrap_core(self) -> None:
+        with patch(
+            "scripts.bootstrap.template_contract.required_contract_failures",
+            return_value=("delegated failure",),
+        ) as policy:
+            failures = validate_template.validate_contract(Path("."), ())
+
+        self.assertEqual(failures, ("delegated failure",))
+        policy.assert_called_once()
 
 
 if __name__ == "__main__":
