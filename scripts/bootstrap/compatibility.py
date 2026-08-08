@@ -51,7 +51,4 @@ def check_catalog_compatibility(
             issues.append(
                 CompatibilityIssue(capability_id, "stable capability surface changed")
             )
-    for capability_id in catalog:
-        if capability_id not in baseline:
-            continue
     return tuple(issues)
