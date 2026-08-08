@@ -9,9 +9,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import scripts.validate_template as validate_template
-
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+import scripts.validate_template as validate_template  # noqa: E402
 
 
 class TemplateContractTests(unittest.TestCase):

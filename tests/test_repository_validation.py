@@ -12,18 +12,20 @@ import unittest
 from pathlib import Path
 from typing import override
 
-import scripts.validate_repository as validate_repository
-from scripts.bootstrap.validation_program import (
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+import scripts.validate_repository as validate_repository  # noqa: E402
+from scripts.bootstrap.validation_program import (  # noqa: E402
     StageFailed as CoreStageFailed,
 )
-from scripts.bootstrap.validation_program import (
+from scripts.bootstrap.validation_program import (  # noqa: E402
     StagePassed as CoreStagePassed,
 )
-from scripts.bootstrap.validation_program import (
+from scripts.bootstrap.validation_program import (  # noqa: E402
     ValidationProgram as CoreValidationProgram,
 )
 
-ROOT = Path(__file__).resolve().parent.parent
 AGGREGATE = ROOT / "scripts/validate_repository.py"
 
 
