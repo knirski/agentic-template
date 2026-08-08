@@ -23,7 +23,6 @@ from scripts.bootstrap.intents import (
 from scripts.bootstrap.state import (
     BundleState,
     CleanupContractMismatch,
-    CopierCondition,
     CopierConflicted,
     CopierExistingProject,
     CopierSourceChanged,
@@ -39,7 +38,6 @@ from scripts.bootstrap.state import (
     ProjectAvailable,
     ProtectedTargetAvailable,
     RecognizedScaffold,
-    SnapshotCondition,
     SnapshotExistingProject,
     SnapshotSourceChanged,
     SnapshotSourceSame,
@@ -199,6 +197,7 @@ type BlockedState = (
     | JournalAtDifferentTarget
     | StateRootInvalid
 )
+type SameSourceCondition = SnapshotSourceSame | CopierSourceSame
 
 
 def _transition(kind: TransitionErrorKind, subject: str = "") -> TransitionError:
@@ -217,7 +216,7 @@ def decide_bundle(intent: InitBundle, state: BundleState) -> BundleDecision:
             return RefuseBundle(
                 _transition(TransitionErrorKind.OUTPUT_LOCATION_OCCUPIED)
             )
-    return assert_never(state)
+    return assert_never(state)  # pragma: no cover
 
 
 def _status(intent: InspectStatus, state: SystemState) -> StatusDecision:
@@ -250,7 +249,7 @@ def _recovery(intent: Recover, state: SystemState) -> RecoveryDecision:
             return RefuseRecovery(_transition(TransitionErrorKind.UNSUPPORTED_TARGET))
         case ProjectAvailable():
             return NoRecoveryNeeded()
-    return assert_never(state)
+    return assert_never(state)  # pragma: no cover
 
 
 def _blocked(state: BlockedState) -> TransitionError:
@@ -261,7 +260,7 @@ def _blocked(state: BlockedState) -> TransitionError:
             return _transition(TransitionErrorKind.RECOVERY_REQUIRED)
         case JournalAtDifferentTarget():
             return _transition(TransitionErrorKind.RECOVERY_TARGET_MISMATCH)
-    return assert_never(state)
+    return assert_never(state)  # pragma: no cover
 
 
 def _refuse_for(
@@ -272,21 +271,19 @@ def _refuse_for(
             return RefusePlan(error)
         case Apply() | Add() | Restore() | Reconcile():
             return RefuseMutation(error)
-    return assert_never(intent)
+    return assert_never(intent)  # pragma: no cover
 
 
-def _has_managed_drift(condition: SnapshotCondition | CopierCondition) -> bool:
+def _has_managed_drift(condition: SameSourceCondition) -> bool:
     match condition:
-        case SnapshotSourceSame(managed=managed) | CopierSourceSame(managed=managed):
-            return isinstance(managed, ManagedDrift)
         case (
-            SnapshotSourceChanged()
-            | SnapshotSourceUnrecoverable()
-            | CopierConflicted()
-            | CopierSourceChanged()
+            SnapshotSourceSame(managed=ManagedDrift())
+            | CopierSourceSame(managed=ManagedDrift())
         ):
+            return True
+        case SnapshotSourceSame() | CopierSourceSame():
             return False
-    return assert_never(condition)
+    return assert_never(condition)  # pragma: no cover
 
 
 def _apply_existing_decision(
@@ -311,7 +308,7 @@ def _apply_existing_decision(
                     return RefuseMutation(
                         _transition(TransitionErrorKind.TEMPLATE_CHANGED)
                     )
-            return assert_never(condition)
+            return assert_never(condition)  # pragma: no cover
         case CopierExistingProject(condition=condition):
             match condition:
                 case CopierConflicted():
@@ -328,8 +325,8 @@ def _apply_existing_decision(
                     return RefuseMutation(
                         _transition(TransitionErrorKind.TEMPLATE_CHANGED)
                     )
-            return assert_never(condition)
-    return assert_never(existing)
+            return assert_never(condition)  # pragma: no cover
+    return assert_never(existing)  # pragma: no cover
 
 
 def _apply_decision(
@@ -356,7 +353,7 @@ def _apply_decision(
             return RefuseMutation(_transition(TransitionErrorKind.UNSUPPORTED_TARGET))
         case ExistingProject(state=existing):
             return _apply_existing_decision(intent, existing)
-    return assert_never(observation)
+    return assert_never(observation)  # pragma: no cover
 
 
 def _project_action(intent: ActionIntent, state: ProjectAvailable) -> CommandDecision:
@@ -415,7 +412,7 @@ def _project_action(intent: ActionIntent, state: ProjectAvailable) -> CommandDec
                     return _refuse_for(
                         intent, _transition(TransitionErrorKind.OPERATION_UNAVAILABLE)
                     )
-    return assert_never(intent)
+    return assert_never(intent)  # pragma: no cover
 
 
 def decide_project(intent: ProjectIntent, state: SystemState) -> CommandDecision:
@@ -455,5 +452,5 @@ def decide_project(intent: ProjectIntent, state: SystemState) -> CommandDecision
                     return _refuse_for(
                         intent, _transition(TransitionErrorKind.UNSUPPORTED_TARGET)
                     )
-            return assert_never(state)
-    return assert_never(intent)
+            return assert_never(state)  # pragma: no cover
+    return assert_never(intent)  # pragma: no cover

@@ -18,6 +18,7 @@ from scripts.bootstrap.diagnostics import (
     RecoveryFailure,
     Succeeded,
     command_error_diagnostic,
+    limit_diagnostic,
     outcome_for_error,
 )
 from scripts.bootstrap.diagnostics import (
@@ -218,6 +219,11 @@ class DiagnosticTests(unittest.TestCase):
             UsageError(UsageErrorKind.UNKNOWN_COMMAND, 42)  # ty: ignore[invalid-argument-type]
         )
         self.assertEqual(diagnostic.subject, "")
+
+    def test_limit_diagnostic_reports_observed_and_configured_limits(self) -> None:
+        diagnostic = limit_diagnostic("paths", 11, 10)
+        self.assertEqual(diagnostic.code, "BOOTSTRAP_INPUT_LIMIT_PATHS")
+        self.assertIn("Observed 11", diagnostic.details)
 
 
 if __name__ == "__main__":
