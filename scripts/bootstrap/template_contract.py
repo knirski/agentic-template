@@ -42,6 +42,12 @@ REQUIRED_FILES: tuple[str, ...] = (
     "scripts/check_project_readiness.py",
     "scripts/validate_project.py",
     "scripts/validate_repository.py",
+    "scripts/bootstrap/__init__.py",
+    "scripts/bootstrap/canonical_json.py",
+    "scripts/bootstrap/presentation.py",
+    "scripts/bootstrap/readiness.py",
+    "scripts/bootstrap/template_contract.py",
+    "scripts/bootstrap/validation_program.py",
 )
 
 REQUIRED_SKILLS: tuple[str, ...] = (
@@ -97,8 +103,8 @@ def valid_skill_frontmatter(text: str) -> bool:
     frontmatter = match.group("body") if match else ""
     return bool(
         match
-        and re.search(r"^name:\s*.+$", frontmatter, re.M)
-        and re.search(r"^description:\s*.+$", frontmatter, re.M)
+        and re.search(r"^name:[ \t]*.+$", frontmatter, re.M)
+        and re.search(r"^description:[ \t]*.+$", frontmatter, re.M)
     )
 
 
