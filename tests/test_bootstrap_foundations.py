@@ -9,12 +9,20 @@ from hypothesis import strategies as st
 from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
 from scripts.bootstrap.diagnostics import (
     ActionRequired,
+    ContractFailure,
     Diagnostic,
     DiagnosticCategory,
     DiagnosticSeverity,
+    InvalidRequest,
     NoAutomaticAction,
+    RecoveryFailure,
     Succeeded,
     command_error_diagnostic,
+    limit_diagnostic,
+    outcome_for_error,
+)
+from scripts.bootstrap.diagnostics import (
+    InternalFailure as DiagnosticInternalFailure,
 )
 from scripts.bootstrap.errors import (
     ContractError,
@@ -189,6 +197,33 @@ class DiagnosticTests(unittest.TestCase):
         self.assertEqual(action_required.exit_code, 1)
         with self.assertRaises(dataclasses.FrozenInstanceError):
             diagnostic.code = "changed"  # ty: ignore[invalid-assignment]
+
+    def test_error_outcomes_preserve_each_error_family(self) -> None:
+        cases = (
+            (UsageError(UsageErrorKind.UNKNOWN_COMMAND), InvalidRequest),
+            (InputError(InputErrorKind.WRONG_KIND), InvalidRequest),
+            (ObservationError(ObservationErrorKind.PATH_MISSING), ActionRequired),
+            (ContractError(ContractErrorKind.INVALID_TEMPLATE), ContractFailure),
+            (
+                TransitionError(TransitionErrorKind.OPERATION_UNAVAILABLE),
+                ActionRequired,
+            ),
+            (TransactionError(TransactionErrorKind.INVALID_JOURNAL), RecoveryFailure),
+            (InternalFailure(InternalCode.IMPOSSIBLE_STATE), DiagnosticInternalFailure),
+        )
+        for error, expected in cases:
+            self.assertIsInstance(outcome_for_error(error), expected)
+
+    def test_diagnostic_sanitizes_non_string_subjects(self) -> None:
+        diagnostic = command_error_diagnostic(
+            UsageError(UsageErrorKind.UNKNOWN_COMMAND, 42)  # ty: ignore[invalid-argument-type]
+        )
+        self.assertEqual(diagnostic.subject, "")
+
+    def test_limit_diagnostic_reports_observed_and_configured_limits(self) -> None:
+        diagnostic = limit_diagnostic("paths", 11, 10)
+        self.assertEqual(diagnostic.code, "BOOTSTRAP_INPUT_LIMIT_PATHS")
+        self.assertIn("Observed 11", diagnostic.details)
 
 
 if __name__ == "__main__":

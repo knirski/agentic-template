@@ -64,39 +64,44 @@ class Diagnostic:
 
 
 def _category(error: CommandError) -> DiagnosticCategory:
-    if isinstance(error, UsageError):
-        return DiagnosticCategory.USAGE
-    if isinstance(error, InputError):
-        return DiagnosticCategory.INPUT
-    if isinstance(error, ObservationError):
-        return DiagnosticCategory.OBSERVATION
-    if isinstance(error, ContractError):
-        return DiagnosticCategory.CONTRACT
-    if isinstance(error, TransitionError):
-        return DiagnosticCategory.TRANSITION
-    if isinstance(error, TransactionError):
-        return DiagnosticCategory.TRANSACTION
-    if isinstance(error, CoreInternalFailure):
-        return DiagnosticCategory.INTERNAL
-    return assert_never(error)
+    match error:
+        case UsageError():
+            return DiagnosticCategory.USAGE
+        case InputError():
+            return DiagnosticCategory.INPUT
+        case ObservationError():
+            return DiagnosticCategory.OBSERVATION
+        case ContractError():
+            return DiagnosticCategory.CONTRACT
+        case TransitionError():
+            return DiagnosticCategory.TRANSITION
+        case TransactionError():
+            return DiagnosticCategory.TRANSACTION
+        case CoreInternalFailure():
+            return DiagnosticCategory.INTERNAL
+    return assert_never(error)  # pragma: no cover
 
 
 def _kind_name(error: CommandError) -> str:
-    if isinstance(error, TransactionError):
-        if (
-            error.kind is TransactionErrorKind.PRIMITIVE_FAILED
-            and error.primitive is not None
+    match error:
+        case TransactionError(
+            kind=TransactionErrorKind.PRIMITIVE_FAILED,
+            primitive=primitive,
+        ) if primitive is not None:
+            return f"{error.kind.value}_{primitive.value}"
+        case TransactionError():
+            return error.kind.value
+        case CoreInternalFailure(code=code):
+            return code.value
+        case (
+            UsageError()
+            | InputError()
+            | ObservationError()
+            | ContractError()
+            | TransitionError()
         ):
-            return f"{error.kind.value}_{error.primitive.value}"
-        return error.kind.value
-    if isinstance(error, CoreInternalFailure):
-        return error.code.value
-    if isinstance(
-        error,
-        (UsageError, InputError, ObservationError, ContractError, TransitionError),
-    ):
-        return error.kind.value
-    return assert_never(error)
+            return error.kind.value
+    return assert_never(error)  # pragma: no cover
 
 
 def command_error_diagnostic(error: CommandError) -> Diagnostic:
@@ -209,12 +214,15 @@ type CommandOutcome = (
 
 def outcome_for_error(error: CommandError) -> CommandOutcome:
     diagnostic = command_error_diagnostic(error)
-    if isinstance(error, (UsageError, InputError)):
-        return InvalidRequest((diagnostic,))
-    if isinstance(error, ContractError):
-        return ContractFailure((diagnostic,))
-    if isinstance(error, TransactionError):
-        return RecoveryFailure((diagnostic,))
-    if isinstance(error, CoreInternalFailure):
-        return InternalFailure((diagnostic,))
-    return ActionRequired((diagnostic,))
+    match error:
+        case UsageError() | InputError():
+            return InvalidRequest((diagnostic,))
+        case ContractError():
+            return ContractFailure((diagnostic,))
+        case TransactionError():
+            return RecoveryFailure((diagnostic,))
+        case CoreInternalFailure():
+            return InternalFailure((diagnostic,))
+        case ObservationError() | TransitionError():
+            return ActionRequired((diagnostic,))
+    return assert_never(error)  # pragma: no cover

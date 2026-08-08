@@ -3,12 +3,17 @@ from __future__ import annotations
 import unittest
 
 from scripts.bootstrap.decisions import (
+    AddCapabilities,
+    CompileCandidate,
     DescribeStatus,
+    EquivalentVerification,
     InitialInstall,
     NoRecoveryNeeded,
+    ReconcileTemplate,
     RefuseMutation,
     RefusePlan,
     RefuseRecovery,
+    RestoreManaged,
     WriteBundle,
     decide_bundle,
     decide_project,
@@ -20,6 +25,8 @@ from scripts.bootstrap.errors import (
 )
 from scripts.bootstrap.identity import TargetIdentity
 from scripts.bootstrap.intents import (
+    Add,
+    AddOptions,
     Apply,
     ApplyOptions,
     ApplyPlanOptions,
@@ -27,9 +34,16 @@ from scripts.bootstrap.intents import (
     InitBundle,
     InitOptions,
     InspectStatus,
+    PlanAdd,
     PlanApply,
+    PlanReconcile,
+    PlanRestore,
+    Reconcile,
+    ReconcileOptions,
     Recover,
     RecoverOptions,
+    Restore,
+    RestoreOptions,
     StatusOptions,
 )
 from scripts.bootstrap.observation import (
@@ -44,23 +58,46 @@ from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.state import (
     CanonicalTemplateSource,
     CleanupContractMismatch,
+    CleanupContractValid,
+    ClosureError,
+    CopierConflicted,
     CopierExistingProject,
+    CopierSourceChanged,
     CopierSourceSame,
     EmptyManifestFree,
+    ExistingProject,
+    IncompatibleExistingProject,
+    InvalidManifest,
+    JournalAtDifferentTarget,
+    JournalPending,
+    ManagedDrift,
     ManagedVerified,
     NoSnapshotCleanup,
     OrdinaryProject,
+    OrphanTransactionState,
     OutputAvailable,
+    PathDelta,
+    PendingIdentity,
     ProjectAvailable,
     ProtectedTargetAvailable,
     RecognizedScaffold,
     RecordedProjectState,
     SnapshotExistingProject,
+    SnapshotRepair,
+    SnapshotSourceChanged,
     SnapshotSourceSame,
+    SnapshotSourceUnrecoverable,
+    SourceDelta,
+    StalePendingWrite,
+    StateRootInvalid,
     SupportedWorktree,
     TargetSnapshot,
     TargetUnavailable,
+    TopologyError,
+    UnsafeExistingProject,
     UnsupportedGitTarget,
+    UnsupportedManifestFree,
+    ValidatedJournal,
     WorktreeContext,
 )
 
@@ -163,6 +200,80 @@ class StateAndDecisionTests(unittest.TestCase):
         )
         self.assertIsInstance(installed, InitialInstall)
 
+    def test_apply_refuses_unrecoverable_snapshot_and_copier_conflicts(self) -> None:
+        managed = ManagedVerified()
+        snapshot = ProjectAvailable(
+            worktree(),
+            ExistingProject(
+                SnapshotExistingProject(
+                    RecordedProjectState(GenerationPath.GITHUB),
+                    SnapshotSourceUnrecoverable(
+                        SourceDelta((RepoPath("source.txt"),)),
+                        "source history is unavailable",
+                        managed,
+                    ),
+                    TargetSnapshot(()),
+                )
+            ),
+        )
+        copier = ProjectAvailable(
+            worktree(),
+            ExistingProject(
+                CopierExistingProject(
+                    RecordedProjectState(GenerationPath.COPIER),
+                    CopierConflicted(PathDelta((RepoPath(".rej"),))),
+                    TargetSnapshot(()),
+                )
+            ),
+        )
+
+        refused_snapshot = decide_project(Apply(ApplyOptions()), snapshot)
+        self.assertIsInstance(refused_snapshot, RefuseMutation)
+        if isinstance(refused_snapshot, RefuseMutation):
+            self.assertIsInstance(refused_snapshot.error, TransitionError)
+            if isinstance(refused_snapshot.error, TransitionError):
+                self.assertEqual(
+                    refused_snapshot.error.kind, TransitionErrorKind.TEMPLATE_CHANGED
+                )
+
+        refused_copier = decide_project(Apply(ApplyOptions()), copier)
+        self.assertIsInstance(refused_copier, RefuseMutation)
+        if isinstance(refused_copier, RefuseMutation):
+            self.assertIsInstance(refused_copier.error, TransitionError)
+            if isinstance(refused_copier.error, TransitionError):
+                self.assertEqual(
+                    refused_copier.error.kind, TransitionErrorKind.COPIER_CONFLICTS
+                )
+
+        for state in (snapshot, copier):
+            planned = decide_project(PlanApply(ApplyPlanOptions()), state)
+            self.assertIsInstance(planned, RefusePlan)
+
+    def test_source_change_takes_precedence_over_managed_drift(self) -> None:
+        managed_drift = ManagedDrift(PathDelta((RepoPath("managed.txt"),)))
+        snapshot = ProjectAvailable(
+            worktree(),
+            ExistingProject(
+                SnapshotExistingProject(
+                    RecordedProjectState(GenerationPath.GITHUB),
+                    SnapshotSourceChanged(
+                        SourceDelta((RepoPath("source.txt"),)),
+                        SnapshotRepair("repair", (RepoPath("source.txt"),)),
+                        managed_drift,
+                    ),
+                    TargetSnapshot(()),
+                )
+            ),
+        )
+        decision = decide_project(Apply(ApplyOptions()), snapshot)
+        self.assertIsInstance(decision, RefuseMutation)
+        if isinstance(decision, RefuseMutation):
+            self.assertIsInstance(decision.error, TransitionError)
+            if isinstance(decision.error, TransitionError):
+                self.assertEqual(
+                    decision.error.kind, TransitionErrorKind.TEMPLATE_CHANGED
+                )
+
     def test_planning_refusal_stays_in_the_planning_decision_family(self) -> None:
         state = TargetUnavailable(UnsupportedGitTarget("not_a_worktree"))
         decision = decide_project(PlanApply(ApplyPlanOptions()), state)
@@ -193,6 +304,269 @@ class StateAndDecisionTests(unittest.TestCase):
         )
         self.assertIsInstance(
             decide_project(Recover(RecoverOptions()), state), NoRecoveryNeeded
+        )
+
+    def test_recovery_dispatches_all_journal_phases_and_blockers(self) -> None:
+        phase_results = (
+            ("PLANNED", "DiscardPreparation"),
+            ("MUTATING", "RollBack"),
+            ("RESTORED", "FinishRollbackCleanup"),
+            ("SEALED", "FinishForward"),
+        )
+        for phase, expected_name in phase_results:
+            state = JournalPending(
+                worktree().context,
+                ValidatedJournal(
+                    "apply", TargetIdentity(b"/tmp/project", 1, 2, "target"), phase
+                ),
+            )
+            decision = decide_project(Recover(RecoverOptions()), state)
+            self.assertEqual(type(decision).__name__, expected_name)
+
+        unknown_phase = JournalPending(
+            worktree().context,
+            ValidatedJournal(
+                "apply", TargetIdentity(b"/tmp/project", 1, 2, "target"), "UNKNOWN"
+            ),
+        )
+        self.assertIsInstance(
+            decide_project(Recover(RecoverOptions()), unknown_phase), RefuseRecovery
+        )
+
+        mismatch = JournalAtDifferentTarget(
+            worktree().context,
+            ValidatedJournal(
+                "apply", TargetIdentity(b"/tmp/other", 1, 2, "other"), "SEALED"
+            ),
+            TargetIdentity(b"/tmp/project", 1, 2, "target"),
+        )
+        self.assertIsInstance(
+            decide_project(Recover(RecoverOptions()), mismatch), RefuseRecovery
+        )
+        for state in (
+            TargetUnavailable(UnsupportedGitTarget("not_a_worktree")),
+            StateRootInvalid(worktree().context, OrphanTransactionState("orphan")),
+            ProtectedTargetAvailable(
+                worktree(protected=True).context,
+                RecognizedScaffold(
+                    "github", NoSnapshotCleanup(), EmptyManifestFree(), ()
+                ),
+            ),
+            StalePendingWrite(worktree().context, PendingIdentity("digest")),
+        ):
+            decision = decide_project(Recover(RecoverOptions()), state)
+            self.assertIn(
+                type(decision).__name__, {"RefuseRecovery", "DiscardStalePending"}
+            )
+
+        for state in (
+            StalePendingWrite(worktree().context, PendingIdentity("digest")),
+            JournalPending(
+                worktree().context,
+                ValidatedJournal(
+                    "apply", TargetIdentity(b"/tmp/project", 1, 2, "target"), "PLANNED"
+                ),
+            ),
+            mismatch,
+            StateRootInvalid(worktree().context, OrphanTransactionState("orphan")),
+        ):
+            self.assertIsInstance(
+                decide_project(Apply(ApplyOptions()), state), RefuseMutation
+            )
+
+    def test_apply_decision_handles_all_existing_state_families(self) -> None:
+        scaffold = ProjectAvailable(
+            worktree(),
+            RecognizedScaffold(
+                "github",
+                CleanupContractValid(CleanupContract((), (), "fingerprint")),
+                EmptyManifestFree(),
+                (),
+            ),
+        )
+        self.assertIsInstance(
+            decide_project(Apply(ApplyOptions()), scaffold), InitialInstall
+        )
+        no_cleanup_scaffold = ProjectAvailable(
+            worktree(),
+            RecognizedScaffold("github", NoSnapshotCleanup(), EmptyManifestFree(), ()),
+        )
+        self.assertIsInstance(
+            decide_project(Apply(ApplyOptions()), no_cleanup_scaffold), InitialInstall
+        )
+        for observation in (
+            UnsupportedManifestFree(EmptyManifestFree(), ()),
+            InvalidManifest("invalid", ()),
+        ):
+            self.assertIsInstance(
+                decide_project(
+                    Apply(ApplyOptions()), ProjectAvailable(worktree(), observation)
+                ),
+                RefuseMutation,
+            )
+
+        for existing, expected_kind in (
+            (
+                UnsafeExistingProject(
+                    RecordedProjectState(GenerationPath.GITHUB),
+                    TopologyError(()),
+                    TargetSnapshot(()),
+                ),
+                TransitionErrorKind.UNSUPPORTED_TARGET,
+            ),
+            (
+                IncompatibleExistingProject(
+                    RecordedProjectState(GenerationPath.GITHUB),
+                    ClosureError("incompatible"),
+                    TargetSnapshot(()),
+                ),
+                TransitionErrorKind.OPERATION_UNAVAILABLE,
+            ),
+        ):
+            decision = decide_project(
+                Apply(ApplyOptions()),
+                ProjectAvailable(worktree(), ExistingProject(existing)),
+            )
+            self.assertIsInstance(decision, RefuseMutation)
+            if isinstance(decision, RefuseMutation):
+                self.assertIsInstance(decision.error, TransitionError)
+                if isinstance(decision.error, TransitionError):
+                    self.assertEqual(decision.error.kind, expected_kind)
+
+        verified_snapshot = ProjectAvailable(
+            worktree(),
+            ExistingProject(
+                SnapshotExistingProject(
+                    RecordedProjectState(GenerationPath.GITHUB),
+                    SnapshotSourceSame(ManagedVerified()),
+                    TargetSnapshot(()),
+                )
+            ),
+        )
+        self.assertIsInstance(
+            decide_project(Apply(ApplyOptions()), verified_snapshot),
+            EquivalentVerification,
+        )
+
+        drifted_snapshot = ProjectAvailable(
+            worktree(),
+            ExistingProject(
+                SnapshotExistingProject(
+                    RecordedProjectState(GenerationPath.GITHUB),
+                    SnapshotSourceSame(
+                        ManagedDrift(PathDelta((RepoPath("managed.txt"),)))
+                    ),
+                    TargetSnapshot(()),
+                )
+            ),
+        )
+        self.assertIsInstance(
+            decide_project(Apply(ApplyOptions()), drifted_snapshot), RefuseMutation
+        )
+
+        drifted_copier = ProjectAvailable(
+            worktree(),
+            ExistingProject(
+                CopierExistingProject(
+                    RecordedProjectState(GenerationPath.COPIER),
+                    CopierSourceSame(
+                        ManagedDrift(PathDelta((RepoPath("managed.txt"),)))
+                    ),
+                    TargetSnapshot(()),
+                )
+            ),
+        )
+        self.assertIsInstance(
+            decide_project(Apply(ApplyOptions()), drifted_copier), RefuseMutation
+        )
+
+        changed_copier = ProjectAvailable(
+            worktree(),
+            ExistingProject(
+                CopierExistingProject(
+                    RecordedProjectState(GenerationPath.COPIER),
+                    CopierSourceChanged(
+                        SourceDelta((RepoPath("source.txt"),)), ManagedVerified()
+                    ),
+                    TargetSnapshot(()),
+                )
+            ),
+        )
+        self.assertIsInstance(
+            decide_project(Apply(ApplyOptions()), changed_copier), RefuseMutation
+        )
+
+    def test_project_actions_cover_add_restore_and_reconcile_families(self) -> None:
+        copier_same = ProjectAvailable(
+            worktree(),
+            ExistingProject(
+                CopierExistingProject(
+                    RecordedProjectState(GenerationPath.COPIER),
+                    CopierSourceSame(ManagedVerified()),
+                    TargetSnapshot(()),
+                )
+            ),
+        )
+        self.assertIsInstance(
+            decide_project(Add(AddOptions(("capability",))), copier_same),
+            AddCapabilities,
+        )
+        self.assertIsInstance(
+            decide_project(PlanAdd(AddOptions(("capability",))), copier_same),
+            CompileCandidate,
+        )
+        self.assertIsInstance(
+            decide_project(Apply(ApplyOptions()), copier_same),
+            EquivalentVerification,
+        )
+
+        snapshot_same = ProjectAvailable(
+            worktree(),
+            ExistingProject(
+                SnapshotExistingProject(
+                    RecordedProjectState(GenerationPath.GITHUB),
+                    SnapshotSourceSame(ManagedVerified()),
+                    TargetSnapshot(()),
+                )
+            ),
+        )
+        self.assertIsInstance(
+            decide_project(Restore(RestoreOptions()), snapshot_same), RestoreManaged
+        )
+        self.assertIsInstance(
+            decide_project(PlanRestore(RestoreOptions()), snapshot_same),
+            CompileCandidate,
+        )
+
+        copier_changed = ProjectAvailable(
+            worktree(),
+            ExistingProject(
+                CopierExistingProject(
+                    RecordedProjectState(GenerationPath.COPIER),
+                    CopierSourceChanged(
+                        SourceDelta((RepoPath("source.txt"),)), ManagedVerified()
+                    ),
+                    TargetSnapshot(()),
+                )
+            ),
+        )
+        self.assertIsInstance(
+            decide_project(Reconcile(ReconcileOptions()), copier_changed),
+            ReconcileTemplate,
+        )
+        self.assertIsInstance(
+            decide_project(PlanReconcile(ReconcileOptions()), copier_changed),
+            CompileCandidate,
+        )
+
+        self.assertIsInstance(
+            decide_project(Add(AddOptions()), snapshot_same), RefuseMutation
+        )
+        self.assertIsInstance(
+            decide_project(Restore(RestoreOptions()), copier_changed), RefuseMutation
+        )
+        self.assertIsInstance(
+            decide_project(Reconcile(ReconcileOptions()), snapshot_same), RefuseMutation
         )
 
 
