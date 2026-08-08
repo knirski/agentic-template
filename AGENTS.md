@@ -36,6 +36,9 @@ boundary. The template source uses the readiness and generation-path fixture sui
 - Prefer explicit typed outcomes and returned diagnostics over hidden mutation, ambient global
   state, or exceptions used for ordinary control flow. Keep command entrypoints responsible for
   argument parsing, effect orchestration, presentation, and exit codes.
+- For closed-union dispatch, prefer structural `match`/`case` patterns over repetitive type checks;
+  narrow helpers to the union variants they actually accept, enumerate cases explicitly, and end
+  exhaustive matches with `assert_never` so `ty` can detect missing variants.
 - Apply these principles pragmatically, not religiously. Do not add wrappers, abstractions,
   functional-programming ceremony, or artificial immutability when a direct standard-library
   implementation is clearer, safer, or materially simpler. Preserve existing contracts and favor
