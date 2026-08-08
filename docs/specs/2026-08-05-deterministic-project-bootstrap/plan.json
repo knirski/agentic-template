@@ -413,7 +413,9 @@
                 "python3 scripts/validate_repository.py (expected source-scaffold exit 1; template contract passed and readiness findings were emitted in canonical order)"
               ]
             },
-            "github_prs": []
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/37"
+            ]
           },
           "files": {
             "create": [
