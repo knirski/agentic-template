@@ -33,6 +33,11 @@ class Finding:
 
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(ROOT))
+
+from scripts.bootstrap.presentation import render_text  # noqa: E402
+
 PRD = ROOT / "docs" / "prd.md"
 README = ROOT / "README.md"
 HOOK = ROOT / "scripts" / "validate_project.py"
@@ -483,8 +488,21 @@ def main(argv: list[str]) -> int:
             file=sys.stderr,
         )
         return 2
-    for finding in findings:
-        print(finding.render(), file=sys.stderr)
+    rendered = render_text(
+        {
+            "findings": [
+                {
+                    "code": finding.code,
+                    "subject": finding.path.relative_to(ROOT).as_posix(),
+                    "message": finding.message,
+                    "next_action": finding.next_action,
+                }
+                for finding in findings
+            ]
+        }
+    )
+    if rendered:
+        print(rendered, file=sys.stderr)
     return exit_code(findings)
 
 

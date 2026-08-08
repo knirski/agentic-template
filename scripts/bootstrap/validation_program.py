@@ -49,5 +49,7 @@ class ValidationProgram:
         )
 
 
-def stage_failed(observation: StageObservation) -> bool:
+def stage_failed(observation: StageObservation | int) -> bool:
+    if isinstance(observation, int):
+        return observation != 0
     return isinstance(observation, StageFailed)

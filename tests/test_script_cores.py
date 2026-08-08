@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
+import subprocess
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts import check_project_readiness as readiness
 from scripts import validate_repository as repository
+from scripts import validate_template as template
 
 VALID_PRD = """# Product
 
@@ -74,6 +79,30 @@ class FunctionalCoreTests(unittest.TestCase):
     def test_repository_core_stops_after_nonzero_stage(self) -> None:
         self.assertTrue(repository.stage_failed(7))
         self.assertFalse(repository.stage_failed(0))
+
+    def test_repository_adapter_folds_successful_stages(self) -> None:
+        with patch(
+            "scripts.validate_repository.subprocess.run",
+            side_effect=(
+                subprocess.CompletedProcess([], 0),
+                subprocess.CompletedProcess([], 0),
+                subprocess.CompletedProcess([], 0),
+            ),
+        ) as run:
+            self.assertEqual(repository.main([]), 0)
+
+        self.assertEqual(run.call_count, 3)
+
+    def test_readiness_adapter_presents_findings(self) -> None:
+        output = io.StringIO()
+        with contextlib.redirect_stderr(output):
+            result = readiness.main([])
+
+        self.assertEqual(result, 1)
+        self.assertIn("READINESS_PRD_MARKER", output.getvalue())
+
+    def test_template_adapter_validates_source_contract(self) -> None:
+        self.assertEqual(template.main([]), 0)
 
 
 if __name__ == "__main__":

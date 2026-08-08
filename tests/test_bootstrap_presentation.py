@@ -74,6 +74,22 @@ class PresentationTests(unittest.TestCase):
         self.assertEqual(render_text({"command": "status", "findings": ()}), "status")
         self.assertEqual(render_text("value"), '"value"')
 
+    def test_text_presenter_renders_complete_diagnostics(self) -> None:
+        value = {
+            "findings": [
+                {
+                    "code": "R1",
+                    "subject": "docs/prd.md",
+                    "message": "fill in the PRD",
+                    "next_action": "edit the file",
+                }
+            ]
+        }
+        self.assertEqual(
+            render_text(value),
+            "R1: docs/prd.md: fill in the PRD; next: edit the file",
+        )
+
     def test_readiness_constructor_and_gate_variants(self) -> None:
         repository_finding = Finding(
             code="R",

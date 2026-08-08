@@ -13,6 +13,19 @@ from pathlib import Path
 from typing import override
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+import scripts.validate_repository as validate_repository  # noqa: E402
+from scripts.bootstrap.validation_program import (  # noqa: E402
+    StageFailed as CoreStageFailed,
+)
+from scripts.bootstrap.validation_program import (  # noqa: E402
+    StagePassed as CoreStagePassed,
+)
+from scripts.bootstrap.validation_program import (  # noqa: E402
+    ValidationProgram as CoreValidationProgram,
+)
+
 AGGREGATE = ROOT / "scripts/validate_repository.py"
 
 
@@ -23,6 +36,7 @@ class AggregateFixtures(unittest.TestCase):
         self.root = Path(self.tmp.name)
         (self.root / "scripts").mkdir()
         shutil.copy2(AGGREGATE, self.root / "scripts/validate_repository.py")
+        shutil.copytree(ROOT / "scripts/bootstrap", self.root / "scripts/bootstrap")
 
     @override
     def tearDown(self) -> None:
@@ -73,6 +87,11 @@ class AggregateFixtures(unittest.TestCase):
 
     def test_usage_error_is_two(self) -> None:
         self.assertEqual(self.run_command("unexpected").returncode, 2)
+
+    def test_adapter_uses_shared_typed_validation_program(self) -> None:
+        self.assertIs(validate_repository.ValidationProgram, CoreValidationProgram)
+        self.assertIs(validate_repository.StagePassed, CoreStagePassed)
+        self.assertIs(validate_repository.StageFailed, CoreStageFailed)
 
 
 if __name__ == "__main__":
