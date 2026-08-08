@@ -9,13 +9,35 @@
       "tasks": [
         {
           "id": "T1",
-          "execution": {"mode": "inline", "status": "completed", "completion": {"completed_at": "2026-08-07", "commits": ["e0887ea", "a3b09e2"], "evidence": ["uv lock --check (passed)", "uv sync --all-groups --locked (passed)", "uv run ruff check (clean)", "uv run ruff format --check (30 files already formatted)", "uv run ty check (clean)", "Python 3.14 source checks and repository validation passed"]}},
           "name": "Establish uv source tooling and explicit Python 3.14 validation",
           "depends_on": [],
           "inputs": [
             "design dependency policy; modern-python guidance; current standalone Python scripts."
           ],
           "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks; CI installs the pinned uv release and Python 3.14 with Astral's `setup-uv` action. Nix and its flake remain optional maintainer tooling, while generated projects use portable Python/uv validation and do not inherit source-only uv metadata.",
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-07",
+              "commits": [
+                "e0887ea",
+                "a3b09e2"
+              ],
+              "evidence": [
+                "uv lock --check (passed)",
+                "uv sync --all-groups --locked (passed)",
+                "uv run ruff check (clean)",
+                "uv run ruff format --check (30 files already formatted)",
+                "uv run ty check (clean)",
+                "Python 3.14 source checks and repository validation passed"
+              ]
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/14",
+              "https://github.com/knirski/agentic-template/pull/18"
+            ]
+          },
           "files": {
             "create": [
               "pyproject.toml",
@@ -45,7 +67,6 @@
         },
         {
           "id": "T2",
-          "execution": {"mode": "inline", "status": "completed", "completion": {"completed_at": "2026-08-07", "commits": ["676a35c", "98ab574"], "evidence": ["uv run pytest -q tests/test_bootstrap_foundations.py (11 passed)", "uv run ty check (clean)", "uv run ruff check (clean)"]}},
           "name": "Add immutable result, diagnostic, and resource-bound foundations",
           "depends_on": [
             "T1"
@@ -54,6 +75,26 @@
             "functional-core representation rules; closed `CommandError` algebra; resource limits; canonical diagnostic and presentation requirements."
           ],
           "description": "Implement frozen value conventions, `Ok`/`Err`, closed error families, sanitized error mapping, deterministic diagnostics, command outcomes, immutable blob interning, and all v1 resource limits. Keep shell-only values out of core types and add exhaustiveness checks with `assert_never`.",
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-07",
+              "commits": [
+                "676a35c",
+                "98ab574"
+              ],
+              "evidence": [
+                "uv run pytest -q tests/test_bootstrap_foundations.py (11 passed)",
+                "uv run ty check (clean)",
+                "uv run ruff check (clean)"
+              ]
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/19",
+              "https://github.com/knirski/agentic-template/pull/20"
+            ]
+          },
           "files": {
             "create": [
               "scripts/bootstrap/result.py",
@@ -77,7 +118,6 @@
         },
         {
           "id": "T3",
-          "execution": {"mode": "inline", "status": "completed", "completion": {"completed_at": "2026-08-07", "commits": ["bc908a7", "f9d9c98"], "evidence": ["uv run pytest -q tests/test_bootstrap_determinism.py (14 passed)", "uv run pytest -q tests/test_bootstrap_determinism.py tests/test_bootstrap_decisions.py (27 passed)", "uv run ruff check (clean)", "uv run ty check (clean)"]}},
           "name": "Implement canonical encoding, paths, JSON, hashes, and identities",
           "depends_on": [
             "T2"
@@ -86,6 +126,27 @@
             "determinism contract; strict JSON rules; path grammar; LF normalization; tagged digest and tree identity rules; file/directory mode rules."
           ],
           "description": "Implement strict decoding and canonical serialization, repository-relative path values, text normalization, content/tree hashing, target/source/manifest identities, normalized-versus-raw identity distinctions, and exact directory tree identities.",
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-07",
+              "commits": [
+                "bc908a7",
+                "f9d9c98"
+              ],
+              "evidence": [
+                "uv run pytest -q tests/test_bootstrap_determinism.py (14 passed)",
+                "uv run pytest -q tests/test_bootstrap_determinism.py tests/test_bootstrap_decisions.py (27 passed)",
+                "uv run ruff check (clean)",
+                "uv run ty check (clean)"
+              ]
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/22",
+              "https://github.com/knirski/agentic-template/pull/23"
+            ]
+          },
           "files": {
             "create": [
               "scripts/bootstrap/canonical_json.py",
@@ -111,7 +172,6 @@
       "tasks": [
         {
           "id": "T4",
-          "execution": {"mode": "inline", "status": "completed", "completion": {"completed_at": "2026-08-07", "commit": "3de8933bbbdfc84e4bd40533edfc9e5e732c34d6", "evidence": ["uv run pytest -q tests/test_bootstrap_decisions.py (13 passed)", "uv run pytest -q tests/test_bootstrap_foundations.py tests/test_bootstrap_determinism.py tests/test_bootstrap_decisions.py tests/test_script_cores.py (42 passed)", "uv run ruff check (clean)", "uv run ty check scripts/bootstrap tests/test_bootstrap_decisions.py (clean)"]}},
           "name": "Model staged observations and family-specific decision algebras",
           "depends_on": [
             "T3"
@@ -120,6 +180,23 @@
             "staged project-state sums; `BundleIntent`/`BundleState`; `ProjectIntent`/`SystemState`; normative transition matrix; target protection and coherent-observation rules."
           ],
           "description": "Define decodable legal state constructors, generation-specific nested sums, immutable intent/options, total bundle and project decision functions, preimage witnesses for every leaf decision, and operation semantics. Add coherent two-pass observations and target/state-root identity binding in the shell-facing interfaces without allowing impossible state combinations into policy evaluation.",
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-07",
+              "commit": "3de8933bbbdfc84e4bd40533edfc9e5e732c34d6",
+              "evidence": [
+                "uv run pytest -q tests/test_bootstrap_decisions.py (13 passed)",
+                "uv run pytest -q tests/test_bootstrap_foundations.py tests/test_bootstrap_determinism.py tests/test_bootstrap_decisions.py tests/test_script_cores.py (42 passed)",
+                "uv run ruff check (clean)",
+                "uv run ty check scripts/bootstrap tests/test_bootstrap_decisions.py (clean)"
+              ]
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/24"
+            ]
+          },
           "files": {
             "create": [
               "scripts/bootstrap/intents.py",
@@ -146,7 +223,6 @@
         },
         {
           "id": "T5",
-          "execution": {"mode": "inline", "status": "completed", "completion": {"completed_at": "2026-08-07", "evidence": ["uv run pytest -q (69 passed)", "uv run ruff check (clean)", "uv run ruff format --check (37 files already formatted)", "uv run ty check (clean)", "python3 scripts/validate_repository.py (expected source-scaffold exit 1; template contract passed and readiness findings were emitted in canonical order)", "T5 pure readiness, contract, validation-program, and presentation tests added"]}},
           "name": "Implement readiness, compatibility definitions, and aggregate validation core",
           "depends_on": [
             "T4",
@@ -156,6 +232,24 @@
             "structured readiness result; multiset finding identity; gating rules; template-evolution compatibility baseline/corpus; existing validator behavior."
           ],
           "description": "Extract pure readiness and template-contract rules from existing scripts. Implement finding sorting/multiset comparison, mechanical gating, frozen rule definitions and compatibility corpus, typed `ValidationProgram` stage folding, and deterministic text/JSON presentation parity. Replace existing mixed policy scripts with thin shell adapters while preserving current fixture behavior.",
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-07",
+              "evidence": [
+                "uv run pytest -q (69 passed)",
+                "uv run ruff check (clean)",
+                "uv run ruff format --check (37 files already formatted)",
+                "uv run ty check (clean)",
+                "python3 scripts/validate_repository.py (expected source-scaffold exit 1; template contract passed and readiness findings were emitted in canonical order)",
+                "T5 pure readiness, contract, validation-program, and presentation tests added"
+              ]
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/31"
+            ]
+          },
           "files": {
             "create": [
               "scripts/bootstrap/readiness.py",
@@ -187,7 +281,6 @@
         },
         {
           "id": "T6",
-          "execution": {"mode": "inline", "status": "completed", "completion": {"completed_at": "2026-08-07", "evidence": ["ADR, domain terminology, NOTICE.md, and licensing/provenance audit added", "audit covers all 18 bundled skills and all three licensing modes", "upstream licence evidence recorded for MIT and CC BY-SA 4.0 sources", "audit accepted current layout after NOTICE.md provenance correction"]}},
           "name": "Record the architecture, ownership, and licensing gates",
           "depends_on": [
             "T4"
@@ -196,6 +289,22 @@
             "`docs/agents/domain.md`; design required follow-up documents; `NOTICE.md`; all bundled skills and legal/provenance inputs."
           ],
           "description": "Write the functional-core/domain/ownership ADR and complete the licensing/provenance audit before licence-writing implementation. Update domain terminology only where it matches the approved design. Record any audit-mandated path or preservation changes and stop for design reconfirmation if the audit changes the proposed layout.",
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-07",
+              "evidence": [
+                "ADR, domain terminology, NOTICE.md, and licensing/provenance audit added",
+                "audit covers all 18 bundled skills and all three licensing modes",
+                "upstream licence evidence recorded for MIT and CC BY-SA 4.0 sources",
+                "audit accepted current layout after NOTICE.md provenance correction"
+              ]
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/30"
+            ]
+          },
           "files": {
             "create": [
               "docs/adr/0002-functional-core-domain-ownership.md",
@@ -224,7 +333,6 @@
       "tasks": [
         {
           "id": "T7",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Implement schemas, profiles, capabilities, and pure resolution",
           "depends_on": [
             "T5",
@@ -234,6 +342,11 @@
             "bootstrap bundle schema; five profiles; four capabilities and dependency rules; stable-ID compatibility; initial answers and additive settings."
           ],
           "description": "Decode verified bundles, capability definitions, profiles, normalized settings, slot choices, licensing choices, ownership declarations, source inventories, and cleanup contracts. Resolve profile selection plus explicit additions into a frozen effective closure without executing capability code or accepting secrets.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [
               "scripts/bootstrap/schemas.py",
@@ -263,7 +376,6 @@
         },
         {
           "id": "T8",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Implement declarative contributions and pure managed rendering",
           "depends_on": [
             "T7"
@@ -272,6 +384,11 @@
             "`RenderInput`/`BlobMap`; ownership classes; seed/legal fragments; capability contributions; managed documentation and workflow output contracts."
           ],
           "description": "Implement pure contribution composition, `render_managed`, managed inventory derivation, source baseline derivation, operation-specific render-oracle support, and byte-addressed legal/seed inputs. Ensure every semantically output-affecting input is explicit and every missing blob fails before rendering.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [
               "scripts/bootstrap/render.py",
@@ -297,7 +414,6 @@
         },
         {
           "id": "T9",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Implement manifest and complete initial operation planning",
           "depends_on": [
             "T8"
@@ -306,6 +422,11 @@
             "manifest schema/checksum; complete prospective target; cleanup rules; plan digest and operation ordering; licensing audit output."
           ],
           "description": "Build candidate manifests from primary values, compile all seed-once, legal, managed, manifest, cleanup, and directory operations into one complete `OperationPlan`, produce `ExpectedTarget`, attach gate specifications, and implement plan receipt/digest binding without storing adopter/legal bytes.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [
               "scripts/bootstrap/manifest.py",
@@ -337,7 +458,6 @@
       "tasks": [
         {
           "id": "T10",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Implement state-root resolution, lock, typed effects, and journal persistence",
           "depends_on": [
             "T9"
@@ -346,6 +466,11 @@
             "Git state-root resolution; linked-worktree/submodule rules; never-unlinked lock; journal layout and atomic persistence; path-safety threat model."
           ],
           "description": "Implement shell observers/effects for verified Git worktrees, descriptor-relative path walking, lock acquisition, bounded coherent re-observation, journal encoding, atomic journal replacement, state-root fsync, transaction/preparation identity derivation, and orphan/invalid-state classification.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [
               "scripts/bootstrap/git_state.py",
@@ -371,7 +496,6 @@
         },
         {
           "id": "T11",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Implement the typed transaction machine and phase transitions",
           "depends_on": [
             "T10"
@@ -380,6 +504,11 @@
             "typed file/directory operations; raw backup and exact-mode requirements; `PLANNED`, `MUTATING`, `RESTORED`, `SEALED` phases; Mealy-style transaction machine."
           ],
           "description": "Implement preparation, backup, mutation, post-state verification, gating, and the Mealy-style transaction machine through `PLANNED`, `MUTATING`, `RESTORED`, and `SEALED`. Keep effect selection in the typed state machine; the shell executes only requested effects and feeds typed observations back into the reducer. Leave rollback reducers and recovery cleanup to T11b.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [
               "scripts/bootstrap/transaction.py",
@@ -401,7 +530,6 @@
         },
         {
           "id": "T11b",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Implement exact rollback reducers and recovery cleanup",
           "depends_on": [
             "T10",
@@ -411,6 +539,11 @@
             "journaled raw backups and exact modes; directory tree identities; reverse dependency order; `RESTORED` and `SEALED` recovery semantics; third-state threat model."
           ],
           "description": "Implement idempotent file and directory rollback reducers, preparation ownership checks, exact pre-state restoration, `RESTORED` cleanup, sealed forward verification, crash-resumable cleanup, and third-state preservation. Recovery must never reinstall a candidate from a `RESTORED` journal or roll back a verified `SEALED` candidate.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [
               "scripts/bootstrap/rollback.py",
@@ -443,7 +576,6 @@
       "tasks": [
         {
           "id": "T12",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Implement CLI adapters and scaffold/cleanup classification",
           "depends_on": [
             "T11b"
@@ -452,6 +584,11 @@
             "CLI contract and exit semantics; Copier/GitHub scaffold recognition; maintenance cleanup inventory; complete status/plan/apply/add/restore/reconcile/recover transition matrix."
           ],
           "description": "Add the thin `bootstrap-project.py` adapter for `init`, `status`, `plan apply`, `plan add`, `plan restore`, `plan reconcile`, `apply`, `add`, `restore`, `reconcile`, and `recover`. Implement deterministic text/JSON output, command-family exit codes, scaffold marker checks, cleanup mismatch refusal/leave behavior, target protection, phase-specific recovery presentation, and hook-at-most-once finalization after a gated installation.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [
               "scripts/bootstrap-project.py",
@@ -481,7 +618,6 @@
         },
         {
           "id": "T13",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Integrate Copier and GitHub generation paths",
           "depends_on": [
             "T12"
@@ -490,6 +626,11 @@
             "updated ADR 0001; Copier ownership exclusions; GitHub snapshot cleanup inventory; generated workflow and validation boundaries."
           ],
           "description": "First update ADR 0001 to state that Copier owns source lifecycle updates while bootstrap owns derived-output reconciliation. Then wire Copier to retain source lifecycle inputs while excluding generated managed/seed/cleanup outputs, including the source `pyproject.toml`, `.python-version`, `uv.lock`, flake files, maintainer-only Nix actions, and maintainer-only workflows. Split the generated portable workflow baseline from source-maintainer CI and release gating so generated projects do not require Nix; only the selected `nix` capability may render Nix artifacts or CI contributions. Replace any remaining Bash workflow adapters with Python entry points or native action steps and remove ShellCheck policy and configuration; no `.sh` entry point is retained. Add GitHub snapshot cleanup and ownership declarations; the GitHub cleanup inventory must include source uv and Nix maintenance inputs, while Copier excludes them from generated projects. Ensure both paths initialize a Git working tree before bootstrap, recognize only their legal scaffold shapes, and share the same compiler and transaction shell.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [
               ".agentic-template/source-ownership.json",
@@ -528,7 +669,6 @@
       "tasks": [
         {
           "id": "T14",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Add capability dependency metadata and generated-project ownership",
           "depends_on": [
             "T13"
@@ -537,6 +677,11 @@
             "capability definition schema; source/generated ownership boundary; uv project metadata contract; stable IDs; supported Python ranges; capability runtime-dependency metadata requirements."
           ],
           "description": "Extend capability definitions with explicit non-secret runtime dependency declarations, supported Python ranges, and invocation metadata. Render generated `pyproject.toml` for every generated project as a bootstrap-managed artifact containing `requires-python = \">=3.14\"`; add selected capability dependencies only when required. Keep the source repository's root `pyproject.toml` and `uv.lock` source-only. Define the adopter follow-up that creates `uv.lock`; bootstrap never resolves or installs packages. Add ownership and leakage fixtures proving that source development dependencies do not enter snapshots or generated Copier projects.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [
               "scripts/bootstrap/dependencies.py",
@@ -568,7 +713,6 @@
         },
         {
           "id": "T15",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Add capability catalog integrations, workflows, and secret preflights",
           "depends_on": [
             "T14"
@@ -577,6 +721,11 @@
             "semantic-release, Nix, Cachix-with-Nix dependency, and Qodo/Gemini capability contracts; settings and secret preflight rules; release graph; generated dependency metadata from T14."
           ],
           "description": "Add the four declarative capability contributions, profile expansions, settings normalization, compiled workflow/document outputs, release dependencies, read-only secret preflights, and available/unavailable activation behavior. Keep capability-specific dependency commands behind their declared uv invocation metadata. Treat Nix as maintainer-only unless the `nix` capability is selected: the portable generated baseline has no Nix job or release dependency, while selected Nix and Cachix capabilities render their own artifacts and gates. Ensure unselected capabilities emit no artifacts or workflow jobs.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [
               "scripts/bootstrap/capability_fragments.py",
@@ -612,7 +761,6 @@
         },
         {
           "id": "T16",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Implement source workflow semantic conformance",
           "depends_on": [
             "T15"
@@ -621,6 +769,11 @@
             "compiled integrated workflow; canonical workflow/job/step normal form; PyYAML source-only loader contract; source allowlist ownership."
           ],
           "description": "Add the strict Actions YAML loader, complete semantic normalization, raw SHA-comment checks, trust predicates, allowlist expiry/difference checks, and source-versus-rendered workflow comparison. Keep PyYAML source-only unless a future capability explicitly declares it, separate maintainer-only source CI from the portable generated baseline, and ensure the generated baseline requires no Nix while selected Nix/Cachix capabilities contribute only their declared jobs and release gates. Ensure all loader failures are typed diagnostics.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [
               "scripts/bootstrap/actions_yaml.py",
@@ -656,7 +809,6 @@
       "tasks": [
         {
           "id": "T17",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Implement `add` and operation-specific render oracles",
           "depends_on": [
             "T16"
@@ -665,6 +817,11 @@
             "operation semantics; complete old-render verification; additive capability settings; managed inventory and source conditions."
           ],
           "description": "Implement plan/apply add transitions, old-selection inventory verification, expanded selection compilation, persisted capability additions/settings, and incomplete-project gating where pre-existing placeholders are retained but new findings are rejected.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [
               "tests/test_bootstrap_add.py"
@@ -692,7 +849,6 @@
         },
         {
           "id": "T18",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Implement `restore`, `reconcile`, and snapshot source repair",
           "depends_on": [
             "T17"
@@ -701,6 +857,11 @@
             "restore projection safety; Copier source drift; snapshot baseline commit repair; overwrite drift plan binding; no snapshot reconcile lifecycle."
           ],
           "description": "Implement targeted certified restore without manifest/inventory advancement, Copier-only reconcile, destructive overwrite requiring matching preview digest, source-delta diagnostics, reachable snapshot baseline repair, and regeneration guidance when repair is unavailable.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [
               "tests/test_bootstrap_restore.py",
@@ -729,7 +890,6 @@
         },
         {
           "id": "T19",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Add managed adopter documentation and lifecycle guidance",
           "depends_on": [
             "T18"
@@ -738,6 +898,11 @@
             "durable documentation requirements; generated lifecycle ownership; recovery and generation path contracts; secret/preflight guidance."
           ],
           "description": "Add the four managed operational documents, generated-project maintenance guidance, source-maintainer capability-extension instructions, release notes, and updated readiness/domain references. Treat `docs/prd.md` as an authoritative input and modify it only through an explicit product decision; ensure all managed documents are rendered through the same inventory and transaction.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [
               "docs/delivery-workflow.md",
@@ -774,7 +939,6 @@
       "tasks": [
         {
           "id": "T20",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Complete greenfield activation and remove stale contracts",
           "depends_on": [
             "T19"
@@ -783,6 +947,11 @@
             "one-release activation boundary; extensionless hook; all prior batch evidence; final release gate."
           ],
           "description": "Replace the source scaffold hook contract with `scripts/validate-project`, wire final Copier/readiness/aggregate/workflow/docs boundaries, remove stale legacy/adoption/migration references, and ensure the source tree itself is the integrated profile fixture. Do not add compatibility aliases.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [
               "scripts/validate-project"
@@ -818,7 +987,6 @@
         },
         {
           "id": "T21",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
           "name": "Run final verification and review gates",
           "depends_on": [
             "T20"
@@ -827,6 +995,11 @@
             "repository validation instructions; release gate; verification-before-completion and substantive code-review requirements."
           ],
           "description": "Run the complete source and generated fixture suites, explicit Python 3.14 lane, transaction/recovery/path-safety suites, actionlint, uv lock validation, formatting, linting, strict ty, and repository-defined checks. Review the final diff for unintended changes and record any remaining issue without weakening validation.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
           "files": {
             "create": [],
             "modify": [],
