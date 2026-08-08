@@ -2,9 +2,7 @@
 name = "agentic-template"
 version = "1.10.1"
 requires-python = ">=3.14"
-dependencies = [
-    "pydantic>=2",
-]
+dependencies = []
 
 [dependency-groups]
 dev = [

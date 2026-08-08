@@ -344,20 +344,8 @@
           "description": "Decode verified bundles, capability definitions, profiles, normalized settings, slot choices, licensing choices, ownership declarations, source inventories, and cleanup contracts. Resolve profile selection plus explicit additions into a frozen effective closure without executing capability code or accepting secrets.",
           "execution": {
             "mode": "inline",
-            "status": "completed",
-            "completion": {
-              "completed_at": "2026-08-08",
-              "evidence": [
-                "uv run pytest -q tests/test_bootstrap_schemas.py tests/test_bootstrap_catalog.py (9 passed)",
-                "uv run pytest -q (100 passed)",
-                "uv run ruff check (clean)",
-                "uv run ruff format --check (46 files already formatted)",
-                "uv run ty check (clean)",
-                "uv lock --check (passed)",
-                "python3 scripts/validate_repository.py (expected source-scaffold exit 1; template contract passed and readiness findings were emitted in canonical order)"
-              ]
-            },
-            "github_prs": []
+            "status": "pending",
+            "completion": null
           },
           "files": {
             "create": [
