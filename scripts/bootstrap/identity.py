@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, TypedDict
+from typing import ClassVar, Final
 
 from scripts.bootstrap.canonical_json import canonical_json
 from scripts.bootstrap.paths import RepoPath, normalize_text
@@ -67,22 +67,6 @@ class DirectoryEntry:
 
 
 TreeEntry = FileEntry | DirectoryEntry
-
-
-class DirectoryTreePayload(TypedDict):
-    kind: Literal["directory"]
-    path: str
-    mode: int
-
-
-class FileTreePayload(TypedDict):
-    kind: Literal["file"]
-    path: str
-    mode: int
-    sha256: str
-
-
-TreePayload = DirectoryTreePayload | FileTreePayload
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,7 +144,7 @@ def file_state_hash(kind: bytes, state: FileState) -> str:
     return tagged_digest(kind + b"/file", payload)
 
 
-def _entry_payload(entry: TreeEntry) -> TreePayload:
+def _entry_payload(entry: TreeEntry) -> dict[str, object]:
     if isinstance(entry, DirectoryEntry):
         return {
             "kind": "directory",
