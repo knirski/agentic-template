@@ -16,7 +16,6 @@ dev = [
     { name = "mutmut" },
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "pyyaml" },
     { name = "ruff" },
     { name = "ty" },
 ]
@@ -29,7 +28,6 @@ test = [
     { name = "mutmut" },
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -41,7 +39,6 @@ dev = [
     { name = "mutmut", specifier = ">=3.7.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruff", specifier = ">=0.16.1" },
     { name = "ty", specifier = ">=0.0.69" },
 ]
@@ -54,7 +51,6 @@ test = [
     { name = "mutmut", specifier = ">=3.7.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 
 [[package]]
