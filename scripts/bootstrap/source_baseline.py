@@ -19,6 +19,7 @@ from scripts.bootstrap.paths import RepoPath, parse_path
 from scripts.bootstrap.result import Err, Ok, Result
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+_COMMIT_SHA = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -116,7 +117,10 @@ def derive_source_baseline(
     fingerprint = template_source_fingerprint(sorted_entries)
     match generation:
         case GenerationPath.GITHUB:
-            if snapshot_commit is None or not snapshot_commit:
+            if (
+                snapshot_commit is None
+                or _COMMIT_SHA.fullmatch(snapshot_commit) is None
+            ):
                 return Err(_source_error("snapshot_commit"))
             return Ok(
                 GitHubSourceBaseline(

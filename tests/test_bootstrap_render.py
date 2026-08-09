@@ -1290,17 +1290,20 @@ def test_github_baseline_requires_snapshot_commit() -> None:
             path=RepoPath("a.txt"), kind="file", mode=PosixMode.FILE, sha256="a" * 64
         ),
     )
-    match derive_source_baseline(GenerationPath.GITHUB, entries, snapshot_commit="abc"):
+    commit = "a" * 40
+    match derive_source_baseline(
+        GenerationPath.GITHUB, entries, snapshot_commit=commit
+    ):
         case Ok(GitHubSourceBaseline() as baseline):
-            assert baseline.snapshot_commit == "abc"
+            assert baseline.snapshot_commit == commit
             assert baseline.entries == entries
         case Ok(CopierSourceBaseline()):
             raise AssertionError("expected a GitHub source baseline")
         case Err(error):
             raise AssertionError(f"unexpected source baseline failure: {error}")
-    for commit in (None, ""):
+    for invalid in (None, "", "   ", "not-a-commit", "ABC" * 20):
         match derive_source_baseline(
-            GenerationPath.GITHUB, entries, snapshot_commit=commit
+            GenerationPath.GITHUB, entries, snapshot_commit=invalid
         ):
             case Err(error):
                 assert error.kind is ContractErrorKind.SOURCE_CONTRACT_INVALID
