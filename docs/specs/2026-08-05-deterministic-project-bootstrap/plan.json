@@ -14,7 +14,7 @@
           "inputs": [
             "design dependency policy; modern-python guidance; current standalone Python scripts."
           ],
-          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks; CI installs the pinned uv release and Python 3.14 with Astral's `setup-uv` action. Nix and its flake remain optional maintainer tooling, while generated projects use portable Python/uv validation and do not inherit source-only uv metadata. PyYAML is removed from the toolchain by revision 16 (T16); this task's record is historical.",
+          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks; CI installs the pinned uv release and Python 3.14 with Astral's `setup-uv` action. Nix and its flake remain optional maintainer tooling, while generated projects use portable Python/uv validation and do not inherit source-only uv metadata. PyYAML was removed from the toolchain by revision 16 (T16) and restored as a runtime dependency by revision 17; this task's record is historical.",
           "execution": {
             "mode": "inline",
             "status": "completed",
@@ -705,7 +705,7 @@
           "inputs": [
             "capability definition schema; source/generated ownership boundary; uv project metadata contract; stable IDs; supported Python ranges; capability runtime-dependency metadata requirements."
           ],
-          "description": "Extend capability definitions with explicit non-secret runtime dependency declarations, supported Python ranges, and invocation metadata. Render generated `pyproject.toml` for every generated project as a bootstrap-managed artifact containing `requires-python = \">=3.14\"`; add selected capability dependencies only when required. Keep the source repository's root `pyproject.toml` and `uv.lock` source-only. Define the adopter follow-up that creates `uv.lock`; bootstrap never resolves or installs packages. Add ownership and leakage fixtures proving that source development dependencies do not enter snapshots or generated Copier projects. Align the slot runtime model with the pruned v1 contract: `SlotDefinition` carries no `cardinality` and only `yaml`/`markdown` contexts, and contribution composition enforces no cardinality.",
+          "description": "Extend capability definitions with explicit non-secret runtime dependency declarations, supported Python ranges, and invocation metadata. Render generated `pyproject.toml` for every generated project as a bootstrap-managed artifact containing `requires-python = \">=3.14\"`; add selected capability dependencies only when required. Keep the source repository's root `pyproject.toml` and `uv.lock` source-only. Define the adopter follow-up that creates `uv.lock`; bootstrap never resolves or installs packages. Add ownership and leakage fixtures proving that source development dependencies do not enter snapshots or generated Copier projects. Align the slot runtime model with the pruned v1 contract: `SlotDefinition` carries no `cardinality` and only `yaml`/`markdown` contexts, and contribution composition enforces no cardinality. The bootstrap engine baseline dependencies (`pydantic`, `pyyaml`) are always present in generated `pyproject.toml`.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -799,7 +799,7 @@
           "inputs": [
             "design template-source CI section (revision 16); maintainer-only source CI separation; capability-matrix security fixtures."
           ],
-          "description": "Remove the Actions YAML loader, semantic workflow normal form, raw SHA-comment checks, trust predicates, allowlist, and source-versus-rendered comparison from the plan; PyYAML is not a source dependency. Wire the source repository as the `integrated`-profile fixture at activation: its `ci.yml` is a compiled managed artifact, maintainer-only jobs (uv sync, source canaries, actionlint) live in an adopter-owned workflow file excluded from generated projects by Copier and snapshot cleanup, and drift in the managed artifact is detected by the standard `status`/`restore` machinery. Pin generated-workflow security properties through capability-matrix and structural-policy fixtures.",
+          "description": "Remove the Actions YAML loader, semantic workflow normal form, raw SHA-comment checks, trust predicates, allowlist, and source-versus-rendered comparison from the plan; PyYAML is not a source dependency. Wire the source repository as the `integrated`-profile fixture at activation: its `ci.yml` is a compiled managed artifact, maintainer-only jobs (uv sync, source canaries, actionlint) live in an adopter-owned workflow file excluded from generated projects by Copier and snapshot cleanup, and drift in the managed artifact is detected by the standard `status`/`restore` machinery. Pin generated-workflow security properties through capability-matrix and structural-policy fixtures. The unwired compatibility and comparison modules landed in the revision-16 alignment (PR #41), and revision 17 restores PyYAML as a runtime dependency for the render boundary's scalar encoder only; remaining work is the integrated-fixture wiring, maintainer-only job separation, and security fixtures.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -823,7 +823,7 @@
               "source `ci.yml` is a compiled managed artifact and maintainer-only jobs are excluded from generated projects by Copier and snapshot cleanup",
               "actionlint on the source and every generated workflow fixture",
               "generated-workflow security fixtures pin permissions, secrets, preflights, release dependency, and privileged-job trust",
-              "pyproject.toml and uv.lock contain no PyYAML."
+              "pyyaml is declared in the runtime dependencies and used only by the YAML scalar encoder; no Actions YAML parser, allowlist, or trust-predicate fixture remains."
             ],
             "acceptance": []
           }

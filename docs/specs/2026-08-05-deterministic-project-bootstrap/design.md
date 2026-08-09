@@ -1,6 +1,6 @@
 # Deterministic Project Bootstrap with Capability Profiles
 
-**Status:** Revision 16, assembled for owner approval
+**Status:** Revision 17, assembled for owner approval
 **Date:** 2026-08-05
 **Planning mode:** Spec-backed Plan
 **Supersedes:** earlier discovery and revision drafts, consolidated into this document and removed
@@ -91,6 +91,12 @@ sections that follow. The decisive changes:
   the slot model is pruned to the v1-used subset; the readiness-rule comparison machinery and
   compatibility corpus are deferred to post-v1; and inspection commands use a single observation
   pass.
+- **Revision 17** reverses the PyYAML part of revision 16: PyYAML returns as a declared runtime
+  dependency, used only by the render boundary's YAML scalar encoder (`yaml.safe_dump` with a forced
+  double-quoted style). Substitution values are always emitted as double-quoted YAML scalars, so a
+  value marker must stand alone in the template rather than sit inside surrounding quotes. No
+  Actions YAML parser, workflow normal form, or conformance fixture exists; actionlint remains the
+  workflow-syntax gate.
 
 ### Deliberate reversals of approved revision 1 decisions
 
@@ -428,7 +434,9 @@ generated project's `pyproject.toml`. Source and generated project metadata decl
 capability set, but does not install packages, execute package setup code, or accept secrets. The core
 still uses a small repository-owned `Ok`/`Err` type, frozen data classes, `Enum`, and
 `typing.assert_never`; a general FP framework would add domain and dependency surface without adding
-capability.
+capability. PyYAML is the one additional runtime library of the render boundary, used only by the
+YAML scalar encoder; the plain-style safety, reserved-word, and escaping rules it replaces were
+exactly the library's job.
 
 Source assurance uses a small modern toolchain managed by uv:
 
@@ -447,8 +455,9 @@ Source assurance uses a small modern toolchain managed by uv:
 - **Ruff** is the single Python linter and formatter, configured for Python 3.14. CI runs
   `ruff check` and `ruff format --check`; automatic fixes are a developer action, never a release-gate
   mutation.
-- **actionlint** (installed by CI, not a Python package) is the workflow-syntax gate; no YAML parser
-dependency exists in source tooling.
+- **actionlint** (installed by CI, not a Python package) is the workflow-syntax gate; no workflow
+YAML parsing dependency exists in source tooling (PyYAML is limited to scalar emission in the
+render boundary).
 
 The template source commits `uv.lock` for its Python packages. CI installs the pinned uv release and
 Python 3.14 through Astral's `setup-uv` action. Source checks run through uv's locked environment; no
@@ -677,7 +686,9 @@ Resolution is normative:
    capability owners and capability owner-order is the closure order. Every v1 slot is `Many`; a wrong
    kind or a missing slot is a distinct `InvalidTemplate` reason.
 5. Encode substituted scalars with the slot or artifact's declared YAML or Markdown context encoder;
-   normalized booleans alone control whole optional sections. Join a slot with its declared constant
+   the YAML encoder always emits double-quoted scalars, so a value marker must stand alone in the
+   template rather than sit inside surrounding quotes; normalized booleans alone control whole
+   optional sections. Join a slot with its declared constant
    separator.
 6. Render every whole artifact, reject any path collision or undeclared output, and return
    `ManagedRender` sorted by canonical path bytes.
@@ -2143,7 +2154,7 @@ recovery stop at the first failure where continuing could mutate state or destro
 | Licensing | Explicit; digest fingerprinted; audit gates all modes | SPDX, SBOM, richer automation |
 | Workflow validation | Shared pure bounded checks in the generated project; no source workflow parser | A portable structured parser |
 | Dependencies | uv-managed source and generated-project dependencies; pinned ty, pytest, Hypothesis, and Ruff for source assurance | Hermetic distribution, dependency provenance, and the same core/shell conformance suite |
-| Template-source CI | The source is the integrated-profile fixture; conformance is managed drift; no Actions YAML parser, allowlist, or trust-predicate fixture | A semantic conformance fixture if a second hand-written workflow appears |
+| Template-source CI | The source is the integrated-profile fixture; conformance is managed drift; no Actions YAML parser, allowlist, or trust-predicate fixture; PyYAML is declared for scalar encoding only | A semantic conformance fixture if a second hand-written workflow appears |
 | Readiness-rule evolution | The rule catalog is frozen; automated baseline comparison and corpus are deferred to post-v1 | Automated comparison before the first compatible update |
 | `init` | `--from` only; no interactive mode | Interactive bundle authoring |
 | Apply on an installed project | Refused with `status`/canonical-validator next action; no `EquivalentVerification` | A re-verification mode if a concrete need appears |
@@ -2211,7 +2222,8 @@ detected by the standard managed-inventory machinery (`status`, `restore`), not 
 conformance fixture. Maintainer-only jobs (uv sync, source canaries, actionlint) live in an
 adopter-owned workflow file that Copier excludes and snapshot cleanup removes, so generated projects
 never receive them. No Actions YAML parser, semantic workflow normal form, trust-predicate
-comparison, allowlist, or raw pin-comment fixture is defined, and PyYAML is not a source dependency.
+comparison, allowlist, or raw pin-comment fixture is defined, and PyYAML is a declared runtime
+dependency used only for scalar emission in the render boundary, never for workflow parsing.
 `actionlint` continues to lint the source and every generated workflow fixture. Generated-workflow
 security properties (permissions, secrets, preflights, release dependency, privileged-job trust) are
 pinned by the capability-matrix and structural-policy fixtures. `check_project_readiness.py`'s

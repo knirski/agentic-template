@@ -15,6 +15,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Annotated, Literal, assert_never
 
+import yaml
 from pydantic import BeforeValidator, Field, field_validator, model_validator
 
 from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
@@ -268,40 +269,6 @@ _OPTIONAL_SECTION_MARKER = re.compile(
     rb"agentic-template:if:([a-z][a-z0-9-]*):(begin|end)\b"
 )
 
-_YAML_PLAIN_SAFE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
-_YAML_RESERVED = frozenset(
-    {"true", "false", "yes", "no", "on", "off", "y", "n", "null", "~", "inf", "nan"}
-)
-
-
-def _escaped(value: str) -> str:
-    escaped: list[str] = []
-    for char in value:
-        if char == "\\":
-            escaped.append("\\\\")
-        elif char == '"':
-            escaped.append('\\"')
-        elif char == "\n":
-            escaped.append("\\n")
-        elif char == "\t":
-            escaped.append("\\t")
-        elif char == "\r":
-            escaped.append("\\r")
-        elif ord(char) < 0x20:
-            escaped.append(f"\\u{ord(char):04x}")
-        else:
-            escaped.append(char)
-    return "".join(escaped)
-
-
-def _yaml_scalar(value: str) -> str:
-    if (
-        _YAML_PLAIN_SAFE.fullmatch(value) is not None
-        and value.lower() not in _YAML_RESERVED
-    ):
-        return value
-    return '"' + _escaped(value) + '"'
-
 
 def _boolean_text(value: bool) -> str:
     return "true" if value else "false"
@@ -311,9 +278,9 @@ def encode_scalar(value: SettingValue, context: ContextName) -> str:
     """Encode a normalized scalar value for the declared template context."""
     match context:
         case "yaml":
-            return (
-                _yaml_scalar(value) if isinstance(value, str) else _boolean_text(value)
-            )
+            if isinstance(value, bool):
+                return _boolean_text(value)
+            return yaml.safe_dump(value, default_style='"', allow_unicode=True).strip()
         case "markdown":
             return value if isinstance(value, str) else _boolean_text(value)
         case _:  # pragma: no cover
