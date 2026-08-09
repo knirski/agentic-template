@@ -1,18 +1,24 @@
 # Domain Documentation
 
-Read this document before changing domain terminology, invariants, or architectural decisions.
+## Layout
 
-`docs/prd.md` remains authoritative for product requirements. Domain documents explain the language
-and decisions used to implement those requirements; they must not silently expand product scope.
+- **Mode:** single-context
+- **Context map:** not used
+- **System ADRs:** `docs/adr/`
+- **Context ADRs:** not used; use `docs/adr/` for repository-wide decisions
 
-## Default layout
+## Before Domain Work
 
-- `CONTEXT.md`: ubiquitous language, invariants, actors, entities, value objects, and boundaries.
-- `docs/adr/NNNN-short-title.md`: durable architecture decisions and their trade-offs.
+1. Read `CONTEXT.md` when it exists.
+2. Read ADRs relevant to the work.
+3. Proceed silently when these documents do not yet exist.
 
-Create these files lazily, only after terminology or a decision has substantive content. For a real
-multi-context system, add `CONTEXT-MAP.md` and give each bounded context its own `CONTEXT.md` and ADR
-directory. Do not introduce that structure merely because the repository has multiple packages.
+## Ownership
 
-Use `oracle-domain-modelling` to sharpen terminology and ADRs. If a domain document conflicts with
-the PRD, update the PRD through an explicit product decision or correct the domain document.
+- `CONTEXT.md` records domain language, distinctions, and business invariants.
+- `CONTEXT-MAP.md` maps genuinely separate bounded contexts and is not used here.
+- ADRs record architectural decisions and trade-offs.
+- This file only tells agents how to locate and consume those documents.
+
+Create or update `CONTEXT.md` and ADRs lazily, only when terminology or an architectural decision has
+substantive content. Domain documents must not silently expand `docs/prd.md` product scope.
