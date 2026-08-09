@@ -14,7 +14,7 @@
           "inputs": [
             "design dependency policy; modern-python guidance; current standalone Python scripts."
           ],
-          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks; CI installs the pinned uv release and Python 3.14 with Astral's `setup-uv` action. Nix and its flake remain optional maintainer tooling, while generated projects use portable Python/uv validation and do not inherit source-only uv metadata.",
+          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks; CI installs the pinned uv release and Python 3.14 with Astral's `setup-uv` action. Nix and its flake remain optional maintainer tooling, while generated projects use portable Python/uv validation and do not inherit source-only uv metadata. PyYAML is removed from the toolchain by revision 16 (T16); this task's record is historical.",
           "execution": {
             "mode": "inline",
             "status": "completed",
@@ -694,7 +694,7 @@
     },
     {
       "id": "P6",
-      "name": "Catalog integrations, workflows, and source-CI conformance",
+      "name": "Catalog integrations, compiled workflows, and source separation",
       "tasks": [
         {
           "id": "T14",
