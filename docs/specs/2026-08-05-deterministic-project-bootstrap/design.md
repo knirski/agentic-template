@@ -19,7 +19,8 @@ locally ready.
 The first capability catalog covers the integrations already present in the template: semantic-release;
 Nix; Cachix publishing, which depends on Nix; and Qodo PR Agent with a Gemini backend.
 
-V1 is one public release, developed on an integration branch and activated by a single merge. No
+V1 is one generated-project compatibility release; development lands on the default branch through
+reviewable batch PRs, and the final batch performs the greenfield activation. No
 generated projects exist on the current template, so activation is greenfield: there is one canonical
 extensionless hook and one manifest-bearing lifecycle, with no legacy hook, compatibility release,
 adoption command, or migration path.
@@ -48,7 +49,8 @@ Owner decisions, recorded so review does not reopen them.
 - GitHub generation produces one-time snapshots. Copier alone owns template version selection, update
   lineage, and merge mechanics.
 - Toolchain neutrality outranks native Windows compatibility.
-- V1 is one public release; internal review batches are not versions.
+- V1 is one generated-project compatibility release; internal review batches are tagged by
+  semantic-release but establish no generated-project compatibility contract.
 - `restore` is a same-contract repair and never advances project identity.
 - An installation may survive adopter-hook failure, but the command then exits nonzero and the project
   is not locally ready.
@@ -2146,7 +2148,7 @@ recovery stop at the first failure where continuing could mutate state or destro
 | `init` | `--from` only; no interactive mode | Interactive bundle authoring |
 | Apply on an installed project | Refused with `status`/canonical-validator next action; no `EquivalentVerification` | A re-verification mode if a concrete need appears |
 | Slots | `Many` cardinality with YAML or Markdown contexts only | Additional cardinalities and encoders when a catalog consumer needs them |
-| Delivery | One public release; integration branch, one activation merge | Independent lifecycle releases |
+| Delivery | One generated-project compatibility release; reviewable batch PRs on the default branch | Independent lifecycle releases |
 
 ## GitHub workflow architecture
 
@@ -2386,20 +2388,21 @@ preview and collision semantics. V1 carries no dormant compatibility branch for 
 
 ## Implementation batches
 
-**One public release.** Development happens on an integration branch, `bootstrap-v1`, and reaches the
-default branch through a **single activation merge**. Intermediate batches are review boundaries on that
-branch and never touch the default branch.
+**One public release.** Development lands on the default branch through reviewable batch PRs; each
+batch is a review boundary, and none is a supported generated-project release until batch 9 completes
+the greenfield activation that establishes the compatibility baseline.
 
 Revision 4 claimed intermediate merges to the default branch were inert. They were not: batch 4 changed
 Copier configuration and validation boundaries, both of which are public entry points, and
 `.agentic-template/` content plus engine modules would ship into any snapshot created between batches
-and stay frozen there. An integration branch removes the obligation to prove inertness rather than
-attempting to satisfy it.
+and stay frozen there. Intermediate merges therefore ship real behavior on the default branch;
+per-batch review, CI gates, and the final activation release baseline protect it rather than a claim
+of inertness.
 
-**Nine review boundaries.** Each boundary leaves the integration branch internally testable, but none
-is a supported generated-project release.
+**Nine review boundaries.** Each boundary is a reviewable, internally testable batch on the default
+branch; none is a supported generated-project release.
 
-| # | Contents | Evidence before merge to the integration branch |
+| # | Contents | Evidence before the batch PR merges |
 | --- | --- | --- |
 | 1 | Tooling and algebra foundations: explicit Python 3.14 lane; uv and pinned ty, pytest, Hypothesis, and Ruff; `Ok`/`Err`; frozen value conventions; diagnostics and CLI envelope; determinism primitives and schemas | Strict type check; exhaustive-union canary; lint/format checks; property-test canary; schema round-trips; primitive boundary and rejection fixtures |
 | 2 | Staged observation sums; family-specific total decisions; operation semantics; readiness rule definitions; source/ownership declarations | Static exhaustiveness; generated complete bundle/project intent-state matrices; no illegal constructor fixture; a preimage witness for every leaf decision; every diagnostic next action reachable |
@@ -2669,7 +2672,7 @@ This revision incorporates the following changes into `CONTEXT.md`:
 | A compatible update tightens a same-ID readiness predicate | Frozen rule catalog plus review; automated corpus comparison deferred to post-v1 |
 | Snapshots acquire an update lifecycle by accident | `reconcile` is unavailable; source inventory names baseline repair or regeneration only |
 | Hypothetical legacy support creates dead branches | Greenfield activation contains one hook and manifest contract with no compatibility machinery |
-| An intermediate merge changes behavior | Integration branch with one activation merge |
+| An intermediate merge changes behavior | Reviewable batch PRs with per-batch validation and a single activation baseline |
 | A defective install hides behind the scaffold exemption | Artifact verification precedes exemptions; the install rule is equality |
 | A repeated or worsened finding goes undetected | Multiset comparison over four-part identity |
 | Adopter content impersonates a placeholder | Reserved markers rejected in `file` inputs |
@@ -2684,7 +2687,7 @@ This revision incorporates the following changes into `CONTEXT.md`:
 | Human and JSON CLI paths disagree | Two pure renderers over one typed `CommandOutcome`, with parity fixtures |
 | A secret leaks through the preflight | Fixed trusted job, structural test, local canary |
 | Licence obligations are lost | Conservative preservation plus an audit gating every mode before licence writing |
-| One change contains the whole system | Nine review boundaries on an integration branch |
+| One change contains the whole system | Nine reviewable batch PRs on the default branch |
 
 ## Proposed future changes
 
