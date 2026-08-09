@@ -1128,12 +1128,12 @@ changing its canonical definition. The baseline comparison and old-state corpus 
 post-v1: until the first compatible update, immutability of the frozen baseline is enforced by source
 review of the rule catalog rather than by automated comparison.
 
-The compatibility corpus is deferred with the comparison: it is not implemented in v1. The rule
-catalog is immutable for manifest schema v1, and reconcile additionally requires the readiness-rule
-`SourceBaseline.entries` to retain their recorded hashes. New managed-output rules are allowed only
-when their satisfier is the candidate managed render and the expected target proves the obligation
-satisfied. A corpus and automated comparison are prerequisites to the first compatible template
-update.
+The compatibility corpus is deferred with the comparison: it is not implemented in v1. The
+adopter-facing blocking rules in the catalog are immutable for manifest schema v1; new
+managed-output rules remain allowed because the candidate render proves them satisfied, so they
+impose no new adopter obligation. Reconcile additionally requires the readiness-rule
+`SourceBaseline.entries` to retain their recorded hashes. A corpus and automated comparison are
+prerequisites to the first compatible template update.
 
 ### Frozen readiness-rule baseline v1
 
@@ -1158,8 +1158,8 @@ v1.3.0 checker:
 
 The old checker's rule constants and the four-argument `Finding` adapter contract are removed at
 activation; the shared core is the only rule source. The compatibility corpus and automated baseline
-comparison are deferred to post-v1; until then the catalog is immutable for manifest schema v1 and
-enforced by review.
+comparison are deferred to post-v1; until then the adopter-facing catalog rules are immutable for
+manifest schema v1 and enforced by review.
 
 ## Input boundary
 
