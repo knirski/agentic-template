@@ -704,7 +704,7 @@
           "inputs": [
             "capability definition schema; source/generated ownership boundary; uv project metadata contract; stable IDs; supported Python ranges; capability runtime-dependency metadata requirements."
           ],
-          "description": "Extend capability definitions with explicit non-secret runtime dependency declarations, supported Python ranges, and invocation metadata. Render generated `pyproject.toml` for every generated project as a bootstrap-managed artifact containing `requires-python = \">=3.14\"`; add selected capability dependencies only when required. Keep the source repository's root `pyproject.toml` and `uv.lock` source-only. Define the adopter follow-up that creates `uv.lock`; bootstrap never resolves or installs packages. Add ownership and leakage fixtures proving that source development dependencies do not enter snapshots or generated Copier projects.",
+          "description": "Extend capability definitions with explicit non-secret runtime dependency declarations, supported Python ranges, and invocation metadata. Render generated `pyproject.toml` for every generated project as a bootstrap-managed artifact containing `requires-python = \">=3.14\"`; add selected capability dependencies only when required. Keep the source repository's root `pyproject.toml` and `uv.lock` source-only. Define the adopter follow-up that creates `uv.lock`; bootstrap never resolves or installs packages. Add ownership and leakage fixtures proving that source development dependencies do not enter snapshots or generated Copier projects. Align the slot runtime model with the pruned v1 contract: `SlotDefinition` carries no `cardinality` and only `yaml`/`markdown` contexts, and contribution composition enforces no cardinality.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -721,6 +721,7 @@
               "scripts/bootstrap/profiles.py",
               "scripts/bootstrap/schemas.py",
               "scripts/bootstrap/render.py",
+              "scripts/bootstrap/contributions.py",
               ".agentic-template/source-ownership.json",
               "copier.yml"
             ],
@@ -733,6 +734,7 @@
               "supported-Python and invocation validation",
               "generated `pyproject.toml` ownership and source-lock leakage tests",
               "all profile/custom-selection matrices",
+              "slot schema and contribution composition carry no cardinality and only yaml/markdown contexts",
               "no generated `uv.lock` is claimed by bootstrap",
               "generated capability fixtures can create and use their own uv lock without source-only packages leaking into the runtime."
             ],
