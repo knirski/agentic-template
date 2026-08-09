@@ -17,7 +17,7 @@ from types import MappingProxyType
 from typing import Literal, assert_never
 
 from scripts.bootstrap.canonical_json import canonical_json, decode_json
-from scripts.bootstrap.identity import PosixMode, tagged_digest
+from scripts.bootstrap.identity import InstallFileMode, PosixMode, tagged_digest
 from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.paths import RepoPath, parse_path
 from scripts.bootstrap.render import (
@@ -32,6 +32,7 @@ from scripts.bootstrap.source_baseline import (
     LifecycleSourceEntry,
     SourceBaseline,
 )
+from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
 
 MANIFEST_SCHEMA_VERSION = 1
 MANIFEST_PATH = RepoPath(".agentic-template/project.json")
@@ -51,9 +52,10 @@ _COMMIT_SHA = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 _LICENSING_MODES = frozenset(
     {"retain-apache-2.0", "provided-project-license", "private"}
 )
+LICENSING_MODES = _LICENSING_MODES
 _SLOT_MODES = frozenset({"file", "scaffold"})
 _MAINTENANCE_STATUSES = frozenset({"clean", "retained"})
-_INSTALL_MODES = frozenset({PosixMode.FILE, PosixMode.EXECUTABLE})
+INSTALL_MODES = InstallFileMode
 
 
 class ManifestErrorKind(StrEnum):
@@ -150,6 +152,19 @@ def _sorted_unique_paths(paths: tuple[RepoPath, ...]) -> tuple[RepoPath, ...]:
     return tuple(sorted(set(paths), key=lambda path: path.value.encode("utf-8")))
 
 
+def path_within_limits(path: RepoPath, limits: ResourceLimits = DEFAULT_LIMITS) -> bool:
+    """Return whether a path satisfies the v1 path-byte, component, and component-count limits."""
+    if len(path.value.encode("utf-8")) > limits.max_path_bytes:
+        return False
+    components = path.value.split("/")
+    if len(components) > limits.max_components:
+        return False
+    return all(
+        len(component.encode("utf-8")) <= limits.max_component_bytes
+        for component in components
+    )
+
+
 def _is_sha256(value: object) -> bool:
     return isinstance(value, str) and _SHA256.fullmatch(value) is not None
 
@@ -194,16 +209,18 @@ def _validate_managed(
     managed: ManagedInventory,
 ) -> Result[ManagedInventory, ManifestError]:
     seen_paths: set[str] = set()
+    lowered: set[str] = set()
     for entry in managed:
-        if entry.path.value in seen_paths:
+        if entry.path.value in seen_paths or entry.path.value.lower() in lowered:
             return Err(
                 _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, entry.path.value)
             )
         seen_paths.add(entry.path.value)
+        lowered.add(entry.path.value.lower())
         if (
             not isinstance(parse_path(entry.path.value), Ok)
             or entry.kind not in ("text", "binary")
-            or entry.mode not in _INSTALL_MODES
+            or entry.mode not in INSTALL_MODES
             or _SHA256.fullmatch(entry.sha256) is None
         ):
             return Err(
@@ -328,7 +345,7 @@ def _validate_provenance(
         if (
             not isinstance(parse_path(entry.path.value), Ok)
             or entry.kind not in ("file", "directory")
-            or entry.mode not in _INSTALL_MODES
+            or entry.mode not in INSTALL_MODES
             or _SHA256.fullmatch(entry.sha256) is None
         ):
             return Err(
@@ -484,9 +501,11 @@ def encode_manifest(manifest: CandidateManifest) -> bytes:
 
 def decode_manifest(data: bytes) -> Result[CandidateManifest, ManifestError]:
     """Strictly decode a manifest: parse, schema, and checksum are the only validity."""
+    if len(data) > DEFAULT_LIMITS.max_file_bytes:
+        return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "size"))
     try:
         value = decode_json(data)
-    except ValueError:
+    except ValueError, RecursionError:
         return Err(_manifest_error(ManifestErrorKind.INVALID_JSON))
     if not isinstance(value, Mapping):
         return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "document"))
@@ -523,15 +542,25 @@ def decode_manifest(data: bytes) -> Result[CandidateManifest, ManifestError]:
             return Err(error)
         case Ok(managed):
             pass
-    return Ok(
-        CandidateManifest(
-            schema_version=MANIFEST_SCHEMA_VERSION,
-            answers=answers,
-            additions=additions,
-            provenance=provenance,
-            managed=managed,
-        )
+    # Decode and build must share one schema: re-run the build-side invariants.
+    candidate = CandidateManifest(
+        schema_version=MANIFEST_SCHEMA_VERSION,
+        answers=answers,
+        additions=additions,
+        provenance=provenance,
+        managed=managed,
     )
+    match build_candidate_manifest(
+        answers=candidate.answers,
+        additions=candidate.additions,
+        provenance=candidate.provenance,
+        managed=candidate.managed,
+    ):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
+    return Ok(candidate)
 
 
 def _expect_mapping(
@@ -725,7 +754,15 @@ def _decode_retained_paths(
                     )
                 )
             case Ok(parsed):
-                decoded.append(parsed)
+                pass
+        if not path_within_limits(parsed):
+            return Err(
+                _manifest_error(
+                    ManifestErrorKind.SCHEMA_VIOLATION,
+                    "provenance.maintenance.retained_paths",
+                )
+            )
+        decoded.append(parsed)
     return Ok(tuple(decoded))
 
 
@@ -749,7 +786,7 @@ def _decode_source_entries(
             not isinstance(path, str)
             or kind not in ("file", "directory")
             or not isinstance(mode, int)
-            or mode not in _INSTALL_MODES
+            or mode not in INSTALL_MODES
             or not isinstance(raw_digest, str)
             or _SHA256.fullmatch(raw_digest) is None
         ):
@@ -759,6 +796,8 @@ def _decode_source_entries(
                 return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
             case Ok(parsed):
                 pass
+        if not path_within_limits(parsed):
+            return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
         if kind == "file":
             entry_kind: Literal["file", "directory"] = "file"
         else:
@@ -895,7 +934,7 @@ def _decode_managed(value: object) -> Result[ManagedInventory, ManifestError]:
             not isinstance(path, str)
             or kind not in ("text", "binary")
             or not isinstance(mode, int)
-            or mode not in _INSTALL_MODES
+            or mode not in INSTALL_MODES
             or not isinstance(raw_digest, str)
             or _SHA256.fullmatch(raw_digest) is None
         ):
@@ -907,6 +946,8 @@ def _decode_managed(value: object) -> Result[ManagedInventory, ManifestError]:
                 )
             case Ok(parsed):
                 pass
+        if not path_within_limits(parsed):
+            return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "managed"))
         if kind == "text":
             entry_kind: Literal["text", "binary"] = "text"
         else:

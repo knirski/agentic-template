@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import replace
 from types import MappingProxyType
 from typing import Literal
 
 from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
+from scripts.bootstrap.canonical_json import canonical_json
 from scripts.bootstrap.identity import (
     DirectoryState,
     FileEntry,
     PosixMode,
     file_state_identity,
     sha256_hex,
+    tagged_digest,
     target_identity,
 )
 from scripts.bootstrap.intents import GenerationPath
@@ -35,6 +38,7 @@ from scripts.bootstrap.manifest import (
 )
 from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.plan_digest import (
+    ReceiptErrorKind,
     build_receipt,
     decode_receipt,
     encode_receipt,
@@ -46,15 +50,19 @@ from scripts.bootstrap.planner import (
     CleanMaintenance,
     CompileError,
     CompileErrorKind,
+    CreateFileOperation,
     CreateTreeOperation,
     DeleteFileOperation,
     ExpectedGatePass,
     ExpectedGateRefusal,
+    FileState,
     MaintenanceDecision,
     ObservedDirectoryEntry,
     ObservedFileEntry,
     OperationPlan,
     PlanInvariantErrorKind,
+    PlannedFileEntry,
+    PlannedFilePresent,
     RemoveEmptyDirectoryOperation,
     ReplaceFileOperation,
     RetainMaintenance,
@@ -67,7 +75,7 @@ from scripts.bootstrap.planner import (
     legal_output_paths,
     predicted_placeholder_findings,
 )
-from scripts.bootstrap.render import ManagedFile, SlotContent
+from scripts.bootstrap.render import ManagedFile, ManagedInventoryEntry, SlotContent
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.source_baseline import (
     CopierSourceBaseline,
@@ -464,7 +472,8 @@ class TestManifest:
         manifest = self._github_manifest_value()
         document = manifest_document(manifest)
         checksum = manifest_checksum(document)
-        assert len(checksum) == 64
+        assert checksum == tagged_digest(b"manifest", canonical_json(document))
+        assert checksum != tagged_digest(b"other", canonical_json(document))
         with_checksum = {**document, "checksum": "0" * 64}
         assert (
             manifest_checksum(
@@ -565,6 +574,47 @@ class TestManifest:
             LEGAL_CONTENTS["provided-project-license"]["LICENSE"]
         )
 
+    def test_decode_rejects_duplicate_managed_entries(self) -> None:
+        entry = ManagedInventoryEntry(
+            path=RepoPath("pyproject.toml"),
+            kind="text",
+            mode=PosixMode.FILE,
+            sha256=sha256_hex(b"x"),
+        )
+        provenance = self._github_manifest_value().provenance
+        match build_candidate_manifest(
+            answers=fixture_answers(),
+            additions=ManifestAdditions(),
+            provenance=provenance,
+            managed=(entry,),
+        ):
+            case Ok(manifest):
+                pass
+            case Err(error):
+                raise AssertionError(f"manifest build failed: {error}")
+        document = manifest_document(manifest)
+        managed_entry = document["managed"]
+        assert isinstance(managed_entry, list) and managed_entry
+        document["managed"] = [dict(managed_entry[0]), dict(managed_entry[0])]
+        document["managed"] = [
+            dict(document["managed"][0]),
+            dict(document["managed"][0]),
+        ]
+        encoded = canonical_json({**document, "checksum": manifest_checksum(document)})
+        match decode_manifest(encoded):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("duplicate managed entries decoded")
+
+    def test_oversized_manifest_is_rejected(self) -> None:
+        data = b" " * (16 * 1024 * 1024 + 1)
+        match decode_manifest(data):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("oversized manifest decoded")
+
     def test_retain_mode_records_no_license_digest(self) -> None:
         assert self._github_manifest_value().answers.licensing.content_sha256 is None
 
@@ -661,9 +711,10 @@ class TestPlanner:
         assert depths == sorted(depths, reverse=True)
 
     def test_new_hierarchies_share_one_create_tree_per_root(self) -> None:
+        snapshot = fixture_copier_snapshot()
         _, result = compile_fixture(
             generation=GenerationPath.COPIER,
-            snapshot=fixture_copier_snapshot(),
+            snapshot=snapshot,
             cleanup=None,
             snapshot_commit=None,
         )
@@ -681,6 +732,74 @@ class TestPlanner:
         assert all(
             not isinstance(operation, DeleteFileOperation)
             for operation in plan.ordered_operations
+        )
+        # Every planned path must be emitted exactly once, and the plan must overlay.
+        counts: Counter[str] = Counter()
+        for operation in plan.ordered_operations:
+            if isinstance(operation, CreateTreeOperation):
+                counts.update(
+                    entry.path.value for entry in operation.planned_new.entries
+                )
+            else:
+                counts[operation.path.value] += 1
+        assert all(count == 1 for count in counts.values())
+        match apply_plan(snapshot, plan):
+            case Ok(expected):
+                pass
+            case Err(error):
+                raise AssertionError(f"copier plan did not overlay: {error}")
+        by_path = {file.path.value: file.content for file in expected.files}
+        assert by_path["docs/prd.md"].startswith(
+            b"<!-- agentic-template:placeholder:prd -->"
+        )
+        assert by_path[MANIFEST_PATH.value] == plan.manifest_after.payload
+
+    def test_one_tree_roots_each_wholly_new_hierarchy_at_its_highest_absent_directory(
+        self,
+    ) -> None:
+        """Outputs at different depths under one missing directory share one tree."""
+        snapshot = fixture_copier_snapshot()
+        managed = tuple(
+            sorted(
+                (
+                    *fixture_managed(),
+                    ManagedFile(
+                        path=RepoPath("docs/api/ref.md"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        content=b"# API\n",
+                    ),
+                ),
+                key=lambda file: file.path.value.encode("utf-8"),
+            )
+        )
+        _, result = compile_fixture(
+            generation=GenerationPath.COPIER,
+            snapshot=snapshot,
+            cleanup=None,
+            snapshot_commit=None,
+            managed=managed,
+        )
+        plan = get_plan(result)
+        trees = [
+            operation
+            for operation in plan.ordered_operations
+            if isinstance(operation, CreateTreeOperation)
+        ]
+        assert {tree.root.value for tree in trees} == {"docs", ".agentic-template"}
+        docs_tree = next(tree for tree in trees if tree.root.value == "docs")
+        file_paths = {
+            entry.path.value
+            for entry in docs_tree.planned_new.entries
+            if isinstance(entry, PlannedFileEntry)
+        }
+        assert file_paths == {
+            "docs/prd.md",
+            "docs/template-updates.md",
+            "docs/api/ref.md",
+        }
+        assert any(
+            entry.path.value == "docs/api" for entry in docs_tree.planned_new.entries
         )
 
     def test_retain_maintenance_deletes_nothing_and_records_paths(self) -> None:
@@ -721,6 +840,70 @@ class TestPlanner:
                 assert error.kind is CompileErrorKind.INVALID_TARGET
             case Ok(_):
                 raise AssertionError("scaffold without marker compiled")
+
+    def test_non_utf8_text_blob_returns_a_compile_error(self) -> None:
+        store, seed_once = fixture_seed_once(
+            VerifiedBlobStore.empty(), "retain-apache-2.0"
+        )
+        bad = b"\xff\xfe not utf8"
+        store, _ = intern_all(store, {"bad": bad})
+        bad_seed = tuple(
+            replace(seed, content_id=ContentId.from_bytes(bad))
+            if seed.path.value == "README.md"
+            else seed
+            for seed in seed_once
+        )
+        _, result = compile_fixture(seed_once=bad_seed, blobs=store)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+                assert error.subject == "README.md"
+            case Ok(_):
+                raise AssertionError("non-UTF-8 text blob compiled")
+
+    def test_nested_planned_outputs_are_refused(self) -> None:
+        managed = tuple(
+            sorted(
+                (
+                    *fixture_managed(),
+                    ManagedFile(
+                        path=RepoPath("docs"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        content=b"a file named docs\n",
+                    ),
+                ),
+                key=lambda file: file.path.value.encode("utf-8"),
+            )
+        )
+        _, result = compile_fixture(managed=managed)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("nested planned outputs compiled")
+
+    def test_planned_path_beyond_limits_is_refused(self) -> None:
+        managed = tuple(
+            sorted(
+                (
+                    *fixture_managed(),
+                    ManagedFile(
+                        path=RepoPath("a" * 1100),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        content=b"x\n",
+                    ),
+                ),
+                key=lambda file: file.path.value.encode("utf-8"),
+            )
+        )
+        _, result = compile_fixture(managed=managed)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("over-long path compiled")
 
     def test_file_slot_rejects_marker_in_planned_bytes(self) -> None:
         marked_readme = b"<!-- agentic-template:placeholder:readme -->\n"
@@ -858,6 +1041,66 @@ class TestCollisionsAndCleanup:
             case Ok(_):
                 raise AssertionError("partial retain compiled")
 
+    def test_retain_maintenance_still_enforces_cleanup_path_limits(self) -> None:
+        cleanup = replace(
+            fixture_cleanup(),
+            cleanup_paths=(RepoPath("tests"), RepoPath("a" * 1100)),
+        )
+        _, result = compile_fixture(
+            maintenance=RetainMaintenance(paths=cleanup.cleanup_paths),
+            cleanup=cleanup,
+        )
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.CLEANUP_DISAGREEMENT
+            case Ok(_):
+                raise AssertionError("over-limit retained path compiled")
+
+    def test_case_colliding_managed_paths_are_refused(self) -> None:
+        managed = tuple(
+            sorted(
+                (
+                    *fixture_managed(),
+                    ManagedFile(
+                        path=RepoPath("README.txt"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        content=b"lower\n",
+                    ),
+                    ManagedFile(
+                        path=RepoPath("readme.txt"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        content=b"upper\n",
+                    ),
+                ),
+                key=lambda file: file.path.value.encode("utf-8"),
+            )
+        )
+        _, result = compile_fixture(managed=managed)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("case-colliding managed paths compiled")
+
+    def test_case_colliding_snapshot_paths_are_refused(self) -> None:
+        snapshot = github_snapshot()
+        snapshot = _sorted_snapshot(
+            (
+                *snapshot.files,
+                observed_file(RepoPath("README.txt"), b"lower\n"),
+                observed_file(RepoPath("readme.txt"), b"upper\n"),
+            ),
+            snapshot.directories,
+        )
+        _, result = compile_fixture(snapshot=snapshot)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("case-colliding snapshot paths compiled")
+
     def test_manifest_present_at_target_is_refused(self) -> None:
         snapshot = github_snapshot()
         snapshot = replace(
@@ -873,6 +1116,46 @@ class TestCollisionsAndCleanup:
                 assert error.kind is CompileErrorKind.INVALID_TARGET
             case Ok(_):
                 raise AssertionError("pre-existing manifest compiled")
+
+    def test_planned_file_at_observed_directory_is_refused(self) -> None:
+        snapshot = github_snapshot()
+        snapshot = _sorted_snapshot(
+            tuple(entry for entry in snapshot.files if entry.path.value != "README.md"),
+            (
+                *snapshot.directories,
+                observed_directory(RepoPath("README.md")),
+            ),
+        )
+        _, result = compile_fixture(snapshot=snapshot)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("planned file over observed directory compiled")
+
+    def test_nested_cleanup_paths_are_refused(self) -> None:
+        cleanup = replace(
+            fixture_cleanup(),
+            cleanup_paths=(RepoPath("tests"), RepoPath("tests/sub")),
+        )
+        _, result = compile_fixture(cleanup=cleanup)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.CLEANUP_DISAGREEMENT
+            case Ok(_):
+                raise AssertionError("nested cleanup paths compiled")
+
+    def test_cleanup_listing_the_inventory_is_refused(self) -> None:
+        cleanup = replace(
+            fixture_cleanup(),
+            cleanup_paths=(*CLEANUP_PATHS, MAINTENANCE_INVENTORY_PATH),
+        )
+        _, result = compile_fixture(cleanup=cleanup)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.CLEANUP_DISAGREEMENT
+            case Ok(_):
+                raise AssertionError("cleanup listing the inventory compiled")
 
 
 class TestPlanDigest:
@@ -918,17 +1201,81 @@ class TestPlanDigest:
             build_receipt(other)
         )
 
-    def test_tampered_receipt_is_rejected_or_changes_the_digest(self) -> None:
+    def test_receipt_round_trip_with_observed_mode_outside_install_modes(self) -> None:
+        snapshot = github_snapshot()
+        snapshot = replace(
+            snapshot,
+            files=tuple(
+                replace(
+                    entry,
+                    state=file_state_identity(
+                        entry.content, text=True, mode=PosixMode(0o600)
+                    ),
+                )
+                if entry.path.value == "uv.lock"
+                else entry
+                for entry in snapshot.files
+            ),
+        )
+        _, result = compile_fixture(snapshot=snapshot)
+        plan = get_plan(result)
+        receipt = build_receipt(plan)
+        match decode_receipt(encode_receipt(receipt)):
+            case Ok(decoded):
+                assert decoded == receipt
+            case Err(error):
+                raise AssertionError(f"receipt decode failed: {error}")
+
+    def test_receipt_round_trip_with_observed_directory_mode_outside_install_modes(
+        self,
+    ) -> None:
+        snapshot = github_snapshot()
+        snapshot = replace(
+            snapshot,
+            directories=tuple(
+                replace(
+                    entry,
+                    state=DirectoryState(PosixMode(0o700), entry.state.entries),
+                )
+                if entry.path.value == "tests"
+                else entry
+                for entry in snapshot.directories
+            ),
+        )
+        _, result = compile_fixture(snapshot=snapshot)
+        plan = get_plan(result)
+        receipt = build_receipt(plan)
+        match decode_receipt(encode_receipt(receipt)):
+            case Ok(decoded):
+                assert decoded == receipt
+            case Err(error):
+                raise AssertionError(f"receipt decode failed: {error}")
+
+    def test_tampered_receipt_shape_is_rejected(self) -> None:
+        receipt = build_receipt(github_plan())
+        encoded = bytearray(encode_receipt(receipt))
+        marker = b'"content_id":"'
+        index = encoded.find(marker) + len(marker)
+        assert index > len(marker)
+        encoded[index] = ord("X")
+        match decode_receipt(bytes(encoded)):
+            case Err(error):
+                assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("tampered receipt shape decoded")
+
+    def test_shape_valid_tamper_changes_the_receipt_digest(self) -> None:
         receipt = build_receipt(github_plan())
         encoded = bytearray(encode_receipt(receipt))
         index = encoded.find(b'"README.md"')
         assert index >= 0
-        encoded[index + 1] = ord("X")
+        encoded[index + 1 : index + 10] = b"README.txt"
         match decode_receipt(bytes(encoded)):
-            case Err(_):
-                pass
             case Ok(decoded):
+                assert decoded != receipt
                 assert plan_receipt_digest(decoded) != plan_receipt_digest(receipt)
+            case Err(error):
+                raise AssertionError(f"shape-valid tamper rejected: {error}")
 
     def test_recompiled_plan_derives_the_same_receipt(self) -> None:
         assert plan_receipt_digest(build_receipt(github_plan())) == plan_receipt_digest(
@@ -1027,3 +1374,41 @@ class TestExpectedTarget:
                 assert error.kind is PlanInvariantErrorKind.UNMATCHED_PRECONDITION
             case Ok(_):
                 raise AssertionError("changed snapshot overlaid")
+
+    def test_apply_plan_rejects_a_duplicate_create_over_a_tree_entry(self) -> None:
+        snapshot = fixture_copier_snapshot()
+        _, result = compile_fixture(
+            generation=GenerationPath.COPIER,
+            snapshot=snapshot,
+            cleanup=None,
+            snapshot_commit=None,
+        )
+        plan = get_plan(result)
+        tree = next(
+            operation
+            for operation in plan.ordered_operations
+            if isinstance(operation, CreateTreeOperation)
+            and operation.root.value == "docs"
+        )
+        planned_file = next(
+            entry
+            for entry in tree.planned_new.entries
+            if isinstance(entry, PlannedFileEntry)
+        )
+        duplicate = CreateFileOperation(
+            path=planned_file.path,
+            expected_old=FileState(None, None),
+            planned_new=PlannedFilePresent(
+                identity=planned_file.identity,
+                mode=planned_file.mode,
+                content_id=planned_file.content_id,
+            ),
+        )
+        tampered = replace(
+            plan, ordered_operations=(*plan.ordered_operations, duplicate)
+        )
+        match apply_plan(snapshot, tampered):
+            case Err(error):
+                assert error.kind is PlanInvariantErrorKind.UNMATCHED_PRECONDITION
+            case Ok(_):
+                raise AssertionError("duplicate create over a tree entry overlaid")

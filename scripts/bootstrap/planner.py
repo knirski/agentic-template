@@ -11,6 +11,7 @@ derived in ``plan_digest``.
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -47,6 +48,7 @@ from scripts.bootstrap.manifest import (
     encode_manifest,
     manifest_checksum,
     manifest_document,
+    path_within_limits,
 )
 from scripts.bootstrap.ownership import validate_cleanup_contract
 from scripts.bootstrap.paths import RepoPath, parse_path
@@ -74,10 +76,6 @@ from scripts.bootstrap.values import (
 PLAN_SCHEMA_VERSION = 1
 PLAN_OPERATION_KIND: Literal["initial"] = "initial"
 MAINTENANCE_INVENTORY_PATH = RepoPath(".agentic-template/maintenance-artifacts.json")
-
-_LICENSING_MODES = frozenset(
-    {"retain-apache-2.0", "provided-project-license", "private"}
-)
 
 
 class CompileErrorKind(StrEnum):
@@ -444,20 +442,20 @@ def _intern_output(
             )
 
 
-def _validate_snapshot(
-    snapshot: TargetSnapshot,
-) -> Result[TargetSnapshot, CompileError]:
+def _validate_snapshot(snapshot: TargetSnapshot) -> Result[None, CompileError]:
     seen: set[str] = set()
+    lowered: set[str] = set()
     for entry in (*snapshot.files, *snapshot.directories):
         if not isinstance(parse_path(entry.path.value), Ok):
             return Err(
                 _compile_error(CompileErrorKind.INVALID_TARGET, entry.path.value)
             )
-        if entry.path.value in seen:
+        if entry.path.value in seen or entry.path.value.lower() in lowered:
             return Err(
                 _compile_error(CompileErrorKind.INVALID_TARGET, entry.path.value)
             )
         seen.add(entry.path.value)
+        lowered.add(entry.path.value.lower())
     if _sorted_paths(tuple(entry.path for entry in snapshot.files)) != tuple(
         entry.path for entry in snapshot.files
     ):
@@ -466,59 +464,88 @@ def _validate_snapshot(
         entry.path for entry in snapshot.directories
     ):
         return Err(_compile_error(CompileErrorKind.INVALID_TARGET, "directories"))
-    return Ok(snapshot)
+    return Ok(None)
 
 
 def _validate_seed_inputs(
     seed_once: tuple[SeedOnceInput, ...],
     blobs: VerifiedBlobStore,
-) -> Result[tuple[SeedOnceInput, ...], CompileError]:
+    limits: ResourceLimits,
+) -> Result[None, CompileError]:
     if _sorted_paths(tuple(seed.path for seed in seed_once)) != tuple(
         seed.path for seed in seed_once
     ):
         return Err(_compile_error(CompileErrorKind.INVALID_TARGET, "seed_once"))
     seen: set[str] = set()
+    lowered: set[str] = set()
     for seed in seed_once:
-        if seed.path.value in seen:
+        if (
+            seed.path.value in seen
+            or seed.path.value.lower() in lowered
+            or not path_within_limits(seed.path, limits)
+        ):
             return Err(_compile_error(CompileErrorKind.INVALID_TARGET, seed.path.value))
         seen.add(seed.path.value)
+        lowered.add(seed.path.value.lower())
         if (
             seed.kind not in ("text", "binary")
             or seed.mode not in InstallFileMode
             or not isinstance(parse_path(seed.path.value), Ok)
         ):
             return Err(_compile_error(CompileErrorKind.INVALID_TARGET, seed.path.value))
-        if blobs.get(seed.content_id) is None:
+        content = blobs.get(seed.content_id)
+        if content is None:
             return Err(_compile_error(CompileErrorKind.MISSING_BLOB, seed.path.value))
-    return Ok(seed_once)
+        if seed.kind == "text":
+            try:
+                content.decode("utf-8")
+            except UnicodeDecodeError:
+                return Err(
+                    _compile_error(CompileErrorKind.INVALID_TARGET, seed.path.value)
+                )
+    return Ok(None)
 
 
 def _validate_managed(
     managed: ManagedRender,
-) -> Result[ManagedRender, CompileError]:
+    limits: ResourceLimits,
+) -> Result[None, CompileError]:
     seen: set[str] = set()
+    lowered: set[str] = set()
     for file in managed:
-        if file.path.value in seen:
+        if (
+            file.path.value in seen
+            or file.path.value.lower() in lowered
+            or not path_within_limits(file.path, limits)
+        ):
             return Err(_compile_error(CompileErrorKind.INVALID_TARGET, file.path.value))
         seen.add(file.path.value)
+        lowered.add(file.path.value.lower())
         if (
             file.kind not in ("text", "binary")
             or file.mode not in InstallFileMode
             or not isinstance(parse_path(file.path.value), Ok)
         ):
             return Err(_compile_error(CompileErrorKind.INVALID_TARGET, file.path.value))
+        if file.kind == "text":
+            try:
+                file.content.decode("utf-8")
+            except UnicodeDecodeError:
+                return Err(
+                    _compile_error(CompileErrorKind.INVALID_TARGET, file.path.value)
+                )
     if _sorted_paths(tuple(file.path for file in managed)) != tuple(
         file.path for file in managed
     ):
         return Err(_compile_error(CompileErrorKind.INVALID_TARGET, "managed"))
-    return Ok(managed)
+    return Ok(None)
 
 
 def _validate_slot_coverage(
     answers: ManifestAnswers,
     seed_once: tuple[SeedOnceInput, ...],
     blobs: VerifiedBlobStore,
-) -> Result[tuple[RepoPath, ...], CompileError]:
+) -> Result[None, CompileError]:
     """Require the declared slots to match the seed inputs and their marker contract."""
     rule_slots = {rule.slot: rule for rule in SLOT_PLACEHOLDER_RULES}
     if set(answers.slots) != set(rule_slots):
@@ -542,9 +569,7 @@ def _validate_slot_coverage(
         found = rule.marker in planned
         if (content.mode == "scaffold") != found:
             return Err(_compile_error(CompileErrorKind.INVALID_TARGET, rule.path.value))
-    return Ok(
-        tuple(sorted(declared_paths, key=lambda path: path.value.encode("utf-8")))
-    )
+    return Ok(None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -637,12 +662,17 @@ def _build_tree(
 def _classify_outputs(
     outputs: tuple[_PlannedOutput, ...],
     observed_files: Mapping[str, ObservedFileEntry],
+    observed_dirs: Mapping[str, ObservedDirectoryEntry],
     blobs: VerifiedBlobStore,
     *,
     refuse_present_old: bool,
 ) -> Result[tuple[FileOperation, ...], CompileError]:
     operations: list[FileOperation] = []
     for output in outputs:
+        if output.path.value in observed_dirs:
+            return Err(
+                _compile_error(CompileErrorKind.INVALID_TARGET, output.path.value)
+            )
         match _resolve_planned(output.content_id, output.kind, output.mode, blobs):
             case Err(error):
                 return Err(error)
@@ -674,9 +704,10 @@ def _build_trees(
     observed_files: Mapping[str, ObservedFileEntry],
     observed_dirs: Mapping[str, ObservedDirectoryEntry],
     blobs: VerifiedBlobStore,
-) -> Result[tuple[CreateTreeOperation, ...], CompileError]:
-    """Group every output under a wholly new hierarchy into one tree per missing root."""
+) -> Result[tuple[tuple[CreateTreeOperation, ...], set[str]], CompileError]:
+    """Group outputs under wholly new hierarchies; each path is covered by exactly one tree."""
     grouped: dict[str, list[_PlannedOutput]] = {}
+    covered: set[str] = set()
     for output in outputs:
         chain: list[RepoPath] = []
         for parent in _parent_paths(output.path):
@@ -688,7 +719,10 @@ def _build_trees(
                 break
             chain.append(parent)
         if chain:
-            grouped.setdefault(chain[-1].value, []).append(output)
+            # One wholly new hierarchy is staged as one tree: the grouping root is
+            # the highest absent directory, adjacent to the nearest existing ancestor.
+            grouped.setdefault(chain[0].value, []).append(output)
+            covered.add(output.path.value)
     trees: list[CreateTreeOperation] = []
     for root_value in sorted(grouped):
         root = RepoPath(root_value)
@@ -701,7 +735,7 @@ def _build_trees(
                 trees.append(
                     CreateTreeOperation(root=root, expected_old=None, planned_new=tree)
                 )
-    return Ok(tuple(trees))
+    return Ok((tuple(trees), covered))
 
 
 def _cleanup_operations(
@@ -727,6 +761,19 @@ def _cleanup_operations(
             pass
     file_deletes: list[DeleteFileOperation] = []
     dir_removes: list[RemoveEmptyDirectoryOperation] = []
+    cleanup_values = sorted(
+        (path.value for path in cleanup.cleanup_paths),
+        key=lambda value: value.encode("utf-8"),
+    )
+    for before, after in itertools.pairwise(cleanup_values):
+        if after.startswith(before + "/") or before == MAINTENANCE_INVENTORY_PATH.value:
+            return Err(_compile_error(CompileErrorKind.CLEANUP_DISAGREEMENT, before))
+    if cleanup_values and cleanup_values[-1] == MAINTENANCE_INVENTORY_PATH.value:
+        return Err(
+            _compile_error(
+                CompileErrorKind.CLEANUP_DISAGREEMENT, MAINTENANCE_INVENTORY_PATH.value
+            )
+        )
     for path in cleanup.cleanup_paths:
         observed_file = observed_files.get(path.value)
         if observed_file is not None:
@@ -775,14 +822,14 @@ def _cleanup_operations(
                 dir_removes.append(
                     RemoveEmptyDirectoryOperation(
                         path=entry.path,
-                        expected_old=entry.state,
+                        expected_old=DirectoryState(entry.state.root_mode, ()),
                         planned_new=DirectoryAbsent(),
                     )
                 )
         dir_removes.append(
             RemoveEmptyDirectoryOperation(
                 path=path,
-                expected_old=observed_dir.state,
+                expected_old=DirectoryState(observed_dir.state.root_mode, ()),
                 planned_new=DirectoryAbsent(),
             )
         )
@@ -809,6 +856,20 @@ def _inventory_deletion(
     )
 
 
+def _validate_no_nested_outputs(
+    outputs: tuple[_PlannedOutput, ...],
+) -> Result[None, CompileError]:
+    """Reject a planned output that is an ancestor of another planned output."""
+    values = sorted(
+        (output.path.value for output in outputs),
+        key=lambda value: value.encode("utf-8"),
+    )
+    for before, after in itertools.pairwise(values):
+        if after.startswith(before + "/"):
+            return Err(_compile_error(CompileErrorKind.INVALID_TARGET, before))
+    return Ok(None)
+
+
 def compile_initial_plan(
     *,
     generation: GenerationPath,
@@ -831,12 +892,12 @@ def compile_initial_plan(
             return Err(error)
         case Ok(_):
             pass
-    match _validate_seed_inputs(seed_once, blobs):
+    match _validate_seed_inputs(seed_once, blobs, limits):
         case Err(error):
             return Err(error)
         case Ok(_):
             pass
-    match _validate_managed(managed):
+    match _validate_managed(managed, limits):
         case Err(error):
             return Err(error)
         case Ok(_):
@@ -863,6 +924,11 @@ def compile_initial_plan(
             return Err(
                 _compile_error(CompileErrorKind.PATH_COLLISION, sorted(collisions)[0])
             )
+        for path in cleanup.cleanup_paths:
+            if not path_within_limits(path, limits):
+                return Err(
+                    _compile_error(CompileErrorKind.CLEANUP_DISAGREEMENT, path.value)
+                )
 
     match derive_source_baseline(
         generation, source_entries, snapshot_commit=snapshot_commit
@@ -928,12 +994,27 @@ def compile_initial_plan(
         _PlannedOutput(MANIFEST_PATH, "text", PosixMode.FILE, manifest_content_id),
     )
 
+    all_outputs = tuple((*seed_outputs, *managed_outputs, *manifest_outputs))
+    match _validate_no_nested_outputs(all_outputs):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
+
     observed_files = {entry.path.value: entry for entry in snapshot.files}
     observed_dirs = {entry.path.value: entry for entry in snapshot.directories}
 
+    match _build_trees(all_outputs, observed_files, observed_dirs, store):
+        case Err(error):
+            return Err(error)
+        case Ok((tree_ops, covered_paths)):
+            pass
     match _classify_outputs(
-        tuple(seed_outputs),
+        tuple(
+            output for output in seed_outputs if output.path.value not in covered_paths
+        ),
         observed_files,
+        observed_dirs,
         store,
         refuse_present_old=False,
     ):
@@ -942,8 +1023,13 @@ def compile_initial_plan(
         case Ok(seed_plain):
             pass
     match _classify_outputs(
-        tuple(managed_outputs),
+        tuple(
+            output
+            for output in managed_outputs
+            if output.path.value not in covered_paths
+        ),
         observed_files,
+        observed_dirs,
         store,
         refuse_present_old=False,
     ):
@@ -952,24 +1038,19 @@ def compile_initial_plan(
         case Ok(managed_plain):
             pass
     match _classify_outputs(
-        manifest_outputs,
+        tuple(
+            output
+            for output in manifest_outputs
+            if output.path.value not in covered_paths
+        ),
         observed_files,
+        observed_dirs,
         store,
         refuse_present_old=True,
     ):
         case Err(error):
             return Err(error)
         case Ok(manifest_plain):
-            pass
-    match _build_trees(
-        tuple((*seed_outputs, *managed_outputs, *manifest_outputs)),
-        observed_files,
-        observed_dirs,
-        store,
-    ):
-        case Err(error):
-            return Err(error)
-        case Ok(tree_ops):
             pass
 
     cleanup_files: tuple[DeleteFileOperation, ...] = ()
@@ -1015,6 +1096,7 @@ def compile_initial_plan(
     for operation in ordered_operations:
         if isinstance(operation, CreateTreeOperation):
             planned_paths.add(operation.root)
+            planned_paths.update(entry.path for entry in operation.planned_new.entries)
         else:
             planned_paths.add(operation.path)
     match check_limit(LimitKind.PATHS, len(planned_paths), limits):
@@ -1067,8 +1149,43 @@ def _expected_kind(identity: FileContentIdentity) -> Literal["text", "binary"]:
     raise ValueError("planned file kind is outside the closed vocabulary")
 
 
-def _absent_file() -> FileState:
-    return FileState(None, None)
+def _apply_file_write(
+    operation: CreateFileOperation | ReplaceFileOperation,
+    observed_states: Mapping[str, FileState],
+    observed_dir_states: Mapping[str, DirectoryState],
+    directories: Mapping[str, DirectoryEntry],
+    files: dict[str, ExpectedFile],
+    blobs: VerifiedBlobStore,
+) -> Result[None, PlanInvariantError]:
+    duplicate = (
+        operation.path.value in files
+        if isinstance(operation, CreateFileOperation)
+        else False
+    )
+    if (
+        observed_states.get(operation.path.value, FileState(None, None))
+        != operation.expected_old
+        or operation.path.value in observed_dir_states
+        or operation.path.value in directories
+        or duplicate
+    ):
+        return Err(
+            _invariant_error(
+                PlanInvariantErrorKind.UNMATCHED_PRECONDITION, operation.path.value
+            )
+        )
+    content = blobs.get(operation.planned_new.content_id)
+    if content is None:
+        return Err(
+            _invariant_error(PlanInvariantErrorKind.MISSING_BLOB, operation.path.value)
+        )
+    files[operation.path.value] = ExpectedFile(
+        path=operation.path,
+        kind=_expected_kind(operation.planned_new.identity),
+        mode=operation.planned_new.mode,
+        content=content,
+    )
+    return Ok(None)
 
 
 def apply_plan(
@@ -1097,52 +1214,37 @@ def apply_plan(
     for operation in plan.ordered_operations:
         match operation:
             case CreateFileOperation() as create:
-                if (
-                    observed_states.get(create.path.value, _absent_file())
-                    != create.expected_old
+                match _apply_file_write(
+                    create,
+                    observed_states,
+                    observed_dir_states,
+                    directories,
+                    files,
+                    plan.blob_store,
                 ):
-                    return Err(
-                        _invariant_error(
-                            PlanInvariantErrorKind.UNMATCHED_PRECONDITION,
-                            create.path.value,
-                        )
-                    )
-                content = plan.blob_store.get(create.planned_new.content_id)
-                if content is None:
-                    return Err(
-                        _invariant_error(
-                            PlanInvariantErrorKind.MISSING_BLOB, create.path.value
-                        )
-                    )
-                files[create.path.value] = ExpectedFile(
-                    path=create.path,
-                    kind=_expected_kind(create.planned_new.identity),
-                    mode=create.planned_new.mode,
-                    content=content,
-                )
+                    case Err(error):
+                        return Err(error)
+                    case Ok(_):
+                        pass
             case ReplaceFileOperation() as replace:
-                if observed_states.get(replace.path.value) != replace.expected_old:
-                    return Err(
-                        _invariant_error(
-                            PlanInvariantErrorKind.UNMATCHED_PRECONDITION,
-                            replace.path.value,
-                        )
-                    )
-                content = plan.blob_store.get(replace.planned_new.content_id)
-                if content is None:
-                    return Err(
-                        _invariant_error(
-                            PlanInvariantErrorKind.MISSING_BLOB, replace.path.value
-                        )
-                    )
-                files[replace.path.value] = ExpectedFile(
-                    path=replace.path,
-                    kind=_expected_kind(replace.planned_new.identity),
-                    mode=replace.planned_new.mode,
-                    content=content,
-                )
+                match _apply_file_write(
+                    replace,
+                    observed_states,
+                    observed_dir_states,
+                    directories,
+                    files,
+                    plan.blob_store,
+                ):
+                    case Err(error):
+                        return Err(error)
+                    case Ok(_):
+                        pass
             case DeleteFileOperation() as delete:
-                if observed_states.get(delete.path.value) != delete.expected_old:
+                if (
+                    observed_states.get(delete.path.value) != delete.expected_old
+                    or delete.path.value in observed_dir_states
+                    or delete.path.value in directories
+                ):
                     return Err(
                         _invariant_error(
                             PlanInvariantErrorKind.UNMATCHED_PRECONDITION,
@@ -1154,6 +1256,8 @@ def apply_plan(
                 if (
                     tree.root.value in observed_dir_states
                     or tree.root.value in directories
+                    or tree.root.value in observed_states
+                    or tree.root.value in files
                 ):
                     return Err(
                         _invariant_error(
@@ -1174,7 +1278,7 @@ def apply_plan(
                             entry.path, entry.mode
                         )
                     else:
-                        if entry.path.value in files:
+                        if entry.path.value in files or entry.path.value in directories:
                             return Err(
                                 _invariant_error(
                                     PlanInvariantErrorKind.DUPLICATE_PATH,
@@ -1196,7 +1300,7 @@ def apply_plan(
                             content=content,
                         )
             case RemoveEmptyDirectoryOperation() as remove:
-                if observed_dir_states.get(remove.path.value) != remove.expected_old:
+                if remove.path.value not in observed_dir_states:
                     return Err(
                         _invariant_error(
                             PlanInvariantErrorKind.UNMATCHED_PRECONDITION,
