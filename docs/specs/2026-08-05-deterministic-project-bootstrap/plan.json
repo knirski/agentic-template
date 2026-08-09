@@ -450,8 +450,23 @@
           "description": "Build candidate manifests from primary values, compile all seed-once, legal, managed, manifest, cleanup, and directory operations into one complete `OperationPlan`, produce `ExpectedTarget`, attach gate specifications, and implement plan receipt/digest binding without storing adopter/legal bytes.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-09",
+              "commits": [
+                "022f352"
+              ],
+              "evidence": [
+                "uv run pytest -q tests/test_bootstrap_planner.py (34 passed)",
+                "uv run pytest -q (216 passed)",
+                "uv run ruff check (clean)",
+                "uv run ruff format --check (53 files already formatted)",
+                "uv run ty check (clean)",
+                "uv lock --check (passed)",
+                "python3 scripts/validate_repository.py (expected source-scaffold exit 1; template contract passed and readiness findings were emitted in canonical order)"
+              ]
+            },
+            "github_prs": []
           },
           "files": {
             "create": [
