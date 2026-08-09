@@ -2738,8 +2738,8 @@ spanning mounts; claiming atomic multi-file visibility; operating on planned pat
 one-time check; claiming resistance to a concurrent local adversary; comparing readiness findings as
 `(code, path)` sets; allowing an empty finding path; a `Finding` order left to implementation; one global
 exit-code rule across inspection and mutation; claiming the hook runs once when refusals and rollbacks
-run it zero times; gating the transaction on the hook; reporting success when the hook failed; treating
-an equivalent `apply` as an unconditional exit-0 no-op; recording or replaying hook results; `status`
+run it zero times; gating the transaction on the hook; reporting success when the hook failed;
+recording or replaying hook results; `status`
 executing the hook; requiring complete prose before compiling; recording slot completion in the manifest;
 requiring the hook to be decodable UTF-8; accepting adopter content containing a reserved marker; two
 canonical hook paths; an adoption command without preview or collision rules; implying a rename bootstraps
@@ -2747,9 +2747,8 @@ a project; any v1 legacy hook alias or compatibility release; a manifest listed 
 giving snapshots any update lifecycle; promising both a
 v1 update and a pre-bootstrap pin; assuming Copier excludes transfer ownership without per-path evidence;
 a migration fixture depending on live tag history; `git restore scripts/` as rollback; claiming
-intermediate default-branch merges are inert; comparing only `env` key names; claiming stale-entry expiry
-prevents allowlist accumulation; relying on GitHub log masking as canary evidence; using default PyYAML
-semantics for Actions YAML; implying a standard-library checker can parse Actions YAML; treating capability
+intermediate default-branch merges are inert; relying on GitHub log masking as canary evidence;
+implying a standard-library checker can parse Actions YAML; treating capability
 removal as reconciliation; a version-aware updater competing with Copier; parallel Copier and Python
 rendering; mandatory trusted Copier tasks; requiring `--target` on `init`; legal boilerplate authored by
 bootstrap; deferring the licensing audit for any mode; independently releasable slices with per-slice
