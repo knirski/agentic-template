@@ -1554,6 +1554,16 @@ class TestManifest:
             case Ok(_):
                 raise AssertionError("malformed manifest decoded")
 
+    def test_decode_rejects_unknown_top_level_keys(self) -> None:
+        document = manifest_document(self._github_manifest_value())
+        document["unexpected_field"] = True
+        encoded = canonical_json({**document, "checksum": manifest_checksum(document)})
+        match decode_manifest(encoded):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("manifest with unknown top-level key decoded")
+
 
 class TestPlanner:
     def test_plan_is_complete_and_expected_target_matches(self) -> None:

@@ -509,6 +509,15 @@ def decode_manifest(data: bytes) -> Result[CandidateManifest, ManifestError]:
         return Err(_manifest_error(ManifestErrorKind.INVALID_JSON))
     if not isinstance(value, Mapping):
         return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "document"))
+    if set(value) != {
+        "schema_version",
+        "answers",
+        "additions",
+        "provenance",
+        "managed",
+        "checksum",
+    }:
+        return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "document"))
     schema_version = value.get("schema_version")
     if schema_version != MANIFEST_SCHEMA_VERSION:
         return Err(
