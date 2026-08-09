@@ -319,7 +319,7 @@ closed values defined below, not errors smuggled through exceptions.
 | `InitialAnswers` | primary | `project`, frozen profile selection, normalized settings for the initial closure, licensing choice, and slot choices; immutable after install |
 | `CapabilityAdditions` | primary | Sorted explicit post-bootstrap capability IDs plus normalized settings introduced with them, including settings for newly resolved dependencies; append-only in v1 |
 | `VerifiedBundle` | observed | `InitialAnswers` plus `AdopterBlobMap`; every content reference resolves to bytes matching its declared digest |
-| `AdopterBlobMap` | observed | `sha256 -> bytes` for seed-once and legal inputs; immutable and available only during initial apply or equivalent `apply` verification |
+| `AdopterBlobMap` | observed | `sha256 -> bytes` for seed-once and legal inputs; immutable and available only during initial apply |
 | `TemplatePackage` | observed | Decoded definitions plus `TemplateBlobMap`, generated-lifecycle source inventory, source fingerprint, and cleanup contract |
 | `TemplateBlobMap` | observed | `sha256 -> bytes` for retained static template payloads, verified on load |
 | `RecordedProjectState` | primary | Immutable initial answers, `CapabilityAdditions`, generation provenance, maintenance outcome, `ManagedInventory`, and `SourceBaseline` |
@@ -581,7 +581,7 @@ The inventory includes exactly the behavior-affecting inputs both generation pat
   static contracts checked by template validation.
 
 `snapshot_cleanup_paths` is the finite source-only set excluded by Copier and removed or explicitly
-retained by initial snapshot apply: source tests and fixtures, source-CI conformance data, historical
+retained by initial snapshot apply: source tests and workflow fixtures, historical
 specs, and source development configuration. The cleanup-control inventory is not a lifecycle entry or
 cleanup target because it authorizes expected identities and removes itself separately. Template
 validation derives both ownership sets from this one manifest rather than maintaining a second list. A

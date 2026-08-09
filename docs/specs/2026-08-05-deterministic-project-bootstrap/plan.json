@@ -229,7 +229,7 @@
             "T6"
           ],
           "inputs": [
-            "structured readiness result; multiset finding identity; gating rules; template-evolution compatibility baseline/corpus; existing validator behavior."
+            "structured readiness result; multiset finding identity; gating rules; template-evolution compatibility baseline; existing validator behavior."
           ],
           "description": "Extract pure readiness and template-contract rules from existing scripts. Implement finding sorting/multiset comparison, mechanical gating, readiness rule definitions, typed `ValidationProgram` stage folding, and deterministic text/JSON presentation parity. Replace existing mixed policy scripts with thin shell adapters while preserving current fixture behavior.",
           "execution": {
@@ -271,7 +271,6 @@
               "existing readiness/aggregate fixture parity",
               "pure-core tests with no filesystem or process access",
               "readiness identity/sort/multiset tests",
-              "compatibility corpus tests",
               "text/JSON parity",
               "stage-fold and stop-condition properties",
               "canonical diagnostic next-action reachability."
@@ -625,6 +624,7 @@
               "tests/test_bootstrap_cli.py"
             ],
             "modify": [
+              "scripts/bootstrap/observation.py",
               "README.md",
               "docs/project-readiness.md"
             ],
