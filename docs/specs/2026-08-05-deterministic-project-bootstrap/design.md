@@ -2219,9 +2219,9 @@ eligibility check. Without `semantic-release`, no release workflow or job is emi
 The template source is bootstrapped as the `integrated`-profile fixture at activation, so its
 workflow files are compiled managed output: drift between the source CI and the compiled render is
 detected by the standard managed-inventory machinery (`status`, `restore`), not by a separate
-conformance fixture. Maintainer-only jobs (uv sync, source canaries, actionlint) live in an
-adopter-owned workflow file that Copier excludes and snapshot cleanup removes, so generated projects
-never receive them. No Actions YAML parser, semantic workflow normal form, trust-predicate
+conformance fixture. Maintainer-only jobs (uv sync, source canaries, actionlint) live in a
+source-maintainer-owned workflow file that Copier excludes and snapshot cleanup removes, so generated
+projects never receive them. No Actions YAML parser, semantic workflow normal form, trust-predicate
 comparison, allowlist, or raw pin-comment fixture is defined, and PyYAML is a declared runtime
 dependency used only for scalar emission in the render boundary, never for workflow parsing.
 `actionlint` continues to lint the source and every generated workflow fixture. Generated-workflow
@@ -2614,7 +2614,7 @@ Exit semantics:
   causes; privileged jobs cannot start when preflight is false.
 - Preflight structural policy and local canary.
 - Source CI separation: the source `ci.yml` is a compiled managed artifact emitted to generated
-  projects; only the maintainer-only adopter-owned workflow is excluded by Copier and snapshot
+  projects; only the source-maintainer workflow is excluded by Copier and snapshot
   cleanup, and `status`/`restore` detect drift in the managed artifact.
 - Generated-workflow security fixtures pin permissions, secrets, preflights, release dependency, and
   privileged-job trust for every capability matrix render.

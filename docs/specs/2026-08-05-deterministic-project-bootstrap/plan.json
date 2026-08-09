@@ -801,7 +801,7 @@
           "inputs": [
             "design template-source CI section (revision 16); maintainer-only source CI separation; capability-matrix security fixtures."
           ],
-          "description": "Remove the Actions YAML loader, semantic workflow normal form, raw SHA-comment checks, trust predicates, allowlist, and source-versus-rendered comparison from the plan; PyYAML is not a source dependency. Wire the source repository as the `integrated`-profile fixture at activation: its `ci.yml` is a compiled managed artifact, maintainer-only jobs (uv sync, source canaries, actionlint) live in an adopter-owned workflow file excluded from generated projects by Copier and snapshot cleanup, and drift in the managed artifact is detected by the standard `status`/`restore` machinery. Pin generated-workflow security properties through capability-matrix and structural-policy fixtures. The unwired compatibility and comparison modules landed in the revision-16 alignment (PR #41), and revision 17 restores PyYAML as a runtime dependency for the render boundary's scalar encoder only; remaining work is the integrated-fixture wiring, maintainer-only job separation, and security fixtures.",
+          "description": "Remove the Actions YAML loader, semantic workflow normal form, raw SHA-comment checks, trust predicates, allowlist, and source-versus-rendered comparison from the plan; PyYAML is not a source dependency. Wire the source repository as the `integrated`-profile fixture at activation: its `ci.yml` is a compiled managed artifact, maintainer-only jobs (uv sync, source canaries, actionlint) live in a source-maintainer-owned workflow file excluded from generated projects by Copier and snapshot cleanup, and drift in the managed artifact is detected by the standard `status`/`restore` machinery. Pin generated-workflow security properties through capability-matrix and structural-policy fixtures. The unwired compatibility and comparison modules landed in the revision-16 alignment (PR #41), and revision 17 restores PyYAML as a runtime dependency for the render boundary's scalar encoder only; remaining work is the integrated-fixture wiring, maintainer-only job separation, and security fixtures.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -814,8 +814,7 @@
             "modify": [
               "scripts/validate_template.py",
               ".github/workflows/ci.yml",
-              ".github/workflows/template-ci.yml",
-              "pyproject.toml"
+              ".github/workflows/template-ci.yml"
             ],
             "remove": []
           },
