@@ -1,6 +1,10 @@
 # Project Readiness Contract
 
 Status: Approved on 2026-08-04
+Supersession: upon approval of `docs/specs/2026-08-05-deterministic-project-bootstrap/design.md`
+(revision 15), this spec is superseded and this directory is archived at bootstrap activation; its
+v1 rules move verbatim into that design's frozen readiness-rule baseline v1. This note is
+informational until then; this spec remains the approved authority for the validator contract.
 
 ## Problem
 
