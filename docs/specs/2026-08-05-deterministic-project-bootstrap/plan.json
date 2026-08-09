@@ -14,7 +14,7 @@
           "inputs": [
             "design dependency policy; modern-python guidance; current standalone Python scripts."
           ],
-          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks; CI installs the pinned uv release and Python 3.14 with Astral's `setup-uv` action. Nix and its flake remain optional maintainer tooling, while generated projects use portable Python/uv validation and do not inherit source-only uv metadata.",
+          "description": "Create the root uv project metadata without packaging the template as a distributable library. Add grouped source dependencies with `uv add`: pytest, Hypothesis, Ruff, ty, and PyYAML in their appropriate development groups. Set `requires-python = \">=3.14\"`, configure Ruff and ty for Python 3.14 and strict core checking, and create `.python-version` pinned to 3.14. Make `uv run` the documented execution path for source checks; CI installs the pinned uv release and Python 3.14 with Astral's `setup-uv` action. Nix and its flake remain optional maintainer tooling, while generated projects use portable Python/uv validation and do not inherit source-only uv metadata. PyYAML is removed from the toolchain by revision 16 (T16); this task's record is historical.",
           "execution": {
             "mode": "inline",
             "status": "completed",
@@ -229,9 +229,9 @@
             "T6"
           ],
           "inputs": [
-            "structured readiness result; multiset finding identity; gating rules; template-evolution compatibility baseline/corpus; existing validator behavior."
+            "structured readiness result; multiset finding identity; gating rules; template-evolution compatibility baseline; existing validator behavior."
           ],
-          "description": "Extract pure readiness and template-contract rules from existing scripts. Implement finding sorting/multiset comparison, mechanical gating, frozen rule definitions and compatibility corpus, typed `ValidationProgram` stage folding, and deterministic text/JSON presentation parity. Replace existing mixed policy scripts with thin shell adapters while preserving current fixture behavior.",
+          "description": "Extract pure readiness and template-contract rules from existing scripts. Implement finding sorting/multiset comparison, mechanical gating, readiness rule definitions, typed `ValidationProgram` stage folding, and deterministic text/JSON presentation parity. Replace existing mixed policy scripts with thin shell adapters while preserving current fixture behavior.",
           "execution": {
             "mode": "inline",
             "status": "completed",
@@ -271,7 +271,6 @@
               "existing readiness/aggregate fixture parity",
               "pure-core tests with no filesystem or process access",
               "readiness identity/sort/multiset tests",
-              "compatibility corpus tests",
               "text/JSON parity",
               "stage-fold and stop-condition properties",
               "canonical diagnostic next-action reachability."
@@ -611,7 +610,7 @@
           "inputs": [
             "CLI contract and exit semantics; Copier/GitHub scaffold recognition; maintenance cleanup inventory; complete status/plan/apply/add/restore/reconcile/recover transition matrix."
           ],
-          "description": "Add the thin `bootstrap-project.py` adapter for `init`, `status`, `plan apply`, `plan add`, `plan restore`, `plan reconcile`, `apply`, `add`, `restore`, `reconcile`, and `recover`. Implement deterministic text/JSON output, command-family exit codes, scaffold marker checks, cleanup mismatch refusal/leave behavior, target protection, phase-specific recovery presentation, and hook-at-most-once finalization after a gated installation.",
+          "description": "Add the thin `bootstrap-project.py` adapter for `init`, `status`, `plan apply`, `plan add`, `plan restore`, `plan reconcile`, `apply`, `add`, `restore`, `reconcile`, and `recover`. Implement deterministic text/JSON output, command-family exit codes, scaffold marker checks, cleanup mismatch refusal/leave behavior, target protection, phase-specific recovery presentation, and hook-at-most-once finalization after a gated installation. `init` accepts `--from` only (no interactive mode); `status` uses one observation pass; planning uses a coherent two-pass observation; mutating commands repeat the coherent two-pass observation after lock acquisition and require the plan receipt and target identity to match; `apply` on an already-installed project refuses with `status`/`scripts/validate_repository.py` as the next action.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -625,6 +624,7 @@
               "tests/test_bootstrap_cli.py"
             ],
             "modify": [
+              "scripts/bootstrap/observation.py",
               "README.md",
               "docs/project-readiness.md"
             ],
@@ -639,6 +639,7 @@
               "cleanup marker collision and leave override",
               "text/JSON parity",
               "phase-specific recover behavior",
+              "post-lock plan and target revalidation, including rejection when either changes concurrently",
               "exit 0/1/2 family tests."
             ],
             "acceptance": []
@@ -693,7 +694,7 @@
     },
     {
       "id": "P6",
-      "name": "Catalog integrations, workflows, and source-CI conformance",
+      "name": "Catalog integrations, compiled workflows, and source separation",
       "tasks": [
         {
           "id": "T14",
@@ -704,7 +705,7 @@
           "inputs": [
             "capability definition schema; source/generated ownership boundary; uv project metadata contract; stable IDs; supported Python ranges; capability runtime-dependency metadata requirements."
           ],
-          "description": "Extend capability definitions with explicit non-secret runtime dependency declarations, supported Python ranges, and invocation metadata. Render generated `pyproject.toml` for every generated project as a bootstrap-managed artifact containing `requires-python = \">=3.14\"`; add selected capability dependencies only when required. Keep the source repository's root `pyproject.toml` and `uv.lock` source-only. Define the adopter follow-up that creates `uv.lock`; bootstrap never resolves or installs packages. Add ownership and leakage fixtures proving that source development dependencies do not enter snapshots or generated Copier projects.",
+          "description": "Extend capability definitions with explicit non-secret runtime dependency declarations, supported Python ranges, and invocation metadata. Render generated `pyproject.toml` for every generated project as a bootstrap-managed artifact containing `requires-python = \">=3.14\"`; add selected capability dependencies only when required. Keep the source repository's root `pyproject.toml` and `uv.lock` source-only. Define the adopter follow-up that creates `uv.lock`; bootstrap never resolves or installs packages. Add ownership and leakage fixtures proving that source development dependencies do not enter snapshots or generated Copier projects. Align the slot runtime model with the pruned v1 contract: `SlotDefinition` carries no `cardinality` and only `yaml`/`markdown` contexts, and contribution composition enforces no cardinality.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -721,6 +722,7 @@
               "scripts/bootstrap/profiles.py",
               "scripts/bootstrap/schemas.py",
               "scripts/bootstrap/render.py",
+              "scripts/bootstrap/contributions.py",
               ".agentic-template/source-ownership.json",
               "copier.yml"
             ],
@@ -733,6 +735,7 @@
               "supported-Python and invocation validation",
               "generated `pyproject.toml` ownership and source-lock leakage tests",
               "all profile/custom-selection matrices",
+              "slot schema and contribution composition carry no cardinality and only yaml/markdown contexts",
               "no generated `uv.lock` is claimed by bootstrap",
               "generated capability fixtures can create and use their own uv lock without source-only packages leaking into the runtime."
             ],
@@ -789,14 +792,14 @@
         },
         {
           "id": "T16",
-          "name": "Implement source workflow semantic conformance",
+          "name": "Wire the source tree as the integrated fixture and remove conformance tooling",
           "depends_on": [
             "T15"
           ],
           "inputs": [
-            "compiled integrated workflow; canonical workflow/job/step normal form; PyYAML source-only loader contract; source allowlist ownership."
+            "design template-source CI section (revision 16); maintainer-only source CI separation; capability-matrix security fixtures."
           ],
-          "description": "Add the strict Actions YAML loader, complete semantic normalization, raw SHA-comment checks, trust predicates, allowlist expiry/difference checks, and source-versus-rendered workflow comparison. Keep PyYAML source-only unless a future capability explicitly declares it, separate maintainer-only source CI from the portable generated baseline, and ensure the generated baseline requires no Nix while selected Nix/Cachix capabilities contribute only their declared jobs and release gates. Ensure all loader failures are typed diagnostics.",
+          "description": "Remove the Actions YAML loader, semantic workflow normal form, raw SHA-comment checks, trust predicates, allowlist, and source-versus-rendered comparison from the plan; PyYAML is not a source dependency. Wire the source repository as the `integrated`-profile fixture at activation: its `ci.yml` is a compiled managed artifact, maintainer-only jobs (uv sync, source canaries, actionlint) live in an adopter-owned workflow file excluded from generated projects by Copier and snapshot cleanup, and drift in the managed artifact is detected by the standard `status`/`restore` machinery. Pin generated-workflow security properties through capability-matrix and structural-policy fixtures.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -804,41 +807,37 @@
           },
           "files": {
             "create": [
-              "scripts/bootstrap/actions_yaml.py",
-              "scripts/bootstrap/source_ci.py",
-              "tests/test_source_ci.py",
-              ".agentic-template/source-ci-allowlist.json"
+              "tests/test_source_bootstrap.py"
             ],
             "modify": [
               "scripts/validate_template.py",
               ".github/workflows/ci.yml",
+              ".github/workflows/template-ci.yml",
               "pyproject.toml"
             ],
             "remove": []
           },
           "validation": {
             "tests": [
-              "duplicate/merge/null/boolean parser fixtures",
-              "complete env/with/permissions/strategy comparison",
-              "step identity/order",
-              "actionlint",
-              "stale/uncovered allowlist detection",
-              "privileged trust predicate checks",
-              "source and generated workflow conformance."
+              "no Actions YAML parser, allowlist, or trust-predicate fixture remains",
+              "source `ci.yml` is a compiled managed artifact and maintainer-only jobs are excluded from generated projects by Copier and snapshot cleanup",
+              "actionlint on the source and every generated workflow fixture",
+              "generated-workflow security fixtures pin permissions, secrets, preflights, release dependency, and privileged-job trust",
+              "pyproject.toml and uv.lock contain no PyYAML."
             ],
             "acceptance": []
           }
         },
         {
           "id": "T16b",
-          "name": "Implement the frozen readiness-rule baseline and corpus",
+          "name": "Implement the frozen readiness-rule catalog",
           "depends_on": [
             "T16"
           ],
           "inputs": [
-            "design frozen readiness-rule baseline v1; superseded project-readiness spec US-1 criteria and fixture matrix; existing checker rule constants; readiness rule definition schema."
+            "design frozen readiness-rule baseline v1; superseded project-readiness spec US-1 criteria; existing checker rule constants; readiness rule definition schema."
           ],
-          "description": "Implement the declarative `ReadinessRuleDefinition` catalog carrying every readiness v1 rule unchanged: PRD marker/boilerplate and exactly-once ordered level-two headings, REQ-### declaration format, README marker/title/Setup/Validation contract, hook presence/mode/sentinel, and the bootstrap security/contributing slot rules. Seed the compatibility corpus from the superseded readiness fixture matrix converted to representative TargetSnapshot values, including all adopter-owned predicate boundaries. Wire validate_template.py to compare complete canonical definitions against the frozen baseline and reject a new or changed blocking definition over adopter-owned state, an informational-to-blocking transition, a new required seed-once path, or a blocking rule with no legal satisfier. The old checker's rule constants become derived from this catalog; the four-argument Finding adapter contract remains only until activation.",
+          "description": "Implement the declarative `ReadinessRuleDefinition` catalog carrying every readiness v1 rule unchanged: PRD marker/boilerplate and exactly-once ordered level-two headings, REQ-### declaration format, README marker/title/Setup/Validation contract, hook presence/mode/sentinel, and the bootstrap security/contributing slot rules. The old checker's rule constants become derived from this catalog; the four-argument Finding adapter contract remains only until activation. The baseline comparison and compatibility corpus are deferred to post-v1: no comparison machinery is introduced, and catalog immutability for manifest schema v1 is enforced by review.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -847,8 +846,6 @@
           "files": {
             "create": [
               "scripts/bootstrap/readiness_rules.py",
-              "scripts/fixtures/readiness-corpus/conforming-2026-08-03.json",
-              "scripts/fixtures/readiness-corpus/boundary-cases.json",
               "tests/test_bootstrap_readiness_rules.py"
             ],
             "modify": [
@@ -861,10 +858,9 @@
           "validation": {
             "tests": [
               "the catalog carries every readiness v1 rule listed in the frozen baseline",
-              "corpus fixtures cover marker-only deletion, heading order/duplication, malformed/duplicate/missing-body REQ declarations, README structure, hook configuration, and simultaneous failures",
-              "validate_template rejects a new or changed blocking rule, an informational-to-blocking transition, a new required seed-once path, and a rule with no legal satisfier",
               "satisfier classification covers InitialPlan, ManagedRender, AdopterEdit, and ExternalAction",
-              "shared-core findings match the frozen baseline identities",
+              "shared-core findings match the catalog identities",
+              "no baseline-comparison or corpus machinery is introduced",
               "strict ty, Ruff, and pytest pass."
             ],
             "acceptance": []
@@ -906,7 +902,7 @@
           },
           "validation": {
             "tests": [
-              "`apply → add → apply`",
+              "`apply → add` then `status` reports healthy",
               "shared-output changes",
               "removal/reconfiguration refusal",
               "changed source refusal",
@@ -1050,7 +1046,7 @@
               "the superseded readiness spec directory is archived and no active spec or runtime reference names it as active",
               "no legacy four-argument Finding adapter contract remains in the shared core",
               "both generation paths pass full profile matrix",
-              "actionlint and source-CI conformance pass",
+              "actionlint and generated-workflow security fixtures pass",
               "licensing audit is reflected",
               "every decision leaf has a witness",
               "strict ty/Ruff/pytest/Hypothesis/uv checks pass."
