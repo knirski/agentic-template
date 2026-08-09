@@ -456,18 +456,21 @@
               "commits": [
                 "022f352",
                 "e6c1ac5",
-                "6ba0ad5"
+                "6ba0ad5",
+                "a822ba5",
+                "d8a5db8"
               ],
               "evidence": [
-                "uv run pytest -q tests/test_bootstrap_planner.py (202 passed)",
-                "uv run pytest -q (384 passed)",
+                "uv run pytest -q tests/test_bootstrap_planner.py (204 passed)",
+                "uv run pytest -q (386 passed)",
                 "uv run ruff check (clean)",
                 "uv run ruff format --check (53 files already formatted)",
                 "uv run ty check (clean)",
                 "uv lock --check (passed)",
                 "python3 scripts/validate_repository.py (expected source-scaffold exit 1; template contract passed and readiness findings were emitted in canonical order)",
-                "code-review: four parallel reviewers plus a challenge pass; all actionable findings fixed in e6c1ac5",
-                "coverage: 96% patch coverage for manifest.py, planner.py, and plan_digest.py (codecov/patch target 95.28%)"
+                "code-review: four parallel reviewers plus a challenge pass; all actionable findings fixed in e6c1ac5, a822ba5, and d8a5db8",
+                "coverage: 96% patch coverage for manifest.py, planner.py, and plan_digest.py (codecov/patch target 95.28%)",
+                "review round: apply_plan registers tree roots (a822ba5); decode_manifest rejects unknown top-level keys (d8a5db8); except ValueError, RecursionError kept as PEP 758 py314 form after ruff format --check and ast.parse verification"
               ]
             },
             "github_prs": []
