@@ -611,7 +611,7 @@
           "inputs": [
             "CLI contract and exit semantics; Copier/GitHub scaffold recognition; maintenance cleanup inventory; complete status/plan/apply/add/restore/reconcile/recover transition matrix."
           ],
-          "description": "Add the thin `bootstrap-project.py` adapter for `init`, `status`, `plan apply`, `plan add`, `plan restore`, `plan reconcile`, `apply`, `add`, `restore`, `reconcile`, and `recover`. Implement deterministic text/JSON output, command-family exit codes, scaffold marker checks, cleanup mismatch refusal/leave behavior, target protection, phase-specific recovery presentation, and hook-at-most-once finalization after a gated installation. `init` accepts `--from` only (no interactive mode); `status` uses the single-pass inspection observation while planning and mutating commands keep the two-pass protocol; `apply` on an already-installed project refuses with `status`/`scripts/validate_repository.py` as the next action.",
+          "description": "Add the thin `bootstrap-project.py` adapter for `init`, `status`, `plan apply`, `plan add`, `plan restore`, `plan reconcile`, `apply`, `add`, `restore`, `reconcile`, and `recover`. Implement deterministic text/JSON output, command-family exit codes, scaffold marker checks, cleanup mismatch refusal/leave behavior, target protection, phase-specific recovery presentation, and hook-at-most-once finalization after a gated installation. `init` accepts `--from` only (no interactive mode); `status` uses one observation pass; planning uses a coherent two-pass observation; mutating commands repeat the coherent two-pass observation after lock acquisition and require the plan receipt and target identity to match; `apply` on an already-installed project refuses with `status`/`scripts/validate_repository.py` as the next action.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -639,6 +639,7 @@
               "cleanup marker collision and leave override",
               "text/JSON parity",
               "phase-specific recover behavior",
+              "post-lock plan and target revalidation, including rejection when either changes concurrently",
               "exit 0/1/2 family tests."
             ],
             "acceptance": []
