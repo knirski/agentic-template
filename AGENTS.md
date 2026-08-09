@@ -7,6 +7,23 @@
 - Surface conflicts instead of silently choosing between requirements.
 - Preserve user changes and keep work within the requested scope.
 
+## Agent skills
+
+### Planning and implementation
+
+Use `atelier-orchestrator` at the start of development work. It selects an Inline Plan for bounded
+changes or a Spec-backed Plan when durable design and coordination artifacts are warranted.
+
+### Issue tracking
+
+Read `docs/agents/issue-tracker.md` when issue tracking is relevant. It defines this repository's
+tracker workflow; `plan.json` remains authoritative for Spec-backed task details and dependencies.
+
+### Domain documentation
+
+Read `docs/agents/domain.md` before working in a domain area. It defines how to locate and use this
+repository's context documents and ADRs.
+
 ## Delivery workflow
 
 Use `atelier-orchestrator` at the start of development work. It selects an Inline Plan for bounded
