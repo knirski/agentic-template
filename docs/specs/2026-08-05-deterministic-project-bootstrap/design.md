@@ -2598,9 +2598,9 @@ Exit semantics:
 - Unavailable Gemini and Cachix secrets produce successful skip guidance naming the fork and Dependabot
   causes; privileged jobs cannot start when preflight is false.
 - Preflight structural policy and local canary.
-- Source CI separation: the source `ci.yml` is a compiled managed artifact plus a maintainer-only
-  adopter-owned file; both are excluded from generated projects by Copier and snapshot cleanup, and
-  `status`/`restore` detect drift in the managed artifact.
+- Source CI separation: the source `ci.yml` is a compiled managed artifact emitted to generated
+  projects; only the maintainer-only adopter-owned workflow is excluded by Copier and snapshot
+  cleanup, and `status`/`restore` detect drift in the managed artifact.
 - Generated-workflow security fixtures pin permissions, secrets, preflights, release dependency, and
   privileged-job trust for every capability matrix render.
 - Every diagnostic's next action exists for the relevant generation path.
@@ -2674,9 +2674,8 @@ This revision incorporates the following changes into `CONTEXT.md`:
 | A repeated or worsened finding goes undetected | Multiset comparison over four-part identity |
 | Adopter content impersonates a placeholder | Reserved markers rejected in `file` inputs |
 | A non-text hook breaks detection | Byte-level sentinel search |
-| Security-relevant CI drift stays green | Complete declared workflow/job/step normal form, raw pin-comment check, and trust predicates |
+| The source CI drifts from the compiled integrated render | The source is bootstrapped; the managed CI artifact is drift-detected by `status`/`restore`, and maintainer-only jobs live in a separate excluded file |
 | A canary gives false assurance | Run locally with a non-secret sentinel across all channels |
-| A YAML parser's defaults misread Actions | An Actions resolver, duplicate/merge rejection, null-trigger distinction, and parser fixtures |
 | The Python floor or sum exhaustiveness is unproved | Python 3.14 lane, strict ty, and a constructor-addition canary from batch 1 |
 | False drift from line endings or umask | Specified normalization and execute-bit-only comparison |
 | An ownership class traps ordinary configuration | `CONTRIBUTING.md` and `.gitattributes` are adopter-owned |
