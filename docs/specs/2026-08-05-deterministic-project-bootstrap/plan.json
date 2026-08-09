@@ -231,7 +231,7 @@
           "inputs": [
             "structured readiness result; multiset finding identity; gating rules; template-evolution compatibility baseline; existing validator behavior."
           ],
-          "description": "Extract pure readiness and template-contract rules from existing scripts. Implement finding sorting/multiset comparison, mechanical gating, readiness rule definitions, typed `ValidationProgram` stage folding, and deterministic text/JSON presentation parity. Replace existing mixed policy scripts with thin shell adapters while preserving current fixture behavior.",
+          "description": "Extract pure readiness and template-contract rules from existing scripts. Implement finding sorting/multiset comparison, mechanical gating, readiness rule definitions, typed `ValidationProgram` stage folding, and deterministic text/JSON presentation parity. Replace existing mixed policy scripts with thin shell adapters while preserving current fixture behavior. Revision 16 removed the stable-ID compatibility surface from the runtime and deferred the readiness-rule comparison machinery and compatibility corpus to post-v1 (alignment PR #41); the multiset readiness gating, `ValidationProgram` core, and presentation parity remain.",
           "execution": {
             "mode": "inline",
             "status": "completed",
@@ -340,7 +340,7 @@
           "inputs": [
             "bootstrap bundle schema; five profiles; four capabilities and dependency rules; stable-ID compatibility; initial answers and additive settings."
           ],
-          "description": "Decode verified bundles, capability definitions, profiles, normalized settings, slot choices, licensing choices, ownership declarations, source inventories, and cleanup contracts. Resolve profile selection plus explicit additions into a frozen effective closure without executing capability code or accepting secrets.",
+          "description": "Decode verified bundles, capability definitions, profiles, normalized settings, slot choices, licensing choices, ownership declarations, source inventories, and cleanup contracts. Resolve profile selection plus explicit additions into a frozen effective closure without executing capability code or accepting secrets. The stable-ID compatibility module created here was removed by the revision-16 alignment (PR #41); the surface returns as a frozen fixture compared by `validate_template.py` (see T15).",
           "execution": {
             "mode": "inline",
             "status": "completed",
@@ -367,7 +367,6 @@
               "scripts/bootstrap/catalog.py",
               "scripts/bootstrap/profiles.py",
               "scripts/bootstrap/resolver.py",
-              "scripts/bootstrap/compatibility.py",
               "tests/test_bootstrap_schemas.py",
               "tests/test_bootstrap_catalog.py"
             ],
@@ -377,7 +376,7 @@
           "validation": {
             "tests": [
               "strict schema round-trips",
-              "stable-ID fixtures",
+              "stable-ID surface (historical; removed by revision 16, comparison deferred to T15)",
               "full profile matrix",
               "dependency closure and incompatibility tests",
               "secret rejection",
@@ -396,7 +395,7 @@
           "inputs": [
             "`RenderInput`/`BlobMap`; ownership classes; seed/legal fragments; capability contributions; managed documentation and workflow output contracts."
           ],
-          "description": "Implement pure contribution composition, `render_managed`, managed inventory derivation, source baseline derivation, operation-specific render-oracle support, and byte-addressed legal/seed inputs. Ensure every semantically output-affecting input is explicit and every missing blob fails before rendering.",
+          "description": "Implement pure contribution composition, `render_managed`, managed inventory derivation, source baseline derivation, operation-specific render-oracle support, and byte-addressed legal/seed inputs. Ensure every semantically output-affecting input is explicit and every missing blob fails before rendering. This record predates the revision-16 slot-model pruning (no `cardinality`; yaml/markdown contexts only), which landed via the alignment PR #41; see T14.",
           "execution": {
             "mode": "inline",
             "status": "completed",
@@ -705,7 +704,7 @@
           "inputs": [
             "capability definition schema; source/generated ownership boundary; uv project metadata contract; stable IDs; supported Python ranges; capability runtime-dependency metadata requirements."
           ],
-          "description": "Extend capability definitions with explicit non-secret runtime dependency declarations, supported Python ranges, and invocation metadata. Render generated `pyproject.toml` for every generated project as a bootstrap-managed artifact containing `requires-python = \">=3.14\"`; add selected capability dependencies only when required. Keep the source repository's root `pyproject.toml` and `uv.lock` source-only. Define the adopter follow-up that creates `uv.lock`; bootstrap never resolves or installs packages. Add ownership and leakage fixtures proving that source development dependencies do not enter snapshots or generated Copier projects. Align the slot runtime model with the pruned v1 contract: `SlotDefinition` carries no `cardinality` and only `yaml`/`markdown` contexts, and contribution composition enforces no cardinality. The bootstrap engine baseline dependencies (`pydantic`, `pyyaml`) are always present in generated `pyproject.toml`.",
+          "description": "Extend capability definitions with explicit non-secret runtime dependency declarations, supported Python ranges, and invocation metadata. Render generated `pyproject.toml` for every generated project as a bootstrap-managed artifact containing `requires-python = \">=3.14\"`; add selected capability dependencies only when required. Keep the source repository's root `pyproject.toml` and `uv.lock` source-only. Define the adopter follow-up that creates `uv.lock`; bootstrap never resolves or installs packages. Add ownership and leakage fixtures proving that source development dependencies do not enter snapshots or generated Copier projects. Align the slot runtime model with the pruned v1 contract: `SlotDefinition` carries no `cardinality` and only `yaml`/`markdown` contexts, and contribution composition enforces no cardinality. The slot-model alignment sentence above already landed in the revision-16 code alignment (PR #41); the remaining scope is capability dependency metadata, generated `pyproject.toml` ownership, and leakage fixtures. The bootstrap engine baseline dependencies (`pydantic`, `pyyaml`) are always present in generated `pyproject.toml`.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -751,7 +750,7 @@
           "inputs": [
             "semantic-release, Nix, Cachix-with-Nix dependency, and Qodo/Gemini capability contracts; settings and secret preflight rules; release graph; generated dependency metadata from T14."
           ],
-          "description": "Add the four declarative capability contributions, profile expansions, settings normalization, compiled workflow/document outputs, release dependencies, read-only secret preflights, and available/unavailable activation behavior. Keep capability-specific dependency commands behind their declared uv invocation metadata. Treat Nix as maintainer-only unless the `nix` capability is selected: the portable generated baseline has no Nix job or release dependency, while selected Nix and Cachix capabilities render their own artifacts and gates. Ensure unselected capabilities emit no artifacts or workflow jobs.",
+          "description": "Add the four declarative capability contributions, profile expansions, settings normalization, compiled workflow/document outputs, release dependencies, read-only secret preflights, and available/unavailable activation behavior. Keep capability-specific dependency commands behind their declared uv invocation metadata. Treat Nix as maintainer-only unless the `nix` capability is selected: the portable generated baseline has no Nix job or release dependency, while selected Nix and Cachix capabilities render their own artifacts and gates. Ensure unselected capabilities emit no artifacts or workflow jobs. Record the frozen v1 catalog-surface fixture and wire `validate_template.py` to compare the live catalog against it (stable-ID compatibility), replacing the import-time baseline removed by the alignment PR #41.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -762,6 +761,7 @@
               "scripts/bootstrap/capability_fragments.py",
               "tests/test_capability_matrix.py",
               "tests/test_secret_preflight.py",
+              "scripts/fixtures/catalog-surface-v1.json",
               "scripts/fixtures/workflows/semantic-release.yml",
               "scripts/fixtures/workflows/nix.yml",
               "scripts/fixtures/workflows/cachix-publish.yml",
@@ -771,6 +771,7 @@
               "scripts/bootstrap/catalog.py",
               "scripts/bootstrap/contributions.py",
               "scripts/bootstrap/render.py",
+              "scripts/validate_template.py",
               ".github/workflows/ci.yml",
               ".github/workflows/copier-smoke.yml"
             ],
@@ -785,6 +786,7 @@
               "local non-secret canary",
               "privileged jobs are blocked when preflight is unavailable",
               "release graph gating, including absence of Nix from portable projects",
+              "frozen catalog-surface fixture comparison through `validate_template.py`",
               "adopter fixtures use uv to install and run capability-specific commands while canonical validators remain directly runnable and bootstrap itself never installs packages."
             ],
             "acceptance": []
@@ -799,7 +801,7 @@
           "inputs": [
             "design template-source CI section (revision 16); maintainer-only source CI separation; capability-matrix security fixtures."
           ],
-          "description": "Remove the Actions YAML loader, semantic workflow normal form, raw SHA-comment checks, trust predicates, allowlist, and source-versus-rendered comparison from the plan; PyYAML is not a source dependency. Wire the source repository as the `integrated`-profile fixture at activation: its `ci.yml` is a compiled managed artifact, maintainer-only jobs (uv sync, source canaries, actionlint) live in an adopter-owned workflow file excluded from generated projects by Copier and snapshot cleanup, and drift in the managed artifact is detected by the standard `status`/`restore` machinery. Pin generated-workflow security properties through capability-matrix and structural-policy fixtures. The unwired compatibility and comparison modules landed in the revision-16 alignment (PR #41), and revision 17 restores PyYAML as a runtime dependency for the render boundary's scalar encoder only; remaining work is the integrated-fixture wiring, maintainer-only job separation, and security fixtures.",
+          "description": "Remove the Actions YAML loader, semantic workflow normal form, raw SHA-comment checks, trust predicates, allowlist, and source-versus-rendered comparison from the plan; PyYAML is not a source dependency. Wire the source repository as the `integrated`-profile fixture at activation: its `ci.yml` is a compiled managed artifact, maintainer-only jobs (uv sync, source canaries, actionlint) live in a source-maintainer-owned workflow file excluded from generated projects by Copier and snapshot cleanup, and drift in the managed artifact is detected by the standard `status`/`restore` machinery. Pin generated-workflow security properties through capability-matrix and structural-policy fixtures. The unwired compatibility and comparison modules landed in the revision-16 alignment (PR #41), and revision 17 restores PyYAML as a runtime dependency for the render boundary's scalar encoder only; remaining work is the integrated-fixture wiring, maintainer-only job separation, and security fixtures.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -812,8 +814,7 @@
             "modify": [
               "scripts/validate_template.py",
               ".github/workflows/ci.yml",
-              ".github/workflows/template-ci.yml",
-              "pyproject.toml"
+              ".github/workflows/template-ci.yml"
             ],
             "remove": []
           },
