@@ -6,7 +6,6 @@ from scripts.bootstrap.decisions import (
     AddCapabilities,
     CompileCandidate,
     DescribeStatus,
-    EquivalentVerification,
     InitialInstall,
     NoRecoveryNeeded,
     ReconcileTemplate,
@@ -443,10 +442,14 @@ class StateAndDecisionTests(unittest.TestCase):
                 )
             ),
         )
-        self.assertIsInstance(
-            decide_project(Apply(ApplyOptions()), verified_snapshot),
-            EquivalentVerification,
-        )
+        decision = decide_project(Apply(ApplyOptions()), verified_snapshot)
+        self.assertIsInstance(decision, RefuseMutation)
+        if isinstance(decision, RefuseMutation):
+            self.assertIsInstance(decision.error, TransitionError)
+            if isinstance(decision.error, TransitionError):
+                self.assertEqual(
+                    decision.error.kind, TransitionErrorKind.OPERATION_UNAVAILABLE
+                )
 
         drifted_snapshot = ProjectAvailable(
             worktree(),
@@ -516,8 +519,7 @@ class StateAndDecisionTests(unittest.TestCase):
             CompileCandidate,
         )
         self.assertIsInstance(
-            decide_project(Apply(ApplyOptions()), copier_same),
-            EquivalentVerification,
+            decide_project(Apply(ApplyOptions()), copier_same), RefuseMutation
         )
 
         snapshot_same = ProjectAvailable(

@@ -94,11 +94,6 @@ class InitialInstall:
 
 
 @dataclass(frozen=True, slots=True)
-class EquivalentVerification:
-    intent: Apply | PlanApply
-
-
-@dataclass(frozen=True, slots=True)
 class AddCapabilities:
     intent: Add | PlanAdd
 
@@ -158,7 +153,6 @@ type StatusDecision = DescribeStatus | RefuseStatus
 type PlanningDecision = CompileCandidate | RefusePlan
 type MutationDecision = (
     InitialInstall
-    | EquivalentVerification
     | AddCapabilities
     | RestoreManaged
     | ReconcileTemplate
@@ -303,7 +297,9 @@ def _apply_existing_decision(
                         return RefuseMutation(
                             _transition(TransitionErrorKind.MANAGED_DRIFT)
                         )
-                    return EquivalentVerification(intent)
+                    return RefuseMutation(
+                        _transition(TransitionErrorKind.OPERATION_UNAVAILABLE)
+                    )
                 case SnapshotSourceChanged() | SnapshotSourceUnrecoverable():
                     return RefuseMutation(
                         _transition(TransitionErrorKind.TEMPLATE_CHANGED)
@@ -320,7 +316,9 @@ def _apply_existing_decision(
                         return RefuseMutation(
                             _transition(TransitionErrorKind.MANAGED_DRIFT)
                         )
-                    return EquivalentVerification(intent)
+                    return RefuseMutation(
+                        _transition(TransitionErrorKind.OPERATION_UNAVAILABLE)
+                    )
                 case CopierSourceChanged():
                     return RefuseMutation(
                         _transition(TransitionErrorKind.TEMPLATE_CHANGED)
