@@ -1,6 +1,6 @@
 # Deterministic Project Bootstrap with Capability Profiles
 
-**Status:** Revision 15, assembled for owner approval
+**Status:** Revision 16, assembled for owner approval
 **Date:** 2026-08-05
 **Planning mode:** Spec-backed Plan
 **Supersedes:** earlier discovery and revision drafts, consolidated into this document and removed
@@ -69,19 +69,26 @@ before bootstrap when the destination is not already a working tree.
 This is an adopted v1 boundary, not a temporary compatibility measure. Non-git support remains a
 possible future capability only if it supplies an equally unique state namespace.
 
-## Revision ledger
+## Revision history (informative)
 
-### Corrections to earlier ledgers
+Earlier revisions carried a full correction ledger; it is not retained because it documented process
+rather than normative content. The current decisions are stated in "Settled decisions" and in the
+sections that follow. The decisive changes:
 
-Revision 4's ledger contained factual errors. They are struck here rather than carried forward.
-
-| Earlier claim | Status | Evidence |
-| --- | --- | --- |
-| "Revision 1 installed the hook at `scripts/validate-project.py`" | **False; struck** | The earlier discovery record already specified the extensionless path. The current source scaffold predates bootstrap, but no generated project compatibility contract exists |
-| "Revision 3's scaffold exemption made `add`, `restore`, and `reconcile` necessarily gate-fail" | **False; struck** | `design.revision-3.reconstructed.md:1120` contains the pre-existing-finding clause covering exactly those operations. The multiset formulation is an improvement, but the stated defect did not exist |
-| "Revision 3 described itself as having seventeen corrections" | **Unverifiable; struck** | A reconstruction cannot establish historical wording or counts |
-| "Revision 2's apply matrix had no absent-manifest branch at all" | **Too broad; softened** | Revision 2 covered initial install under generation-path behavior. The real defect was the absence of one exhaustive classification |
-| Revision 2's retained-path and `status`-exit defects | **Omitted from revision 4; restored below** | Both were recorded in revision 3 and dropped |
+- **Revisions 1–5** removed the input fingerprint (answers are stored as values), replaced the
+  persisted render identity with the recorded `ManagedInventory` oracle, made the manifest valid by
+  parse/schema/checksum alone, introduced the three-way input boundary, and narrowed the path-safety
+  threat model.
+- **Revisions 6–14** moved gating inside the transaction with `PLANNED`/`MUTATING`/`RESTORED`/`SEALED`
+  phases, made recovery phase-exact, removed legacy hook paths and compatibility machinery, required
+  a git working tree, made Nix maintainer-only source tooling, and pinned the Python 3.14/uv
+  toolchain.
+- **Revision 15** superseded the project-readiness spec; see "Frozen readiness-rule baseline v1".
+- **Revision 16** applies the simplification set: source-CI conformance is replaced by
+  source-bootstrap drift detection; `init --interactive` and `EquivalentVerification` are removed;
+  the slot model is pruned to the v1-used subset; the readiness-rule comparison machinery and
+  compatibility corpus are deferred to post-v1; and inspection commands use a single observation
+  pass.
 
 ### Deliberate reversals of approved revision 1 decisions
 
@@ -103,161 +110,6 @@ Revision 4's ledger contained factual errors. They are struck here rather than c
 
 Revision 4 additionally granted GitHub snapshots a local `reconcile` lifecycle. That was an unlisted
 reversal of revision 1's Copier-only update boundary and is **withdrawn** in this revision.
-
-### Defect corrections to revision 2
-
-| Defect | Correction |
-| --- | --- |
-| `restore` recompiled from current inputs and advanced fingerprints, bypassing reconciliation's preconditions | `restore` writes only bytes the recorded inventory already certifies and records nothing |
-| `plan-reconcile` could not preview `--overwrite-drift` | Both commands accept it; the destructive form requires a plan digest |
-| US-8 permitted and forbade drift overwrite four lines apart | Resolved in favour of the previewed override, with per-operation drift policy |
-| A mutating command exited 0 when the adopter hook failed | Exit 0 means the complete canonical command would succeed |
-| `scaffold` slot completion had no defined derivation | Derived from declared file markers; the manifest records input identity only |
-| Markers were named for three slots and assumed for five, and detection assumed decodable text while the hook is an arbitrary executable | Five markers declared; the hook sentinel is detected at byte level |
-| A legacy `.py` hook path and a half-specified `adopt` | One canonical path; no legacy or adoption lifecycle exists in v1 |
-| Slices claimed to be independently releasable | One public release; integration branch with one activation merge |
-| The apply matrix lacked one exhaustive classification and never compared template-source identity | A total classifier over independently computed facts |
-| `selected_render_fingerprint` covered a hand-maintained subset omitting `default_branch` | The concept is deleted; the recorded inventory is the render oracle |
-| Supplied licence bytes entered no fingerprint | The licensing content digest is primary manifest state |
-| The manifest was listed among the artifacts whose hashes it records | The manifest is excluded from its own inventory |
-| `.gitattributes` was managed and therefore drift-fatal | Not installed; comparison normalizes declared text artifacts |
-| Transaction state used the shared git common directory | Per-worktree administrative path |
-| The non-git state fallback relied on gitignore, which `git clean -x` defeats | A git working tree is required |
-| The journal served as both live lock and durable record | Separate never-unlinked lock and atomically replaced journal |
-| The licensing audit gated only two modes | It gates every mode and precedes licence-writing implementation |
-| Determinism primitives left normalization, path grammar, and JSON strictness unspecified | All specified, with boundary fixtures |
-| The preflight claimed to distinguish "not configured" from "unavailable" | Two states with event-specific likely causes, in a fixed trusted job |
-| **A skipped maintenance cleanup recorded no retained paths and defined no follow-up** | Retained paths recorded; ownership transfers to the adopter |
-| **`status` always exited 0** | Inspection-family exit semantics defined explicitly |
-
-### Defect corrections to revision 3
-
-| Defect | Correction |
-| --- | --- |
-| `add` changes the effective capability set while the text made `reconcile` the sole advancer of render identity | Render identity is deleted; one operation-semantics table governs what each operation may change |
-| Findings were compared as `(code, path)` sets, collapsing repeats and hiding worsened counts | `(code, path, subject, rule)` identity, compared as a multiset |
-| The transaction step list placed the gating-failure branch after the hook step | Gating occurs inside the mutating phase, before any cleanup or hook execution |
-| "Every command accepts `--target`" included `init` | Scoped to commands that inspect or mutate a project |
-| Step bodies were dropped from source-CI conformance, losing revision 2's step accountability | Step identity restored and extended |
-| Self-expiry was said to prevent allowlist accumulation | It removes stale entries only; entries carry owner, reason, and review-by metadata |
-| A test required `status` to report a previous hook failure | `status` never executes the hook and reports "not evaluated" |
-
-Revision 4's ledger described revision 3 as having "no normalizer or allowlist" for source-CI
-conformance. That was false and is not repeated: revision 2 normalized job IDs, `needs`, and
-permissions, and allowed declared source-only steps.
-
-### Defect corrections to revision 4
-
-| Defect | Correction |
-| --- | --- |
-| Recomputing every derived field before trusting the manifest made `TemplateChanged` and render-contract violation unreachable, and shadowed pending-journal detection | The manifest has no derived section; validity is parse, schema, and checksum only; journal detection precedes manifest trust |
-| `RenderInput` carried tree hashes and identities, so `render(RenderInput)` could not produce bytes without ambient reads | `render(RenderInput, BlobMap)` over decoded definitions and fragment bodies |
-| Primary state could not reconstruct `RenderInput`: no per-slot digests, no licensing digest, and `retained_paths` absent from the render input | All three are primary state, and `retained_paths` enters `RenderInput` |
-| `source-ci-allowlist.json` was fingerprinted and validated by `validate_template.py` while also being excluded by Copier and deleted by snapshot install | Removed from the fingerprint and from generated-project validation; source-only fixture input |
-| The journal entered COMMITTED before gating, so a crash preserved ungated output and an interrupted rollback completed forward | Durable `PLANNED`/`MUTATING`/`RESTORED`/`SEALED` phases; gating inside `MUTATING`; `SEALED` only after gating passes |
-| `O_CREAT \| O_EXCL` plus `flock` cannot detect an abandoned lock, and unlink-and-recreate splits lock domains | A never-unlinked lock inode opened without `O_EXCL`, then `flock(LOCK_EX \| LOCK_NB)` |
-| Journal phase updates had no atomicity requirement, permitting torn JSON | Temp-write, fsync, rename, fsync parent |
-| Differing `--state-dir` values could conceal a pending journal | `--state-dir` removed; state location is a pure function of the target |
-| Staging was weakened to one directory "on the target's filesystem", which a repository spanning mounts defeats | Staging is adjacent to each destination parent |
-| Target identity was no longer normatively defined | Defined as the verified absolute worktree root plus its device and inode |
-| `O_NOFOLLOW` on the parent protects only the final component, and `fstat` does not prove continued attachment | Root-anchored per-component walk, re-resolution before mutation, and a **narrowed threat model** |
-| A compatible v1 update could add a required seed-once path that no lifecycle could satisfy | A template-evolution compatibility rule, enforced by a frozen readiness-rule baseline |
-| The migration promised both "update to v1" and "pin the pre-bootstrap release" | The premise is removed: no generated projects exist before bootstrap v1, so there is no legacy population or compatibility release |
-| Intermediate batches were called inert while batch 4 changed Copier configuration and validation boundaries | Integration branch with a single activation merge |
-| "Six internal review batches" contradicted a table with nine boundaries | Nine boundaries, stated as nine |
-| GitHub snapshots were offered `reconcile` despite having no update lifecycle | Withdrawn |
-| Source-CI normalization omitted `env` values and most action inputs; the canary relied on GitHub logs, which mask registered secrets | Full canonical `env` and `with` comparison; local canary across all channels |
-| Lone surrogate code points pass strict JSON typing but fail UTF-8 encoding | Surrogates rejected explicitly |
-| `Finding.path` allowed `""`, violating the canonical path grammar | `Path \| Repository` sum |
-| A tree-hash test used control characters in paths, which the grammar rejects | Entry encoding tested in isolation |
-| `ReadinessResult` was "ordered" with no normative order | Sort key defined |
-| One global exit-code rule contradicted `status` returning 0 for reported unreadiness | Exit semantics per command family |
-| "The hook runs exactly once per mutating invocation" is false on preflight refusal, rollback, and recovery | Invocation rule stated exactly |
-| The dev shell's unversioned `python3` does not establish the 3.14 floor | An explicit 3.14 validation lane |
-
-### New in revision 5
-
-| Addition | Purpose |
-| --- | --- |
-| Domain model with primary/derived/observed/effectful classification | One canonical value per concept |
-| Total `classify : Intent -> Facts -> ApplyDecision` with a preimage witness per constructor | No constructor is shadowed by an earlier condition |
-| `render(RenderInput, BlobMap)` | A purity contract that is actually satisfiable |
-| Recorded inventory as the render oracle | Render-contract violations become reachable, at the point of use |
-| Three-phase transaction with gating inside `MUTATING` | Committed cannot precede gated |
-| Template-evolution compatibility rule | Compatible updates cannot create unsatisfiable obligations |
-| Three-way input boundary: generated-lifecycle, source-only, cleanup-only | Resolves the allowlist contradiction by construction |
-| Narrowed path-safety threat model | A guarantee the primitives deliver |
-
-### Corrections in revision 6
-
-| Revision 5 gap | Revision 6 correction |
-| --- | --- |
-| Initial seed and legal bytes were referenced only by digest, so the pure plan could not install them | `VerifiedBundle` carries an immutable content-addressed `AdopterBlobMap`; the complete `OperationPlan` includes seed, legal, manifest, cleanup, and managed operations |
-| `ObservedTarget` exposed hashes but not the bytes readiness parses | `TargetSnapshot` contains immutable observed file bytes and metadata; `ExpectedTarget` is the pure overlay of a complete plan |
-| A flat `Facts` product admitted impossible combinations and one decision type was overloaded across commands | Staged observation sums plus exhaustive family-specific `BundleIntent × BundleState` and `ProjectIntent × SystemState` transition algebras |
-| Inventory comparison was not operation-specific | Restore validates its requested projection; add validates the complete old render before compiling the expanded render; reconcile validates observed old files and treats new-source output as the candidate |
-| Normalized hashes and owner-execute modes could not prove exact rollback | Journal operations carry normalized preconditions separately from raw backup digests and exact pre-operation modes; rollback is an idempotent pure reducer |
-| Directory creation, cleanup expansion, corrupt journals, and pre-journal orphans were outside the transaction model | Typed directory operations, transaction-scoped preparation, explicit invalid/recovery-blocked states, and safe orphan cleanup |
-| Rule metadata could not detect a stricter readiness predicate under the same identifier | Schema-v1 adopter-facing blocking predicates are frozen as canonical rule definitions and exercised over a compatibility corpus |
-| A snapshot source fingerprint could detect change but not name or recover paths | The manifest stores a source inventory and, for snapshots, the clean baseline commit used for targeted repair |
-| Cleanup inventory alone authorized its deletion set | Runtime cleanup is the intersection of the ephemeral inventory and a finite generated ownership declaration; disagreement deletes nothing |
-| Hook execution was said to be exactly once across a crash boundary | At most one attempt per uninterrupted command; recovery never invokes or replays the hook |
-| Existing validators mixed IO, mutation, and policy | Every template-owned Python command now follows the same functional-core/imperative-shell contract and typed CLI result algebra |
-| Legacy compatibility and migration occupied v1 without an installed population | All legacy paths, compatibility releases, migration fixtures, and migration documentation are removed |
-| Initial settings were immutable but settings supplied by `add` had no persisted owner | `CapabilityAdditions` persists explicit added IDs and complete normalized settings for every newly effective capability while `InitialAnswers` remains immutable |
-| Existing-project facts still admitted cross-generation combinations and gave no precedence to unsafe topology or target protection | Generation-specific nested sums, protected-target transitions, and per-constructor preimage witnesses make the project decision algebra total |
-| Cleanup mismatch made the leave override unreachable | Scaffold recognition carries `CleanupObservation`; only explicit leave converts mismatch into finite retained ownership |
-| Cleanup deletion authority was not fingerprint-bound | One `source-ownership.json` serialization declares retained lifecycle and snapshot-cleanup paths and is itself a fingerprinted lifecycle entry |
-| Plan/mutation grouping contradicted drift previews and recovery/init exit mappings | Normative transitions distinguish each plan from its mutation; target mismatch, invalid state, output occupancy, and invalid input have one outcome each |
-| Closed core signatures referenced undefined error/hook types and omitted ordinary OS failures | Operation-local aliases narrow one `CommandError`; hook/process/transaction/resource outcomes are closed sums with total mappings |
-| The transaction reducer covered files but not directory rollback or sealed forward verification | Directory content identities, reverse dependency rollback, atomic tree moves, exact empty-directory restoration, and a sealed candidate verifier make both phase directions idempotent |
-| Cleanup after a completed rollback had no durable state distinct from partial mutation | `RESTORED` durably records verified pre-state before any rollback evidence is removed, so interrupted cleanup never makes a `MUTATING` journal unrecoverable |
-| Unlocked inspection could combine journal and target observations from different transaction moments | Every project observation is accepted only after two identical bounded passes; repeated change returns `ConcurrentTargetChange` without a partial state |
-| Empty-target wording implied an installation branch with no trustworthy generation provenance | Only exact GitHub or Copier scaffold recognition permits initial installation; arbitrary empty and populated manifest-free targets share one explicit refusal state |
-| Eager byte-carrying values had no resource bound | One bounded content-addressed `VerifiedBlobStore` owns bytes; exact file/path/operation/diagnostic limits fail before partial decisions |
-| Mechanical findings were named as complete project readiness | `MechanicalReadinessResult` gates installation; `ProjectReadinessOutcome` additionally requires this invocation's hook success |
-| The original source-tool recommendation was not reevaluated against the FP boundary | Strict `ty`, pytest, Hypothesis, Ruff, and PyYAML are pinned through uv; stdlib `argparse` is a contained shell adapter, and generated projects may declare uv-managed runtime dependencies |
-
-### Corrections in revision 7
-
-| Revision 6 decision | Revision 7 correction |
-| --- | --- |
-| `ty` was listed as a non-normative future option while Pyright was the type gate | `ty` is the sole normative type checker, managed through uv and configured for strict Python 3.14 checking |
-| Source dependencies were described as Nix-flake-only | Python source dependencies are declared in `pyproject.toml`, locked in `uv.lock`, and run with `uv run`; GitHub Actions uses the pinned Astral `setup-uv` action |
-| Generated-project Python was required to be standard-library-only | Generated projects may declare runtime dependencies in rendered uv metadata; bootstrap does not install packages or execute package setup code |
-| Capabilities had no dependency contribution contract | A capability may declare non-secret runtime dependencies, supported Python range, and invocation metadata alongside its outputs and settings |
-
-### Corrections in revision 8
-
-| Dependency-locking ambiguity | The template source commits its root `uv.lock`; bootstrap renders generated `pyproject.toml` but does not generate a project `uv.lock`. When selected capabilities declare runtime dependencies, the generated project names `uv lock`/`uv sync` as the explicit adopter follow-up. Lock resolution remains outside the pure compiler because it depends on uv, package indexes, platform markers, and external availability |
-
-### Corrections in revision 9
-
-| Source uv metadata could leak into generated projects | The source root `pyproject.toml` and `uv.lock` are source-only cleanup targets: GitHub snapshot cleanup removes them after verification, and Copier excludes them. Bootstrap renders a bootstrap-managed `pyproject.toml` for every generated project; selected capabilities may add declared runtime dependencies, and bootstrap still does not create `uv.lock` |
-
-### Corrections in revision 10
-
-| Python support floor | Python 3.14 is the minimum and primary runtime for source and generated projects; uv and CI use 3.14 explicitly, with no 3.11 or 3.13 compatibility lane |
-
-### Correction in revision 11
-
-| Generated project metadata ownership | Every generated project receives bootstrap-managed `pyproject.toml` containing the Python 3.14 requirement; selected capabilities may add declared runtime dependencies, while bootstrap never creates `uv.lock` |
-
-### Correction in revision 12
-
-| Python support range | Python 3.14 is the minimum and primary validation lane; source and generated metadata use `requires-python = ">=3.14"`, so later Python 3.x releases remain supported unless a future compatibility decision narrows the range |
-
-### Correction in revision 13
-
-| Nix was treated as a global generated-project CI and release prerequisite | Nix is maintainer-only source tooling by default. The generated portable baseline uses Python 3.14 and uv without requiring Nix, flake files, Cachix, or a Nix CI job. Only the explicitly selected `nix` capability may add generated Nix artifacts and CI contributions; the `cachix-publish` capability depends on it. Maintainer-only Nix workflows and source uv metadata are excluded from generated projects. |
-
-### Correction in revision 14
-
-| Nix remained a required source-maintainer dependency after the generated baseline was made portable | The repository source and its CI use uv, Python 3.14, and actionlint directly. Nix, flakes, Cachix, and Nix release gates are optional maintainer tooling rather than source prerequisites; only the explicitly selected generated-project `nix` capability may render Nix artifacts and CI contributions. |
-
-### Correction in revision 15
-
-| The readiness spec was listed as a separate active spec | It is superseded by this design upon approval and archived at activation; the readiness v1 rules move verbatim into the frozen readiness-rule baseline, and the readiness plan is archived rather than remaining a live checklist |
 
 ### Unchanged load-bearing decisions
 
@@ -593,8 +445,8 @@ Source assurance uses a small modern toolchain managed by uv:
 - **Ruff** is the single Python linter and formatter, configured for Python 3.14. CI runs
   `ruff check` and `ruff format --check`; automatic fixes are a developer action, never a release-gate
   mutation.
-- **PyYAML** exists only in the source-CI workflow conformance fixture, behind the custom Actions loader
-  defined below.
+- **actionlint** (installed by CI, not a Python package) is the workflow-syntax gate; no YAML parser
+dependency exists in source tooling.
 
 The template source commits `uv.lock` for its Python packages. CI installs the pinned uv release and
 Python 3.14 through Astral's `setup-uv` action. Source checks run through uv's locked environment; no
@@ -798,8 +650,8 @@ CapabilityDefinition =
 
 ArtifactDefinition = {path, kind: Text | Binary, install_mode, template_blob, substitutions}
 SlotDefinition =
-  { id, owner_artifact, context: Yaml | Toml | Json | Shell | Markdown
-  , cardinality: ExactlyOne | ZeroOrOne | Many, separator, allowed_contribution_kind }
+  { id, owner_artifact, context: Yaml | Markdown
+  , separator, allowed_contribution_kind }
 ContributionDefinition =
   { id, slot, order: integer, kind, body_blob, substitutions }
 ResolvedContribution =
@@ -820,12 +672,11 @@ Resolution is normative:
 3. Render core contributions and contributions from the effective capabilities. Contribution identity
    is `(slot, owner, contribution_id)`; a duplicate identity is a contract error, never last-writer-wins.
 4. For each slot, sort by `(order, owner-order, owner-id, contribution-id)`, where `Core` precedes
-   capability owners and capability owner-order is the closure order. Enforce `ExactlyOne`,
-   `ZeroOrOne`, or `Many` after selection. Wrong kind, missing slot, or cardinality failure is a distinct
-   `InvalidTemplate` reason.
-5. Encode substituted scalars with the slot or artifact's declared YAML, TOML, JSON, shell, or Markdown
-   context encoder; normalized booleans alone control whole optional sections. Join a `Many` slot with
-   its declared constant separator.
+   capability owners and capability owner-order is the closure order. Every v1 slot is `Many`; a wrong
+   kind or a missing slot is a distinct `InvalidTemplate` reason.
+5. Encode substituted scalars with the slot or artifact's declared YAML or Markdown context encoder;
+   normalized booleans alone control whole optional sections. Join a slot with its declared constant
+   separator.
 6. Render every whole artifact, reject any path collision or undeclared output, and return
    `ManagedRender` sorted by canonical path bytes.
 
@@ -836,7 +687,7 @@ before any containing artifact is rendered.
 
 ### What must be persisted
 
-So that `add`, `restore`, `reconcile`, status, and equivalent `apply` verification work: persist
+So that `add`, `restore`, `reconcile`, and status work: persist
 immutable `InitialAnswers` including per-slot, initial-setting, and licensing digests;
 `CapabilityAdditions`; generation and maintenance provenance;
 `ManagedInventory`; and `SourceBaseline`. Do not persist `RenderInput`, a render identity, adopter prose,
@@ -845,7 +696,6 @@ preconditions compare it with the recorded managed and source inventories.
 
 | Operation | Inputs | Sufficient? |
 | --- | --- | --- |
-| equivalent `apply` | Recorded values plus the supplied bundle for field-wise input comparison; current template for managed-render verification | Yes; seed/legal bytes are compared by digest, not rewritten |
 | `restore` | Current template + recorded state -> render requested managed projection -> require equality with those inventory entries | Yes; writes only already certified requested bytes |
 | `add` | First render the old selection and require complete inventory equality; then render additions-expanded selection | Yes; separates renderer regression from legitimate shared-output changes |
 | `reconcile` | Verify observed old managed files against old inventory; render new template from recorded state | Yes; new-source output is a candidate, never compared with old render hashes |
@@ -1028,23 +878,23 @@ condition. Decoder and property fixtures prove those illegal combinations cannot
 No command decodes a `SystemState` from a one-pass mixture of tree and journal bytes. The shell's
 `collect_observation_pass` captures the target root identity; the exact state-root entry names, kinds,
 modes, and hashes; and the ordered identity plus required bytes of every bounded target path used by
-classification, planning, readiness, or source comparison. It performs two complete passes and returns
-`StableRawProjectObservation` only when their canonical observations are identical. Semantically
-irrelevant access-time metadata is excluded; content, kind, mode, device/inode anchors, directory
-entries, journal presence, and journal bytes participate.
+classification, planning, readiness, or source comparison. Semantically irrelevant access-time
+metadata is excluded; content, kind, mode, device/inode anchors, directory entries, journal presence,
+and journal bytes participate.
 
-On mismatch the shell discards both passes and retries, for at most three complete pairs. A third
-mismatch returns `ObservationError(ConcurrentTargetChange)` with the next action to wait for the other
-writer and retry; no partial `SystemState`, status view, or plan is produced. A valid journal observed in
-both passes decodes normally as journal state rather than project state. Equality after an intervening
-change is acceptable only when every observed semantic identity has returned to the same value.
+**Planning and mutating commands** require coherent observation: the shell performs two complete
+passes and returns `StableRawProjectObservation` only when their canonical observations are identical.
+On mismatch it discards both passes and retries, for at most three complete pairs. A third mismatch
+returns `ObservationError(ConcurrentTargetChange)` with the next action to wait for the other writer
+and retry; no partial `SystemState` or plan is produced. Equality after an intervening change is
+acceptable only when every observed semantic identity has returned to the same value. A valid
+journal observed in both passes decodes normally as journal state rather than project state.
 
-This protocol is non-mutating and is used by status and every planning/mutating command's initial
-observation. A mutating command additionally acquires the exclusive lock, performs the same coherent
-observation again, and requires the recompiled plan receipt and target identity to match. Thus status
-does not need a race-prone lock probe, while an in-progress journal creation, `MUTATING` write,
-`RESTORED` or `SEALED` cleanup, journal removal, or ordinary concurrent adopter edit is either observed
-as one stable state or reported explicitly as concurrent change.
+**Inspection (`status`)** performs one observation pass. It is advisory, never exits 1, and may be
+presented while a mutation is in flight; a reader who needs point-in-time coherence uses the
+canonical validator. A mutating command additionally acquires the exclusive lock, performs the same
+coherent observation again, and requires the recompiled plan receipt and target identity to match, so
+mutation decisions never rely on a torn view.
 
 `TargetProtection` is defense in depth for mutation, not repository authentication. The observer reads
 all configured fetch and push remote URLs and normalizes GitHub HTTPS, `ssh://`, and scp-like forms to
@@ -1084,7 +934,7 @@ CommandDecision =
     BundleDecision(WriteBundle | RefuseBundle)
   | StatusDecision(DescribeStatus(StatusView) | RefuseStatus(CommandError, PartialStatusView))
   | PlanningDecision(CompileCandidate | RefusePlan)
-  | MutationDecision(InitialInstall | EquivalentVerification | AddCapabilities
+  | MutationDecision(InitialInstall | AddCapabilities
                      | RestoreManaged | ReconcileTemplate | RefuseMutation)
   | RecoveryDecision(DiscardStalePending | DiscardPreparation | RollBack
                      | FinishRollbackCleanup | FinishForward
@@ -1124,7 +974,7 @@ are named separately whenever they differ.
 | Existing Copier source changed, managed verified | Describe template delta | Plan/apply refuse `TemplateChanged` | Plan/add refuse until reconcile | Plan/restore refuse until reconcile | Plan compiles; reconcile compiles candidate | `NoRecoveryNeeded` |
 | Existing Copier source changed with managed drift | Describe both deltas | Plan/apply refuse `TemplateChanged` | Plan/add refuse | Plan/restore refuses source mismatch | Plan compiles only with `--overwrite-drift`; reconcile requires its matching receipt | `NoRecoveryNeeded` |
 | Existing same source with managed drift | Describe drift | Plan refuses; apply returns `ManagedDrift` | Plan/add both refuse until restore | Plan/restore compile requested certified repair | Plan/reconcile both refuse because source is unchanged | `NoRecoveryNeeded` |
-| Existing same source, verified managed output | Describe healthy mechanical state | Plan/apply compare supplied bundle: `EquivalentVerification` or `InputChanged` | Plan/add compile valid additive request or report already selected | Plan/restore produces empty repair or refuses unmanaged path; restore verifies equivalence | Plan/reconcile both refuse because source is unchanged or path is snapshot | `NoRecoveryNeeded` |
+| Existing same source, verified managed output | Describe healthy mechanical state | Plan/apply refuse already installed; next action `status` or `scripts/validate_repository.py` | Plan/add compile valid additive request or report already selected | Plan/restore produces empty repair or refuses unmanaged path | Plan/reconcile both refuse because source is unchanged or path is snapshot | `NoRecoveryNeeded` |
 
 For plan commands, “compile” produces a plan without interpretation; “refuse” produces no plan and exits
 1. `plan restore` is the repair preview, and `plan reconcile --overwrite-drift` is the only plan that
@@ -1136,8 +986,6 @@ have an executable candidate.
 
 `ManagedInventory` is an oracle only under the source and selection for which it was recorded:
 
-- **`EquivalentVerification`:** render the complete recorded selection and require exact key, kind, mode, and
-  hash equality with the complete managed inventory.
 - **Restore:** render the recorded selection, then require equality only for every requested managed
   path before writing that certified projection. Unrequested pre-existing drift may remain and status
   continues to report it.
@@ -1148,9 +996,8 @@ have an executable candidate.
   the candidate; never compare its hashes with old render hashes.
 
 `RenderContractViolation` is a typed `ContractError`, not a project-state constructor. It is reachable
-only when unchanged source and selection fail the applicable old-render comparison: equivalent apply,
-restore's requested projection, or add's complete old selection. It never arises from a new-source
-reconcile.
+only when unchanged source and selection fail the applicable old-render comparison: restore's
+requested projection or add's complete old selection. It never arises from a new-source reconcile.
 
 ## Operation semantics
 
@@ -1162,7 +1009,6 @@ Normative. Every state transition, manifest update, diagnostic, and test must ag
 | `status` | Read | Read | Compare entries and hash | Read | Compare observed files | No render |
 | Plan commands | Read or proposed | Read or proposed | Compare | Read/proposed initial outcome | Verify/derive candidate | Render only when required by the intent |
 | Initial `apply` | **Set** | Set empty | **Set** | **Set** | **Set** | Compile complete initial plan |
-| `EquivalentVerification` | Unchanged | Unchanged | Unchanged | Unchanged | Unchanged | Verify complete recorded render |
 | `add` | Unchanged | **Extend requested IDs and normalized settings** | Must match; unchanged | Unchanged | **Update** | Verify old complete render, then render expanded selection |
 | `restore` | Unchanged | Unchanged | Must match; unchanged | Unchanged | **Unchanged** | Render and certify requested managed projection |
 | `reconcile` | Unchanged | Unchanged | **Advance entries and hash** | Unchanged | **Update** | Render new source as candidate |
@@ -1237,7 +1083,6 @@ Three comparisons, each proving one thing, evaluated in order:
 | Operation | Rule |
 | --- | --- |
 | `InitialInstall` | `observed` blocking multiset must **equal** `expected` blocking multiset, and `expected` must contain exactly the placeholder findings predicted for the bundle's declared `scaffold` slots. Equality, not containment; pre-install findings are not inherited |
-| `EquivalentVerification` | No filesystem change occurred, so the complete observed result must equal baseline; this is validation, not a transaction gate |
 | `add`, `restore`, `reconcile` | Over the **blocking projection only**, for every finding identity, `count(observed) ≤ count(baseline)`. Genuinely pre-existing blocking findings are retained; none may be introduced or worsened |
 
 Gating decides rollback. The canonical command decides the exit code. These are separate throughout.
@@ -1279,19 +1124,16 @@ ReadinessRuleDefinition =
 ```
 
 `PredicateKind` is a closed union implemented by total pure evaluators. Tightening a predicate requires
-changing its canonical definition. `validate_template.py` compares complete canonical definitions with
-the frozen schema-v1 baseline and rejects a new or changed blocking definition over adopter-owned state,
-an informational-to-blocking transition, a new required seed-once path, or a blocking rule whose
-declared satisfier is unavailable to every legal operation.
+changing its canonical definition. The baseline comparison and old-state corpus are deferred to
+post-v1: until the first compatible update, immutability of the frozen baseline is enforced by source
+review of the rule catalog rather than by automated comparison.
 
-A compatibility corpus additionally contains representative old conforming `TargetSnapshot` values,
-including all adopter-owned predicate boundaries. Every new checker evaluates the corpus and must not
-produce a new blocking multiset. The definition comparison provides structural coverage; the corpus
-guards evaluator semantics. Predicate-kind semantics, the adopter-facing baseline, and its corpus are
-immutable for manifest schema v1: reconcile additionally requires those specific
-`SourceBaseline.entries` to retain their recorded hashes. New managed-output rules are allowed only when
-their satisfier is the candidate managed render and the expected target proves the obligation satisfied.
-Both structural and behavioral gates must pass.
+The compatibility corpus is deferred with the comparison: it is not implemented in v1. The rule
+catalog is immutable for manifest schema v1, and reconcile additionally requires the readiness-rule
+`SourceBaseline.entries` to retain their recorded hashes. New managed-output rules are allowed only
+when their satisfier is the candidate managed render and the expected target proves the obligation
+satisfied. A corpus and automated comparison are prerequisites to the first compatible template
+update.
 
 ### Frozen readiness-rule baseline v1
 
@@ -1314,23 +1156,21 @@ v1.3.0 checker:
 - the bootstrap slot rules for `security_policy` and `contributing` markers defined in the marker
   table.
 
-The compatibility corpus is seeded from the superseded readiness fixture matrix — marker-only
-deletion, heading order and duplication, malformed/duplicate/missing-body requirement declarations,
-README structure, hook configuration, and simultaneous failures — converted to representative
-`TargetSnapshot` values. The old checker's rule constants and the four-argument `Finding` adapter
-contract are removed at activation; the shared core is the only rule source.
+The old checker's rule constants and the four-argument `Finding` adapter contract are removed at
+activation; the shared core is the only rule source. The compatibility corpus and automated baseline
+comparison are deferred to post-v1; until then the catalog is immutable for manifest schema v1 and
+enforced by review.
 
 ## Input boundary
 
-Three disjoint classes. Revision 4 violated this by putting `source-ci-allowlist.json` in all three at
-once — fingerprinted, validated by generated-project template validation, and excluded by Copier while
-also deleted by snapshot install — so a Copier project could never match its own recorded fingerprint
-and a snapshot could fail its own installation gate.
+Three disjoint classes. A file belongs to exactly one class; revision 4's overlapping placement of a
+source-only file in all three at once made a Copier project unable to match its own recorded
+fingerprint and a snapshot able to fail its own installation gate.
 
 | Class | Members | Retained in generated projects? | In `template_source_fingerprint`? | Validated by |
 | --- | --- | --- | --- | --- |
-| Generated-lifecycle | `source-ownership.json` plus every `lifecycle_paths` entry: entry points, shared core and shell modules, catalog, definitions, blobs, schemas, profiles, stable-ID fixture, readiness-rule baseline and compatibility corpus, and policy data | Yes, both paths | **Yes** | Generated template-contract core; source perturbation fixtures |
-| Source-only snapshot-cleanup target | Exactly `snapshot_cleanup_paths`: source tests and workflow fixtures, source `pyproject.toml` and `uv.lock`, `source-ci-allowlist.json`, historical specs, and source development data | No | No as entries; the authorizing ownership-manifest bytes are fingerprinted | Source-only fixtures in the template repository |
+| Generated-lifecycle | `source-ownership.json` plus every `lifecycle_paths` entry: entry points, shared core and shell modules, catalog, definitions, blobs, schemas, profiles, stable-ID fixture, readiness-rule baseline, and policy data | Yes, both paths | **Yes** | Generated template-contract core; source perturbation fixtures |
+| Source-only snapshot-cleanup target | Exactly `snapshot_cleanup_paths`: source tests and workflow fixtures, source `pyproject.toml` and `uv.lock`, historical specs, and source development data | No | No as entries; the authorizing ownership-manifest bytes are fingerprinted | Source-only fixtures in the template repository |
 | Snapshot-cleanup control | `maintenance-artifacts.json` | No — removed after use | **No** | Source-only fixtures plus runtime agreement with the fingerprinted ownership manifest |
 
 The fingerprint therefore contains only inputs that both generation paths actually retain, which is the
@@ -1930,8 +1770,8 @@ an absolute machine path, adopter prose, or legal prose.
 The hook is adopter-owned, may be any executable, and is invoked directly rather than through Python.
 
 **Invocation rule.** The shell attempts the hook at most once per uninterrupted command invocation,
-only after a mutating command has gated and removed its journal, or after successful equivalent
-verification. It makes zero attempts on refusal, rollback, `recover`, planning, status, or init.
+only after a mutating command has gated and removed its journal. It makes zero attempts on refusal,
+rollback, `recover`, planning, status, or init.
 Exactly-once execution across a process crash is neither promised nor implementable for an arbitrary
 external executable. Recovery never invokes or replays the hook. Because journal cleanup precedes the
 hook and hook evidence is not persisted, a later invocation cannot distinguish a crash before, during,
@@ -1960,7 +1800,7 @@ evidence is **point-in-time evidence**: never written to the manifest, never cac
 
 ```text
 python3 scripts/bootstrap-project.py [global-output-options] init
-    --output PATH [--from FILE | --interactive]
+    --output PATH --from FILE
 
 python3 scripts/bootstrap-project.py [global-output-options] status [--target PATH]
 
@@ -2005,8 +1845,7 @@ the next mutating command reports `LockHeld` if acquisition actually fails.
 
 Argument invariants are decoded before target observation:
 
-- `init` requires exactly one of `--from` or `--interactive`; interactive mode requires a TTY and text
-  presentation and is the only command that prompts;
+- `init` requires `--from`; there is no interactive mode;
 - `--target` defaults to the invocation's current directory after absolute worktree verification; no
   environment variable or saved setting changes it;
 - restore with no `--path` selects every currently drifted managed path; repeated paths are rejected
@@ -2015,7 +1854,7 @@ Argument invariants are decoded before target observation:
   reconcile; there is no interactive confirmation fallback;
 - `--out` uses exclusive sibling staging and refuses an existing destination or `-`; without `--out`,
   JSON presentation carries the canonical receipt inside the command envelope; and
-- JSON presentation rejects color and interactive options, always emits its envelope, and therefore
+- JSON presentation rejects color options, always emits its envelope, and therefore
   rejects `--quiet`; `--explain` is legal and adds the typed decision trace.
 
 `--leave-maintenance-artifacts` is the supported override for a cleanup inventory that no longer
@@ -2121,7 +1960,7 @@ recovery stop at the first failure where continuing could mutate state or destro
 
 ### US-1: Prepare a reviewable input bundle
 
-- `init` supports interactive collection and a pre-seeded non-interactive input, and accepts no
+- `init` accepts a pre-seeded input and accepts no
   `--target`.
 - It requires explicit profile selection, an explicit decision for every content slot, and an explicit
   licensing decision with no default and no scaffold.
@@ -2142,9 +1981,8 @@ recovery stop at the first failure where continuing could mutate state or destro
   scaffold finding rolls back.
 - Exit 0 only when the complete canonical command would succeed, so any `scaffold` slot yields exit 1
   naming the remaining slots.
-- An `EquivalentVerification` from `apply` changes no file, still runs the mechanical-readiness boundary
-  and attempts the hook once, and carries the same exit meaning — so an all-`scaffold` equivalent
-  `apply` also exits 1.
+- `apply` on an already-installed project refuses with `status` or `scripts/validate_repository.py`
+  as the next action; there is no re-verification mode in v1.
 - Any exit-1 outcome after installation states that files were installed and the project is not yet
   locally ready.
 - The hook is installed at `scripts/validate-project` with mode `0755`.
@@ -2301,8 +2139,13 @@ recovery stop at the first failure where continuing could mutate state or destro
 | Populated manifest-free projects | Unsupported; no legacy population or compatibility release exists | Adoption only after a concrete non-legacy use case is approved |
 | Secret diagnosis | Available, or unavailable with likely causes | Authoritative diagnosis in a GitHub doctor |
 | Licensing | Explicit; digest fingerprinted; audit gates all modes | SPDX, SBOM, richer automation |
-| Workflow validation | Shared pure bounded checks in the generated project; a real parser only in source fixtures | A portable structured parser |
-| Dependencies | uv-managed source and generated-project dependencies; pinned ty, pytest, Hypothesis, Ruff, and PyYAML for source assurance | Hermetic distribution, dependency provenance, and the same core/shell conformance suite |
+| Workflow validation | Shared pure bounded checks in the generated project; no source workflow parser | A portable structured parser |
+| Dependencies | uv-managed source and generated-project dependencies; pinned ty, pytest, Hypothesis, and Ruff for source assurance | Hermetic distribution, dependency provenance, and the same core/shell conformance suite |
+| Template-source CI | The source is the integrated-profile fixture; conformance is managed drift; no Actions YAML parser, allowlist, or trust-predicate fixture | A semantic conformance fixture if a second hand-written workflow appears |
+| Readiness-rule evolution | The rule catalog is frozen; automated baseline comparison and corpus are deferred to post-v1 | Automated comparison before the first compatible update |
+| `init` | `--from` only; no interactive mode | Interactive bundle authoring |
+| Apply on an installed project | Refused with `status`/canonical-validator next action; no `EquivalentVerification` | A re-verification mode if a concrete need appears |
+| Slots | `Many` cardinality with YAML or Markdown contexts only | Additional cardinalities and encoders when a catalog consumer needs them |
 | Delivery | One public release; integration branch, one activation merge | Independent lifecycle releases |
 
 ## GitHub workflow architecture
@@ -2360,61 +2203,19 @@ eligibility check. Without `semantic-release`, no release workflow or job is emi
 
 ### Template-source CI conformance
 
-The template source is effectively an `integrated`-profile project, and its hand-written
-`.github/workflows/ci.yml` will drift from the compiled render. A source-only fixture renders
-`integrated` CI and compares it with the source workflow under a defined normalization.
-
-**Workflow and graph normal form:** workflow name; trigger events and filters, preserving the distinction
-between scalar, list, mapping, and invalid/null forms; `workflow_call` inputs, outputs, and secrets;
-top-level `env`, permissions, `defaults.run`, concurrency group, and cancel-in-progress; job IDs with
-sorted `needs`; effective per-job permissions and environment after workflow defaults; job-level `env`,
-outputs, defaults, strategy including matrix/fail-fast/max-parallel, `uses`, complete called-workflow
-`with` and `secrets` including `inherit`, `runs-on`, container and services, `if`, timeout, and
-continue-on-error. Matrices are also expanded into the concrete generated job set for graph comparison.
-
-**Step normal form**, with stable identity and order: each step's identity is its zero-based index
-within its job plus its `name` when present, and steps compare in that order. For a `uses` step: the
-action reference and its 40-character SHA where present, and the
-**complete canonical `with` map**. For a `run` step: the shell and a stable hash of the command text
-after normalizing line endings and stripping trailing whitespace. For both: `if`, the **complete
-canonical `env` map including values**, `working-directory`, `timeout-minutes`, and
-`continue-on-error`. Presentation-only `name` participates in stable step identity but does not replace
-the zero-based position.
-
-Because `SafeLoader` discards comments, action tag comments are checked by a separate raw-source lexical
-fixture that binds each comment to the immediately preceding immutable action SHA. Comments are not
-claimed to exist in the semantic YAML normal form.
-
-Revision 4 compared only `env` key names and five security-relevant `with` keys, which permits
-security-relevant drift while conformance stays green.
-
-**Trust predicates.** For every job that holds a write permission or reads a secret, the fixture
-asserts the exact expected event and actor predicate — event name, `github.event.pull_request.head.repo.fork`
-where applicable, association requirements for comment-triggered jobs, and the branch condition for
-publishing jobs. A privileged job whose predicate differs from its declared expectation fails.
-
-**Allowlist.** Source-only differences are permitted only through explicit entries in
-`.agentic-template/source-ci-allowlist.json`, each carrying the job or step identity, the reason, an
-owner, and a review-by date. The fixture fails on an uncovered difference and on an entry that no
-longer corresponds to a real difference. Self-expiry removes **stale** entries; it does not prevent
-accumulation of genuine differences. The fixture reports the current entry count so growth is visible
-and attributable.
-
-**Parser.** This source-only fixture uses PyYAML from the pinned uv development environment established
-in batch 1. Generated-project runtime may use declared uv-managed dependencies; this source-CI parser is
-not automatically part of that runtime contract.
-
-The loader contract is specified, because default PyYAML semantics are not GitHub Actions semantics:
-`yaml.SafeLoader` with a custom Actions resolver; duplicate keys rejected before construction; merge
-keys rejected; only `true` and `false` resolved as booleans; `on`, `off`, `yes`, and `no` remain strings
-in every location; timestamps and sexagesimals disabled. `on: push`, `on: [push]`, and
-`on: {push: null}` normalize to the same single-event semantic form, while a bare `on:` has a null value
-and is rejected rather than treated as `push`. Parser fixtures pin every YAML 1.1/1.2 edge named here.
-`actionlint` continues to lint the source and
-every generated workflow fixture. No claim is made that a standard-library checker can generally parse
-Actions YAML; `check_project_readiness.py`'s checks remain deliberately bounded — presence, recognizable
-`workflow_call`, canonical command, absence of secret passing and privileged environment declarations,
-and the managed caller's exact hash — and are documented as bounded rather than semantic.
+The template source is bootstrapped as the `integrated`-profile fixture at activation, so its
+workflow files are compiled managed output: drift between the source CI and the compiled render is
+detected by the standard managed-inventory machinery (`status`, `restore`), not by a separate
+conformance fixture. Maintainer-only jobs (uv sync, source canaries, actionlint) live in an
+adopter-owned workflow file that Copier excludes and snapshot cleanup removes, so generated projects
+never receive them. No Actions YAML parser, semantic workflow normal form, trust-predicate
+comparison, allowlist, or raw pin-comment fixture is defined, and PyYAML is not a source dependency.
+`actionlint` continues to lint the source and every generated workflow fixture. Generated-workflow
+security properties (permissions, secrets, preflights, release dependency, privileged-job trust) are
+pinned by the capability-matrix and structural-policy fixtures. `check_project_readiness.py`'s
+checks remain deliberately bounded — presence, recognizable `workflow_call`, canonical command,
+absence of secret passing and privileged environment declarations, and the managed caller's exact
+hash — and are documented as bounded rather than semantic.
 
 ## Validation boundaries
 
@@ -2425,12 +2226,12 @@ validate reusable machinery without assuming a bootstrapped instance: bundle, ad
 schemas; the `RenderInput` schema and renderer purity; profiles and the complete capability catalog;
 dependency topology; setting declarations and defaults; output ownership, declared kinds, and slots;
 canonical path grammar; lifecycle-source membership and fingerprint; complete readiness-rule definitions
-and compatibility corpus; and the stable-ID compatibility fixture. It returns structured diagnostics in
+and the stable-ID compatibility fixture. It returns structured diagnostics in
 the shared schema, uses only declared generated-project dependencies, executes no capability content, and
 never executes the adopter hook.
 
-It does **not** validate source-only inputs. Revision 4 required it to validate the source-CI allowlist,
-a file no generated project retains.
+It does **not** validate source-only inputs; no source-only input belongs to the generated-lifecycle
+contract.
 
 ### `scripts/check_project_readiness.py`
 
@@ -2547,7 +2348,7 @@ edits are drift repaired by `restore`.
 
 `.agentic-template/maintenance-artifacts.json` declares the source-only paths that a GitHub snapshot
 must remove: source test suites, the Copier smoke workflow, the source `pyproject.toml` and `uv.lock`,
-the source-CI allowlist, the readiness-rule fixtures, and historical specs. Each entry records the path,
+the readiness-rule fixtures, and historical specs. Each entry records the path,
 its expected source hash or tree hash, and whether it is a regular file or a directory tree. Entries may
 not overlap any other ownership class, and the inventory does not list itself.
 
@@ -2600,13 +2401,13 @@ is a supported generated-project release.
 
 | # | Contents | Evidence before merge to the integration branch |
 | --- | --- | --- |
-| 1 | Tooling and algebra foundations: explicit Python 3.14 lane; uv and pinned ty, pytest, Hypothesis, Ruff, and PyYAML; `Ok`/`Err`; frozen value conventions; diagnostics and CLI envelope; determinism primitives and schemas | Strict type check; exhaustive-union canary; lint/format checks; property-test canary; schema round-trips; primitive boundary and rejection fixtures |
+| 1 | Tooling and algebra foundations: explicit Python 3.14 lane; uv and pinned ty, pytest, Hypothesis, and Ruff; `Ok`/`Err`; frozen value conventions; diagnostics and CLI envelope; determinism primitives and schemas | Strict type check; exhaustive-union canary; lint/format checks; property-test canary; schema round-trips; primitive boundary and rejection fixtures |
 | 2 | Staged observation sums; family-specific total decisions; operation semantics; readiness rule definitions; source/ownership declarations | Static exhaustiveness; generated complete bundle/project intent-state matrices; no illegal constructor fixture; a preimage witness for every leaf decision; every diagnostic next action reachable |
 | 3 | Shared template-contract, readiness, and aggregate-validation cores; thin adapters replacing existing mixed scripts | Existing fixture parity; pure-core tests without filesystem/process access; stage-fold properties; canonical text/JSON parity |
 | 4 | Resolver, typed slots, `render_managed`, verified blob maps, complete initial compiler, `ExpectedTarget`, and planner | Byte-identical render; missing-blob failures; semantically relevant input perturbation; complete seed/legal/manifest/cleanup plan; collision and plan ordering |
 | 5 | Transaction interpreter: state root, lock, typed file/directory operations, raw backups, phases, idempotent rollback, recovery | Injected failure at every step; Hypothesis crash sequences; third-state recovery conflict; directory trees; git-clean survival; worktree/submodule/path safety |
 | 6 | CLI adapters and generation paths: `init`, `status`, `plan apply`, `apply`, scaffold recognition, cleanup contract, core CI | Both paths install portable from supplied/scaffold bundles; complete CLI golden matrix; reserved marker and cleanup disagreement rejection |
-| 7 | Catalog, profiles, four capabilities, contributions, compiled CI, secret preflights, compatibility definitions and corpus | Full profile matrix; actionlint; semantic readiness compatibility; structural preflight and local canary |
+| 7 | Catalog, profiles, four capabilities, contributions, compiled CI, secret preflights, compatibility definitions | Full profile matrix; actionlint; semantic readiness compatibility; structural preflight and local canary |
 | 8 | Durable documentation plus `add`, `restore`, `reconcile`, source baseline repair, and destructive plan binding | Lifecycle sequences; operation-specific oracle; source-delta diagnostics; digest re-derivation; snapshot reconcile refusal |
 | 9 | Greenfield activation: extensionless hook, Copier configuration, workflows, all boundaries, final cross-document consistency, release notes, and published adopter/maintainer documentation | Complete release gate; authoritative documents and ADRs already govern their dependent batches; no runtime, generated contract, fixture expectation, or user diagnostic names the `.py` hook or a legacy/migration lifecycle |
 
@@ -2624,8 +2425,10 @@ is a supported generated-project release.
 Both generation paths pass the full profile matrix; Copier update coverage proves seed-once preservation
 and derived reconciliation; the transaction, lock,
 recovery, and path-substitution suites pass; `actionlint` passes on the source and every generated
-workflow fixture; source-CI conformance passes with no stale allowlist entry; preflight structural and
-canary tests pass; the diagnostic reachability check passes; the readiness-rule baseline check passes;
+workflow fixture; the source tree is bootstrapped as the integrated-profile fixture and no conformance
+allowlist exists; preflight structural and
+canary tests pass; the diagnostic reachability check passes; the frozen readiness-rule catalog is
+complete;
 every leaf decision constructor retains a generated preimage witness;
 the licensing audit is complete and reflected in the installed layout; the PRD, `CONTEXT.md`, and ADR
 0001 reflect the approved boundary; repository formatting, linting, tests, builds, and source fixtures
@@ -2705,12 +2508,12 @@ Classification and identity:
 
 - Every row of the operation-semantics table: assert exactly which recorded values each operation
   changes, and that `restore` changes none.
-- Every sequence: `apply`; `apply → add → apply` reaching `EquivalentVerification`; `apply → add → reconcile → apply`;
+- Every sequence: `apply`; `apply → add` followed by `status` reporting healthy; `apply → add → reconcile`;
   `apply → reconcile → add`; `apply → restore → add`.
 - `apply` after a Copier update with identical answers and healthy inventory reaches `TemplateChanged`,
-  not `InvalidManifest` and not `EquivalentVerification`.
-- `BOOTSTRAP_RENDER_CONTRACT` is reachable separately for equivalent apply, requested restore
-  projection, and add's old complete render; new-source reconcile never produces it.
+  not `InvalidManifest` and not the already-installed refusal.
+- `BOOTSTRAP_RENDER_CONTRACT` is reachable separately for restore's requested projection and add's old
+  complete render; new-source reconcile never produces it.
 - `UnsupportedTarget`: an arbitrary empty or populated manifest-free target is refused with the
   fresh-scaffold action and never mentions a legacy path, adoption, or migration.
 - `CatalogIncompatible`: a catalog whose dependency edges changed is reported as such, not as manifest
@@ -2723,8 +2526,6 @@ Classification and identity:
 Gating and scaffold:
 
 - An all-`scaffold` install is retained, gate-passes, and exits 1 naming exactly the scaffolded slots.
-- An all-`scaffold` equivalent **`apply`** also exits 1, runs the mechanical-readiness boundary, and
-  attempts the hook at most once.
 - The install exemption is exact: a placeholder finding for an undeclared slot, or any extra blocking
   finding, gate-fails and rolls back.
 - Artifact verification precedes exemptions: corrupt one planned artifact post-install and prove the gate
@@ -2732,9 +2533,8 @@ Gating and scaffold:
 - `add`, `restore`, and `reconcile` succeed on a project whose PRD is still a placeholder.
 - A mutation that newly breaks readiness gate-fails even when an unrelated placeholder finding existed.
 - A mutation that increases an existing finding's count gate-fails, which a set comparison would miss.
-- The complete readiness-rule definition comparison and old-state corpus reject a new required
-  seed-once path, informational-to-blocking change, stricter same-ID predicate, or rule with no legal
-  satisfier.
+- The frozen readiness-rule catalog is asserted immutable for manifest schema v1, and no automated
+  baseline-comparison or corpus machinery exists in v1.
 - A `file` input containing a reserved marker is rejected; a non-UTF-8 binary hook is accepted and its
   sentinel detected at byte level.
 
@@ -2752,9 +2552,9 @@ Transaction and recovery:
   pre-state and continues cleanup without requiring a removed backup or reinstalling the candidate.
 - A `SEALED` journal is completed forward by `recover`, never rolled back.
 - Two concurrent mutations, and a mutation concurrent with `recover`: the second is refused by the lock.
-- Unlocked status and plan observations racing journal creation, a `MUTATING` path change, `RESTORED`
+- Unlocked plan observations racing journal creation, a `MUTATING` path change, `RESTORED`
   or `SEALED` cleanup, journal removal, and an adopter edit return either one double-collected stable state or
-  `ConcurrentTargetChange`, never a mixed status or plan.
+  `ConcurrentTargetChange`, never a mixed plan; `status` presents its single pass as advisory.
 - An abandoned lock file from a killed process is acquired normally rather than blocking forever.
 - `recover` refuses a target whose identity does not match.
 - A corrupt/truncated/unknown-version journal and missing or hash-mismatched backup enter
@@ -2780,9 +2580,9 @@ Hook and status:
 
 - A failing hook leaves the installation and exits 1.
 - `status` never executes the hook and reports "not evaluated" rather than any past outcome.
-- The hook is attempted at most once after a gated install and on `EquivalentVerification`, and zero times on
-  refusal, rollback, `recover`, every plan command, `status`, and `init`; a crash after journal removal
-  may yield zero attempts and recovery never replays it.
+- The hook is attempted at most once after a gated install, and zero times on refusal, rollback,
+  `recover`, every plan command, `status`, and `init`; a crash after journal removal may yield zero
+  attempts and recovery never replays it.
 
 Exit semantics:
 
@@ -2798,10 +2598,11 @@ Exit semantics:
 - Unavailable Gemini and Cachix secrets produce successful skip guidance naming the fork and Dependabot
   causes; privileged jobs cannot start when preflight is false.
 - Preflight structural policy and local canary.
-- Source-CI conformance: complete declared workflow/job/step semantic fields; effective environment,
-  defaults, strategy, outputs, `with`, secrets, and permissions; step identity/order; separate raw pin
-  comment check; trust predicates for every privileged job; stale and uncovered allowlist differences;
-  PyYAML rejection of duplicates, merge keys, and bare-null `on`; Actions boolean fixtures.
+- Source CI separation: the source `ci.yml` is a compiled managed artifact plus a maintainer-only
+  adopter-owned file; both are excluded from generated projects by Copier and snapshot cleanup, and
+  `status`/`restore` detect drift in the managed artifact.
+- Generated-workflow security fixtures pin permissions, secrets, preflights, release dependency, and
+  privileged-job trust for every capability matrix render.
 - Every diagnostic's next action exists for the relevant generation path.
 - Persisted checkout credentials and credential-looking values are absent.
 
@@ -2814,14 +2615,14 @@ Exit semantics:
 | REQ-003 gate releases on project validation | Retained; the gate is a compiled contribution present only with `semantic-release` |
 | REQ-004 verify generated behavior from source | Extended to the tiered matrix and both paths across profiles |
 | REQ-005 preserve generation-path ownership | Extended with disjoint ownership classes, source baselines, operation-specific drift, and explicit refusal of unrecognized manifest-free targets |
-| REQ-006 portable, least-privileged template validation | Retained; generated runtime dependencies are explicit, uv-managed, and least-privileged, while pinned ty, pytest, Hypothesis, Ruff, and PyYAML provide source assurance |
+| REQ-006 portable, least-privileged template validation | Retained; generated runtime dependencies are explicit, uv-managed, and least-privileged, while pinned ty, pytest, Hypothesis, and Ruff provide source assurance |
 | REQ-007 deterministic bootstrap | The compiler, its input contract, greenfield target boundary, and byte-for-byte output guarantees |
 | REQ-008 capability selection and addition | Profiles, catalog, normalized additive settings, and the absence of unselected artifacts |
 | REQ-009 ownership and identity | Disjoint ownership classes, primary manifest state, managed inventory, and source baseline |
 | REQ-010 closed lifecycle | Total status/plan/apply/add/restore/reconcile/recover behavior and operation-specific inventory oracles |
 | REQ-011 recoverable mutation | Lock, journal phases, exact rollback or forward cleanup, and third-state preservation without atomic multi-file visibility |
 | REQ-012 installation and readiness | Mechanical gating and point-in-time hook evidence remain distinct; a completed installation whose hook fails exits 1 |
-| REQ-013 evolution compatibility | Stable definitions and behavioral corpus prevent compatible updates from creating unsatisfiable obligations |
+| REQ-013 evolution compatibility | Stable definitions prevent compatible updates from creating unsatisfiable obligations; the automated comparison and corpus are deferred to post-v1 |
 | REQ-014 typed CLI | Functional core, total transition algebra, rich text/JSON outcomes, and explicit sad paths |
 | REQ-015 durable extensibility | Managed operational documentation, adopter-owned validation extension, and declarative capability growth |
 
@@ -2865,7 +2666,7 @@ This revision incorporates the following changes into `CONTEXT.md`:
 | Replacement crosses a filesystem boundary | Existing-parent staging and new-tree staging adjacent to the relevant existing ancestor |
 | An ancestor is substituted between check and use | Root-anchored per-component walk and re-resolution |
 | A security guarantee exceeds its primitives | The threat model is stated narrowly and excludes a concurrent local adversary |
-| A compatible update tightens a same-ID readiness predicate | Canonical complete rule definitions plus the old-conforming-state corpus |
+| A compatible update tightens a same-ID readiness predicate | Frozen rule catalog plus review; automated corpus comparison deferred to post-v1 |
 | Snapshots acquire an update lifecycle by accident | `reconcile` is unavailable; source inventory names baseline repair or regeneration only |
 | Hypothetical legacy support creates dead branches | Greenfield activation contains one hook and manifest contract with no compatibility machinery |
 | An intermediate merge changes behavior | Integration branch with one activation merge |
@@ -2888,14 +2689,14 @@ This revision incorporates the following changes into `CONTEXT.md`:
 
 ## Proposed future changes
 
-**Experience:** one-command initialize-and-apply over the same engine; inline prose fields with
-escaping; guided PRD authoring; stack presets without an implicit default; opt-in regeneration of
-seed-once files; `apply --strict` gating on the hook.
+**Experience:** one-command initialize-and-apply over the same engine; interactive bundle authoring;
+inline prose fields with escaping; guided PRD authoring; stack presets without an implicit default;
+opt-in regeneration of seed-once files; `apply --strict` gating on the hook.
 
 **Capability lifecycle:** a broader first-party catalog; third-party registries with signing and trust
 policy; live profiles; removal, replacement, and reconfiguration; versioned capability IDs with
-migrations between manifest-bearing bootstrap releases; managed document regions; a sandboxed plugin
-model if declarative slots prove insufficient.
+migrations between manifest-bearing bootstrap releases; managed document regions; additional slot
+cardinalities and context encoders; a sandboxed plugin model if declarative slots prove insufficient.
 
 **Adoption and portability:** only after a concrete non-legacy use case exists, an adoption lifecycle
 for arbitrary populated repositories with preview, collision handling, and ownership transfer; snapshot
