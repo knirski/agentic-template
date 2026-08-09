@@ -136,8 +136,6 @@ def gate_readiness(
         old = Counter(f.identity() for f in baseline.blocking)
         new = Counter(f.identity() for f in observed.blocking)
         allowed = all(count <= old[identity] for identity, count in new.items())
-    elif operation in {"equivalent", "verification"}:
-        allowed = compare_blocking_multisets(observed, baseline)
     else:
         return GateResult(False, "unknown operation")
     return GateResult(allowed, "" if allowed else "blocking readiness changed")
