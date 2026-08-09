@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import replace
 from types import MappingProxyType
-from typing import Literal
+from typing import Literal, cast
+
+import pytest
 
 from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
 from scripts.bootstrap.canonical_json import canonical_json
@@ -35,6 +38,7 @@ from scripts.bootstrap.manifest import (
     encode_manifest,
     manifest_checksum,
     manifest_document,
+    path_within_limits,
 )
 from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.plan_digest import (
@@ -75,7 +79,12 @@ from scripts.bootstrap.planner import (
     legal_output_paths,
     predicted_placeholder_findings,
 )
-from scripts.bootstrap.render import ManagedFile, ManagedInventoryEntry, SlotContent
+from scripts.bootstrap.render import (
+    ManagedFile,
+    ManagedInventory,
+    ManagedInventoryEntry,
+    SlotContent,
+)
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.source_baseline import (
     CopierSourceBaseline,
@@ -84,6 +93,7 @@ from scripts.bootstrap.source_baseline import (
 )
 from scripts.bootstrap.state import CleanupContract
 from scripts.bootstrap.template_contract import REQUIRED_FILES, REQUIRED_SKILLS
+from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
 
 SLOT_CONTENTS: dict[str, bytes] = {
     "readme": b"# Example\n\nReal project description.\n",
@@ -384,6 +394,7 @@ def compile_fixture(
     managed: tuple[ManagedFile, ...] | None = None,
     blobs: VerifiedBlobStore | None = None,
     snapshot_commit: str | None = "0" * 40,
+    limits: ResourceLimits | None = None,
 ) -> tuple[VerifiedBlobStore, Result[OperationPlan, CompileError]]:
     """Return (input blob store, compile result) for a fixture with optional overrides."""
     licensing_mode = (
@@ -417,6 +428,7 @@ def compile_fixture(
         maintenance=maintenance,
         cleanup=cleanup,
         snapshot=snapshot,
+        limits=limits if limits is not None else DEFAULT_LIMITS,
     )
     return blobs, result
 
@@ -424,6 +436,258 @@ def compile_fixture(
 def get_plan(result: Result[OperationPlan, CompileError]) -> OperationPlan:
     assert isinstance(result, Ok), f"expected a compiled plan, got {result}"
     return result.value
+
+
+def _operation_by_kind(receipt: dict[str, object], kind: str) -> dict[str, object]:
+    operations = receipt["operations"]
+    assert isinstance(operations, list)
+    for operation in operations:
+        assert isinstance(operation, dict)
+        if operation.get("kind") == kind:
+            return operation
+    raise AssertionError(f"no {kind} operation in receipt")
+
+
+def _copier_receipt() -> dict[str, object]:
+    _, result = compile_fixture(
+        generation=GenerationPath.COPIER,
+        snapshot=fixture_copier_snapshot(),
+        cleanup=None,
+        snapshot_commit=None,
+    )
+    return build_receipt(get_plan(result))
+
+
+def _set_delete_planned_new(receipt: dict[str, object]) -> None:
+    delete = _operation_by_kind(receipt, "delete_file")
+    create = _operation_by_kind(receipt, "create_file")
+    delete["planned_new"] = create["planned_new"]
+
+
+def _receipt_with_tree_extra_key() -> dict[str, object]:
+    receipt = _copier_receipt()
+    tree = _operation_by_kind(receipt, "create_tree")
+    planned_new = tree["planned_new"]
+    assert isinstance(planned_new, dict)
+    planned_new["extra"] = 1
+    return receipt
+
+
+def _receipt_with_tree_expected_old() -> dict[str, object]:
+    receipt = _copier_receipt()
+    tree = _operation_by_kind(receipt, "create_tree")
+    tree["expected_old"] = {}
+    return receipt
+
+
+def _receipt_with_tree_planned_new_type() -> dict[str, object]:
+    receipt = _copier_receipt()
+    tree = _operation_by_kind(receipt, "create_tree")
+    tree["planned_new"] = "x"
+    return receipt
+
+
+def _receipt_with_tree_entry_bad_mode() -> dict[str, object]:
+    receipt = _nested_copier_receipt()
+    _directory_entry(receipt)["mode"] = 420
+    return receipt
+
+
+def _receipt_with_tree_entry_missing_key() -> dict[str, object]:
+    receipt = _copier_receipt()
+    tree = _operation_by_kind(receipt, "create_tree")
+    planned_new = tree["planned_new"]
+    assert isinstance(planned_new, dict)
+    entries = planned_new["entries"]
+    assert isinstance(entries, list) and entries
+    entry = entries[0]
+    assert isinstance(entry, dict)
+    entry.pop("path")
+    return receipt
+
+
+def _receipt_with_tree_entry_bad_digest() -> dict[str, object]:
+    receipt = _copier_receipt()
+    tree = _operation_by_kind(receipt, "create_tree")
+    planned_new = tree["planned_new"]
+    assert isinstance(planned_new, dict)
+    entries = planned_new["entries"]
+    assert isinstance(entries, list)
+    for entry in entries:
+        assert isinstance(entry, dict)
+        if entry.get("kind") == "file":
+            entry["content_id"] = "zzz"
+            return receipt
+    raise AssertionError("no file entry in tree")
+
+
+def _receipt_with_tree_extra_op_key() -> dict[str, object]:
+    receipt = _copier_receipt()
+    tree = _operation_by_kind(receipt, "create_tree")
+    tree["extra"] = 1
+    return receipt
+
+
+def _receipt_with_tree_bad_root() -> dict[str, object]:
+    receipt = _copier_receipt()
+    tree = _operation_by_kind(receipt, "create_tree")
+    tree["root"] = ".."
+    return receipt
+
+
+def _receipt_with_tree_bad_sha() -> dict[str, object]:
+    receipt = _copier_receipt()
+    tree = _operation_by_kind(receipt, "create_tree")
+    planned_new = tree["planned_new"]
+    assert isinstance(planned_new, dict)
+    planned_new["raw_tree_sha256"] = "zzz"
+    return receipt
+
+
+def _receipt_with_tree_entry_not_mapping() -> dict[str, object]:
+    receipt = _copier_receipt()
+    tree = _operation_by_kind(receipt, "create_tree")
+    planned_new = tree["planned_new"]
+    assert isinstance(planned_new, dict)
+    entries = planned_new["entries"]
+    assert isinstance(entries, list) and entries
+    entries[0] = "x"
+    return receipt
+
+
+def _nested_copier_receipt() -> dict[str, object]:
+    snapshot = fixture_copier_snapshot()
+    managed = tuple(
+        sorted(
+            (
+                *fixture_managed(),
+                ManagedFile(
+                    path=RepoPath("docs/api/ref.md"),
+                    kind="text",
+                    mode=PosixMode.FILE,
+                    content=b"# API\n",
+                ),
+            ),
+            key=lambda file: file.path.value.encode("utf-8"),
+        )
+    )
+    _, result = compile_fixture(
+        generation=GenerationPath.COPIER,
+        snapshot=snapshot,
+        cleanup=None,
+        snapshot_commit=None,
+        managed=managed,
+    )
+    return build_receipt(get_plan(result))
+
+
+def _directory_entry(receipt: dict[str, object]) -> dict[str, object]:
+    operations = receipt["operations"]
+    assert isinstance(operations, list)
+    for tree in operations:
+        assert isinstance(tree, dict)
+        if tree.get("kind") != "create_tree":
+            continue
+        planned_new = tree["planned_new"]
+        assert isinstance(planned_new, dict)
+        entries = planned_new["entries"]
+        assert isinstance(entries, list)
+        for entry in entries:
+            assert isinstance(entry, dict)
+            if entry.get("kind") == "directory":
+                return entry
+    raise AssertionError("no directory entry in tree")
+
+
+def _file_entry(receipt: dict[str, object]) -> dict[str, object]:
+    operations = receipt["operations"]
+    assert isinstance(operations, list)
+    for tree in operations:
+        assert isinstance(tree, dict)
+        if tree.get("kind") != "create_tree":
+            continue
+        planned_new = tree["planned_new"]
+        assert isinstance(planned_new, dict)
+        entries = planned_new["entries"]
+        assert isinstance(entries, list)
+        for entry in entries:
+            assert isinstance(entry, dict)
+            if entry.get("kind") == "file":
+                return entry
+    raise AssertionError("no file entry in tree")
+
+
+def _receipt_with_tree_dir_entry_missing_mode() -> dict[str, object]:
+    receipt = _nested_copier_receipt()
+    _directory_entry(receipt).pop("mode")
+    return receipt
+
+
+def _receipt_with_tree_file_entry_bad_path() -> dict[str, object]:
+    receipt = _copier_receipt()
+    _file_entry(receipt)["path"] = ".."
+    return receipt
+
+
+def _receipt_with_tree_file_entry_missing_id() -> dict[str, object]:
+    receipt = _copier_receipt()
+    _file_entry(receipt).pop("content_id")
+    return receipt
+
+
+def _receipt_with_remove_empty_extra_key() -> dict[str, object]:
+    receipt = build_receipt(github_plan())
+    remove = _operation_by_kind(receipt, "remove_empty_directory")
+    remove["extra"] = 1
+    return receipt
+
+
+def _receipt_with_remove_empty_bad_path() -> dict[str, object]:
+    receipt = build_receipt(github_plan())
+    remove = _operation_by_kind(receipt, "remove_empty_directory")
+    remove["path"] = ".."
+    return receipt
+
+
+def _receipt_with_remove_empty_old_type() -> dict[str, object]:
+    receipt = build_receipt(github_plan())
+    remove = _operation_by_kind(receipt, "remove_empty_directory")
+    remove["expected_old"] = "x"
+    return receipt
+
+
+def _receipt_with_remove_empty_old_mode_type() -> dict[str, object]:
+    receipt = build_receipt(github_plan())
+    remove = _operation_by_kind(receipt, "remove_empty_directory")
+    expected_old = remove["expected_old"]
+    assert isinstance(expected_old, dict)
+    expected_old["mode"] = "x"
+    return receipt
+
+
+def _receipt_with_tree_entry_extra_key() -> dict[str, object]:
+    receipt = _copier_receipt()
+    tree = _operation_by_kind(receipt, "create_tree")
+    planned_new = tree["planned_new"]
+    assert isinstance(planned_new, dict)
+    entries = planned_new["entries"]
+    assert isinstance(entries, list) and entries
+    entry = entries[0]
+    assert isinstance(entry, dict)
+    entry["extra"] = 1
+    return receipt
+
+
+def _set_remove_empty_planned_new(receipt: dict[str, object]) -> None:
+    remove = _operation_by_kind(receipt, "remove_empty_directory")
+    remove["planned_new"] = {"mode": 493}
+
+
+def _set_remove_empty_bad_mode(receipt: dict[str, object]) -> None:
+    remove = _operation_by_kind(receipt, "remove_empty_directory")
+    expected_old = remove["expected_old"]
+    assert isinstance(expected_old, dict)
+    expected_old["mode"] = 0o7777 + 1
 
 
 def github_plan() -> OperationPlan:
@@ -615,8 +879,680 @@ class TestManifest:
             case Ok(_):
                 raise AssertionError("oversized manifest decoded")
 
+    @pytest.mark.parametrize(
+        ("answers"),
+        [
+            pytest.param(
+                replace(
+                    fixture_answers(),
+                    licensing=LicensingRecord(mode="other", content_sha256=None),
+                ),
+                id="licensing mode",
+            ),
+            pytest.param(
+                replace(
+                    fixture_answers(),
+                    licensing=LicensingRecord(
+                        mode="retain-apache-2.0", content_sha256="zzz"
+                    ),
+                ),
+                id="licensing digest",
+            ),
+            pytest.param(
+                replace(
+                    fixture_answers(),
+                    slots=MappingProxyType(
+                        {
+                            **{
+                                rule.slot: SlotContent(
+                                    mode="scaffold", content_sha256=None
+                                )
+                                for rule in SLOT_PLACEHOLDER_RULES
+                            },
+                            "unknown": SlotContent(
+                                mode="scaffold", content_sha256=None
+                            ),
+                        }
+                    ),
+                ),
+                id="unknown slot",
+            ),
+            pytest.param(
+                replace(
+                    fixture_answers(),
+                    slots=MappingProxyType(
+                        {
+                            **{
+                                rule.slot: SlotContent(
+                                    mode="scaffold", content_sha256=None
+                                )
+                                for rule in SLOT_PLACEHOLDER_RULES
+                            },
+                            "readme": SlotContent(mode="other", content_sha256=None),
+                        }
+                    ),
+                ),
+                id="slot mode",
+            ),
+            pytest.param(
+                replace(
+                    fixture_answers(),
+                    slots=MappingProxyType(
+                        {
+                            **{
+                                rule.slot: SlotContent(
+                                    mode="scaffold", content_sha256=None
+                                )
+                                for rule in SLOT_PLACEHOLDER_RULES
+                            },
+                            "readme": SlotContent(mode="file", content_sha256="zzz"),
+                        }
+                    ),
+                ),
+                id="slot digest",
+            ),
+            pytest.param(
+                replace(
+                    fixture_answers(),
+                    settings=MappingProxyType({"Bad": MappingProxyType({})}),
+                ),
+                id="settings capability",
+            ),
+            pytest.param(
+                replace(
+                    fixture_answers(),
+                    settings=MappingProxyType(
+                        {"nix": MappingProxyType({"bad-name": "x"})}
+                    ),
+                ),
+                id="settings name",
+            ),
+            pytest.param(
+                replace(
+                    fixture_answers(),
+                    settings=MappingProxyType(
+                        {"nix": MappingProxyType({"cache_name": 5})}
+                    ),
+                ),
+                id="settings value",
+            ),
+            pytest.param(
+                replace(
+                    fixture_answers(),
+                    profile=ProfileSelection(id="Bad", requested=()),
+                ),
+                id="profile id",
+            ),
+            pytest.param(
+                replace(
+                    fixture_answers(),
+                    profile=ProfileSelection(id="portable", requested=("Bad",)),
+                ),
+                id="profile requested identifier",
+            ),
+            pytest.param(
+                replace(
+                    fixture_answers(),
+                    project=ProjectFacts(name="bad name", default_branch="main"),
+                ),
+                id="project name",
+            ),
+        ],
+    )
+    def test_build_rejects_invalid_answers(self, answers: ManifestAnswers) -> None:
+        provenance = self._github_manifest_value().provenance
+        match build_candidate_manifest(
+            answers=answers,
+            additions=ManifestAdditions(),
+            provenance=provenance,
+            managed=(),
+        ):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("invalid answers built")
+
+    @pytest.mark.parametrize(
+        ("provenance"),
+        [
+            pytest.param(
+                ProvenanceRecord(
+                    generation_path=GenerationPath.COPIER,
+                    maintenance=MaintenanceRecord(status="clean"),
+                    source_baseline=GitHubSourceBaseline(
+                        kind="github",
+                        fingerprint=sha256_hex(b"source"),
+                        entries=fixture_source_entries(),
+                        snapshot_commit="0" * 40,
+                    ),
+                ),
+                id="generation baseline mismatch",
+            ),
+            pytest.param(
+                ProvenanceRecord(
+                    generation_path=GenerationPath.GITHUB,
+                    maintenance=MaintenanceRecord(
+                        status=cast(Literal["clean", "retained"], "other")
+                    ),
+                    source_baseline=GitHubSourceBaseline(
+                        kind="github",
+                        fingerprint=sha256_hex(b"source"),
+                        entries=fixture_source_entries(),
+                        snapshot_commit="0" * 40,
+                    ),
+                ),
+                id="maintenance status",
+            ),
+            pytest.param(
+                ProvenanceRecord(
+                    generation_path=GenerationPath.GITHUB,
+                    maintenance=MaintenanceRecord(
+                        status="retained",
+                        retained_paths=(RepoPath("b"), RepoPath("a")),
+                    ),
+                    source_baseline=GitHubSourceBaseline(
+                        kind="github",
+                        fingerprint=sha256_hex(b"source"),
+                        entries=fixture_source_entries(),
+                        snapshot_commit="0" * 40,
+                    ),
+                ),
+                id="retained paths unsorted",
+            ),
+            pytest.param(
+                ProvenanceRecord(
+                    generation_path=GenerationPath.GITHUB,
+                    maintenance=MaintenanceRecord(status="clean"),
+                    source_baseline=GitHubSourceBaseline(
+                        kind="github",
+                        fingerprint="zzz",
+                        entries=fixture_source_entries(),
+                        snapshot_commit="0" * 40,
+                    ),
+                ),
+                id="baseline fingerprint",
+            ),
+            pytest.param(
+                ProvenanceRecord(
+                    generation_path=GenerationPath.GITHUB,
+                    maintenance=MaintenanceRecord(status="clean"),
+                    source_baseline=GitHubSourceBaseline(
+                        kind="github",
+                        fingerprint=sha256_hex(b"source"),
+                        entries=(
+                            LifecycleSourceEntry(
+                                path=RepoPath("a.py"),
+                                kind="file",
+                                mode=PosixMode.FILE,
+                                sha256=sha256_hex(b"a"),
+                            ),
+                            LifecycleSourceEntry(
+                                path=RepoPath("a.py"),
+                                kind="file",
+                                mode=PosixMode.FILE,
+                                sha256=sha256_hex(b"a"),
+                            ),
+                        ),
+                        snapshot_commit="0" * 40,
+                    ),
+                ),
+                id="baseline entries duplicate",
+            ),
+            pytest.param(
+                ProvenanceRecord(
+                    generation_path=GenerationPath.GITHUB,
+                    maintenance=MaintenanceRecord(status="clean"),
+                    source_baseline=GitHubSourceBaseline(
+                        kind="github",
+                        fingerprint=sha256_hex(b"source"),
+                        entries=(
+                            LifecycleSourceEntry(
+                                path=RepoPath("a.py"),
+                                kind="file",
+                                mode=PosixMode(0o600),
+                                sha256=sha256_hex(b"a"),
+                            ),
+                        ),
+                        snapshot_commit="0" * 40,
+                    ),
+                ),
+                id="baseline entry mode",
+            ),
+        ],
+    )
+    def test_build_rejects_invalid_provenance(
+        self, provenance: ProvenanceRecord
+    ) -> None:
+        match build_candidate_manifest(
+            answers=fixture_answers(),
+            additions=ManifestAdditions(),
+            provenance=provenance,
+            managed=(),
+        ):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("invalid provenance built")
+
+    def test_build_rejects_invalid_managed(self) -> None:
+        provenance = self._github_manifest_value().provenance
+        cases: tuple[tuple[str, ManagedInventory], ...] = (
+            (
+                "duplicate",
+                (
+                    ManagedInventoryEntry(
+                        path=RepoPath("a.txt"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        sha256=sha256_hex(b"a"),
+                    ),
+                    ManagedInventoryEntry(
+                        path=RepoPath("a.txt"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        sha256=sha256_hex(b"a"),
+                    ),
+                ),
+            ),
+            (
+                "unsorted",
+                (
+                    ManagedInventoryEntry(
+                        path=RepoPath("b.txt"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        sha256=sha256_hex(b"b"),
+                    ),
+                    ManagedInventoryEntry(
+                        path=RepoPath("a.txt"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        sha256=sha256_hex(b"a"),
+                    ),
+                ),
+            ),
+            (
+                "bad digest",
+                (
+                    ManagedInventoryEntry(
+                        path=RepoPath("a.txt"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        sha256="zzz",
+                    ),
+                ),
+            ),
+            (
+                "bad mode",
+                (
+                    ManagedInventoryEntry(
+                        path=RepoPath("a.txt"),
+                        kind="text",
+                        mode=PosixMode(0o600),
+                        sha256=sha256_hex(b"a"),
+                    ),
+                ),
+            ),
+        )
+        for label, managed in cases:
+            match build_candidate_manifest(
+                answers=fixture_answers(),
+                additions=ManifestAdditions(),
+                provenance=provenance,
+                managed=managed,
+            ):
+                case Err(error):
+                    assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION, label
+                case Ok(_):
+                    raise AssertionError(f"invalid managed built: {label}")
+
+    def test_decode_rejects_non_object_documents(self) -> None:
+        match decode_manifest(b"[1]"):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("non-object manifest decoded")
+
+    def test_decode_rejects_non_sha256_checksum(self) -> None:
+        document = manifest_document(self._github_manifest_value())
+        encoded = canonical_json({**document, "checksum": "zzz"})
+        match decode_manifest(encoded):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("non-sha256 checksum decoded")
+
+    def test_path_within_limits_component_count(self) -> None:
+        assert path_within_limits(RepoPath("/".join(["a"] * 64)))
+        assert not path_within_limits(RepoPath("/".join(["a"] * 65)))
+
     def test_retain_mode_records_no_license_digest(self) -> None:
         assert self._github_manifest_value().answers.licensing.content_sha256 is None
+
+    @pytest.mark.parametrize(
+        ("mutate"),
+        [
+            pytest.param(
+                lambda document: document.pop("answers"), id="answers missing"
+            ),
+            pytest.param(
+                lambda document: document["answers"]["project"].__setitem__(
+                    "name", "bad name"
+                ),
+                id="project name",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["project"].__setitem__(
+                    "default_branch", "bad branch"
+                ),
+                id="default branch",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["profile"].__setitem__(
+                    "id", "Bad"
+                ),
+                id="profile id",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["profile"].__setitem__(
+                    "requested", ["nix", "cachix-publish"]
+                ),
+                id="profile requested unsorted",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["settings"].__setitem__("Bad", {}),
+                id="settings capability id",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["settings"].__setitem__(
+                    "nix", {"bad-name": "x"}
+                ),
+                id="settings name",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["settings"].__setitem__(
+                    "nix", {"cache_name": 5}
+                ),
+                id="settings value",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["licensing"].__setitem__(
+                    "mode", "other"
+                ),
+                id="licensing mode",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["licensing"].__setitem__(
+                    "content_sha256", "zzz"
+                ),
+                id="licensing digest",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["slots"]["readme"].__setitem__(
+                    "mode", "other"
+                ),
+                id="slot mode",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["slots"]["readme"].__setitem__(
+                    "content_sha256", "zzz"
+                ),
+                id="slot digest",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["slots"].__setitem__(
+                    "unknown", {"mode": "file", "content_sha256": None}
+                ),
+                id="unknown slot",
+            ),
+            pytest.param(
+                lambda document: document["additions"].__setitem__(
+                    "requested", ["nix", "cachix-publish"]
+                ),
+                id="additions unsorted",
+            ),
+            pytest.param(
+                lambda document: document["additions"]["settings"].__setitem__(
+                    "Bad", {}
+                ),
+                id="additions settings",
+            ),
+            pytest.param(
+                lambda document: document["provenance"].__setitem__(
+                    "generation_path", "other"
+                ),
+                id="generation path",
+            ),
+            pytest.param(
+                lambda document: document["provenance"]["maintenance"].__setitem__(
+                    "status", "other"
+                ),
+                id="maintenance status",
+            ),
+            pytest.param(
+                lambda document: document["provenance"]["maintenance"].__setitem__(
+                    "retained_paths", [".."]
+                ),
+                id="retained paths unsafe",
+            ),
+            pytest.param(
+                lambda document: document["provenance"]["source_baseline"].__setitem__(
+                    "kind", "other"
+                ),
+                id="baseline kind",
+            ),
+            pytest.param(
+                lambda document: document["provenance"]["source_baseline"].__setitem__(
+                    "fingerprint", "zzz"
+                ),
+                id="baseline fingerprint",
+            ),
+            pytest.param(
+                lambda document: document["provenance"]["source_baseline"].__setitem__(
+                    "entries",
+                    [
+                        {
+                            "path": "..",
+                            "kind": "file",
+                            "mode": 420,
+                            "sha256": "0" * 64,
+                        }
+                    ],
+                ),
+                id="baseline entries unsafe path",
+            ),
+            pytest.param(
+                lambda document: document["provenance"]["source_baseline"].pop(
+                    "snapshot_commit"
+                ),
+                id="baseline missing snapshot commit",
+            ),
+            pytest.param(
+                lambda document: document["provenance"]["source_baseline"].__setitem__(
+                    "kind", "copier"
+                ),
+                id="baseline kind mismatch",
+            ),
+            pytest.param(
+                lambda document: document.__setitem__(
+                    "managed",
+                    [
+                        {
+                            "path": "z.txt",
+                            "kind": "text",
+                            "mode": 420,
+                            "sha256": "0" * 64,
+                        },
+                        {
+                            "path": "a.txt",
+                            "kind": "text",
+                            "mode": 420,
+                            "sha256": "0" * 64,
+                        },
+                    ],
+                ),
+                id="managed unsorted",
+            ),
+            pytest.param(
+                lambda document: document.__setitem__(
+                    "managed",
+                    [
+                        {
+                            "path": "A.txt",
+                            "kind": "text",
+                            "mode": 420,
+                            "sha256": "0" * 64,
+                        },
+                        {
+                            "path": "a.txt",
+                            "kind": "text",
+                            "mode": 420,
+                            "sha256": "0" * 64,
+                        },
+                    ],
+                ),
+                id="managed case collision",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["profile"].__setitem__(
+                    "requested", "x"
+                ),
+                id="profile requested not list",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["project"].__setitem__("name", 5),
+                id="project name not string",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["profile"].__setitem__("id", 5),
+                id="profile id not string",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["licensing"].__setitem__(
+                    "mode", 5
+                ),
+                id="licensing mode not string",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["licensing"].__setitem__(
+                    "content_sha256", 5
+                ),
+                id="licensing digest not string",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["slots"]["readme"].__setitem__(
+                    "mode", 5
+                ),
+                id="slot mode not string",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["slots"]["readme"].__setitem__(
+                    "content_sha256", 5
+                ),
+                id="slot digest not string",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["slots"].__setitem__(
+                    "readme", "x"
+                ),
+                id="slot not mapping",
+            ),
+            pytest.param(
+                lambda document: document["answers"].__setitem__("settings", "x"),
+                id="settings not mapping",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["settings"].__setitem__(
+                    "nix", "x"
+                ),
+                id="settings values not mapping",
+            ),
+            pytest.param(
+                lambda document: document["answers"].__setitem__("project", "x"),
+                id="project not mapping",
+            ),
+            pytest.param(
+                lambda document: document["answers"].__setitem__("licensing", "x"),
+                id="licensing not mapping",
+            ),
+            pytest.param(
+                lambda document: document["additions"].__setitem__("requested", "x"),
+                id="additions requested not list",
+            ),
+            pytest.param(
+                lambda document: document["provenance"].__setitem__(
+                    "generation_path", 5
+                ),
+                id="generation path not string",
+            ),
+            pytest.param(
+                lambda document: document["provenance"].__setitem__("maintenance", "x"),
+                id="maintenance not mapping",
+            ),
+            pytest.param(
+                lambda document: document["provenance"]["maintenance"].__setitem__(
+                    "retained_paths", "x"
+                ),
+                id="retained paths not list",
+            ),
+            pytest.param(
+                lambda document: document["provenance"].__setitem__(
+                    "source_baseline", "x"
+                ),
+                id="baseline not mapping",
+            ),
+            pytest.param(
+                lambda document: document["provenance"]["source_baseline"].__setitem__(
+                    "entries", "x"
+                ),
+                id="baseline entries not list",
+            ),
+            pytest.param(
+                lambda document: document.__setitem__("managed", "x"),
+                id="managed not list",
+            ),
+            pytest.param(
+                lambda document: document.__setitem__(
+                    "managed",
+                    [
+                        {"path": 5, "kind": "text", "mode": 420, "sha256": "0" * 64},
+                    ],
+                ),
+                id="managed entry path not string",
+            ),
+            pytest.param(
+                lambda document: document.__setitem__(
+                    "managed",
+                    [
+                        {
+                            "path": "a.txt",
+                            "kind": "text",
+                            "mode": 420,
+                            "sha256": "0" * 64,
+                        },
+                        {
+                            "path": "a.txt",
+                            "kind": "text",
+                            "mode": 420,
+                            "sha256": "0" * 64,
+                        },
+                    ],
+                ),
+                id="managed duplicate entries",
+            ),
+        ],
+    )
+    def test_decode_rejects_malformed_documents(
+        self, mutate: Callable[[dict[str, object]], object]
+    ) -> None:
+        document = manifest_document(self._github_manifest_value())
+        mutate(document)
+        encoded = canonical_json({**document, "checksum": manifest_checksum(document)})
+        match decode_manifest(encoded):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("malformed manifest decoded")
 
 
 class TestPlanner:
@@ -905,6 +1841,294 @@ class TestPlanner:
             case Ok(_):
                 raise AssertionError("over-long path compiled")
 
+    def test_invalid_licensing_mode_is_refused(self) -> None:
+        answers = replace(
+            fixture_answers(),
+            licensing=LicensingRecord(mode="other", content_sha256=None),
+        )
+        store, seed_once = fixture_seed_once(
+            VerifiedBlobStore.empty(), "retain-apache-2.0"
+        )
+        _, result = compile_fixture(
+            answers=answers,
+            seed_once=seed_once,
+            blobs=store,
+            snapshot=github_snapshot(),
+        )
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("invalid licensing mode compiled")
+
+    def test_blob_limits_are_enforced_on_the_plan_store(self) -> None:
+        _, result = compile_fixture(limits=ResourceLimits(max_file_bytes=4))
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.PLAN_LIMIT_EXCEEDED
+            case Ok(_):
+                raise AssertionError("oversized blob interned into the plan")
+
+    def test_unsafe_snapshot_path_is_refused(self) -> None:
+        snapshot = _sorted_snapshot(
+            (*github_snapshot().files, observed_file(RepoPath(".."), b"x\n")),
+            github_snapshot().directories,
+        )
+        _, result = compile_fixture(snapshot=snapshot)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("unsafe snapshot path compiled")
+
+    def test_unsorted_snapshot_directories_are_refused(self) -> None:
+        snapshot = github_snapshot()
+        snapshot = replace(
+            snapshot,
+            directories=tuple(reversed(snapshot.directories)),
+        )
+        _, result = compile_fixture(snapshot=snapshot)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("unsorted snapshot directories compiled")
+
+    def test_unsorted_seed_inputs_are_refused(self) -> None:
+        store, seed_once = fixture_seed_once(
+            VerifiedBlobStore.empty(), "retain-apache-2.0"
+        )
+        _, result = compile_fixture(seed_once=tuple(reversed(seed_once)), blobs=store)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("unsorted seed inputs compiled")
+
+    def test_missing_seed_blob_is_refused(self) -> None:
+        store, seed_once = fixture_seed_once(
+            VerifiedBlobStore.empty(), "retain-apache-2.0"
+        )
+        missing = tuple(
+            replace(
+                seed,
+                content_id=ContentId.from_bytes(b"absent bytes"),
+            )
+            if seed.path.value == "README.md"
+            else seed
+            for seed in seed_once
+        )
+        _, result = compile_fixture(seed_once=missing, blobs=store)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.MISSING_BLOB
+            case Ok(_):
+                raise AssertionError("missing seed blob compiled")
+
+    def test_invalid_seed_mode_is_refused(self) -> None:
+        store, seed_once = fixture_seed_once(
+            VerifiedBlobStore.empty(), "retain-apache-2.0"
+        )
+        invalid = tuple(
+            replace(seed, mode=PosixMode(0o600))
+            if seed.path.value == "README.md"
+            else seed
+            for seed in seed_once
+        )
+        _, result = compile_fixture(seed_once=invalid, blobs=store)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("invalid seed mode compiled")
+
+    def test_missing_declared_seed_path_is_refused(self) -> None:
+        store, seed_once = fixture_seed_once(
+            VerifiedBlobStore.empty(), "retain-apache-2.0"
+        )
+        reduced = tuple(seed for seed in seed_once if seed.path.value != "LICENSE")
+        _, result = compile_fixture(seed_once=reduced, blobs=store)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("missing declared seed path compiled")
+
+    def test_retain_without_cleanup_contract_is_refused(self) -> None:
+        _, result = compile_fixture(
+            generation=GenerationPath.COPIER,
+            snapshot=fixture_copier_snapshot(),
+            cleanup=None,
+            snapshot_commit=None,
+            maintenance=RetainMaintenance(paths=()),
+        )
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_MAINTENANCE
+            case Ok(_):
+                raise AssertionError("retain without a cleanup contract compiled")
+
+    def test_provided_project_license_compiles_with_apache_preservation(self) -> None:
+        answers = fixture_answers(licensing_mode="provided-project-license")
+        store, seed_once = fixture_seed_once(
+            VerifiedBlobStore.empty(), "provided-project-license"
+        )
+        _, result = compile_fixture(answers=answers, seed_once=seed_once, blobs=store)
+        plan = get_plan(result)
+        paths: set[str] = set()
+        for operation in plan.ordered_operations:
+            if isinstance(operation, CreateTreeOperation):
+                paths.update(
+                    entry.path.value for entry in operation.planned_new.entries
+                )
+            else:
+                paths.add(operation.path.value)
+        assert "LICENSES/Apache-2.0.txt" in paths
+        match decode_manifest(plan.manifest_after.payload):
+            case Ok(decoded):
+                assert decoded.answers.licensing.content_sha256 == sha256_hex(
+                    LEGAL_CONTENTS["provided-project-license"]["LICENSE"]
+                )
+            case Err(error):
+                raise AssertionError(f"planned manifest is invalid: {error}")
+
+    def test_invalid_managed_kind_is_refused(self) -> None:
+        managed = tuple(
+            sorted(
+                (
+                    *fixture_managed(),
+                    ManagedFile(
+                        path=RepoPath("docs/extra.md"),
+                        kind=cast(Literal["text", "binary"], "other"),
+                        mode=PosixMode.FILE,
+                        content=b"x\n",
+                    ),
+                ),
+                key=lambda file: file.path.value.encode("utf-8"),
+            )
+        )
+        _, result = compile_fixture(managed=managed)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("invalid managed kind compiled")
+
+    def test_non_utf8_managed_content_is_refused(self) -> None:
+        managed = tuple(
+            sorted(
+                (
+                    *fixture_managed(),
+                    ManagedFile(
+                        path=RepoPath("docs/extra.md"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        content=b"\xff\xfe not utf8",
+                    ),
+                ),
+                key=lambda file: file.path.value.encode("utf-8"),
+            )
+        )
+        _, result = compile_fixture(managed=managed)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("non-UTF-8 managed content compiled")
+
+    def test_unsorted_managed_is_refused(self) -> None:
+        _, result = compile_fixture(managed=tuple(reversed(fixture_managed())))
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("unsorted managed compiled")
+
+    def test_unknown_slot_id_is_refused(self) -> None:
+        answers = replace(
+            fixture_answers(),
+            slots=MappingProxyType(
+                {
+                    **{
+                        rule.slot: SlotContent(mode="scaffold", content_sha256=None)
+                        for rule in SLOT_PLACEHOLDER_RULES
+                    },
+                    "unknown": SlotContent(mode="scaffold", content_sha256=None),
+                }
+            ),
+        )
+        _, result = compile_fixture(answers=answers)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("unknown slot id compiled")
+
+    def test_planned_file_below_an_observed_file_is_refused(self) -> None:
+        snapshot = fixture_copier_snapshot()
+        snapshot = _sorted_snapshot(
+            (*snapshot.files, observed_file(RepoPath("docs"), b"a file\n")),
+            snapshot.directories,
+        )
+        _, result = compile_fixture(
+            generation=GenerationPath.COPIER,
+            snapshot=snapshot,
+            cleanup=None,
+            snapshot_commit=None,
+        )
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("planned file below an observed file compiled")
+
+    def test_invalid_source_entries_are_refused(self) -> None:
+        entry = LifecycleSourceEntry(
+            path=RepoPath("scripts/bootstrap/render.py"),
+            kind="file",
+            mode=PosixMode.FILE,
+            sha256=sha256_hex(b"a"),
+        )
+        store, seed_once = fixture_seed_once(
+            VerifiedBlobStore.empty(), "retain-apache-2.0"
+        )
+        result = compile_initial_plan(
+            generation=GenerationPath.GITHUB,
+            target_identity=TARGET,
+            answers=fixture_answers(),
+            additions=ManifestAdditions(),
+            seed_once=seed_once,
+            managed=fixture_managed(),
+            blobs=store,
+            source_entries=(entry, entry),
+            snapshot_commit="0" * 40,
+            maintenance=CleanMaintenance(),
+            cleanup=fixture_cleanup(),
+            snapshot=github_snapshot(),
+        )
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_SOURCE_BASELINE
+            case Ok(_):
+                raise AssertionError("duplicate source entries compiled")
+
+    def test_invalid_manifest_values_are_refused(self) -> None:
+        additions = ManifestAdditions(settings=MappingProxyType({"Bad": {}}))
+        _, result = compile_fixture(additions=additions)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_MANIFEST
+            case Ok(_):
+                raise AssertionError("invalid manifest values compiled")
+
+    def test_operation_limits_are_enforced(self) -> None:
+        _, result = compile_fixture(limits=ResourceLimits(max_operations=4))
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.PLAN_LIMIT_EXCEEDED
+            case Ok(_):
+                raise AssertionError("over-limit plan compiled")
+
     def test_file_slot_rejects_marker_in_planned_bytes(self) -> None:
         marked_readme = b"<!-- agentic-template:placeholder:readme -->\n"
         answers = replace(
@@ -1101,6 +2325,23 @@ class TestCollisionsAndCleanup:
             case Ok(_):
                 raise AssertionError("case-colliding snapshot paths compiled")
 
+    def test_case_colliding_seed_paths_are_refused(self) -> None:
+        store, seed_once = fixture_seed_once(
+            VerifiedBlobStore.empty(), "retain-apache-2.0"
+        )
+        lowered = tuple(
+            replace(seed, path=RepoPath(seed.path.value.lower()))
+            if seed.path.value == "README.md"
+            else seed
+            for seed in seed_once
+        )
+        _, result = compile_fixture(seed_once=lowered, blobs=store)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("case-colliding seed paths compiled")
+
     def test_manifest_present_at_target_is_refused(self) -> None:
         snapshot = github_snapshot()
         snapshot = replace(
@@ -1166,6 +2407,15 @@ class TestPlanDigest:
                 assert decoded == receipt
             case Err(error):
                 raise AssertionError(f"receipt decode failed: {error}")
+        assert plan_receipt_digest(receipt) == plan_receipt_digest(decoded)
+
+    def test_copier_receipt_round_trip(self) -> None:
+        receipt = _copier_receipt()
+        match decode_receipt(encode_receipt(receipt)):
+            case Ok(decoded):
+                assert decoded == receipt
+            case Err(error):
+                raise AssertionError(f"copier receipt decode failed: {error}")
         assert plan_receipt_digest(receipt) == plan_receipt_digest(decoded)
 
     def test_receipt_contains_no_adopter_legal_or_generated_bytes(self) -> None:
@@ -1282,6 +2532,341 @@ class TestPlanDigest:
             build_receipt(github_plan())
         )
 
+    @pytest.mark.parametrize(
+        ("mutate"),
+        [
+            pytest.param(
+                lambda receipt: receipt.__setitem__("extra", 1),
+                id="extra top-level key",
+            ),
+            pytest.param(
+                lambda receipt: receipt.__setitem__("plan_schema", 2),
+                id="plan schema",
+            ),
+            pytest.param(
+                lambda receipt: receipt.__setitem__("operation_kind", "add"),
+                id="operation kind",
+            ),
+            pytest.param(
+                lambda receipt: receipt.__setitem__("target_binding", "zzz"),
+                id="target binding",
+            ),
+            pytest.param(
+                lambda receipt: receipt.__setitem__("generation_path", "other"),
+                id="generation path",
+            ),
+            pytest.param(
+                lambda receipt: receipt["source_after"].__setitem__("kind", "other"),
+                id="baseline kind",
+            ),
+            pytest.param(
+                lambda receipt: receipt["source_after"].__setitem__(
+                    "fingerprint", "zzz"
+                ),
+                id="baseline fingerprint",
+            ),
+            pytest.param(
+                lambda receipt: receipt["source_after"].__setitem__(
+                    "entries",
+                    [
+                        {
+                            "path": "..",
+                            "kind": "file",
+                            "mode": 420,
+                            "sha256": "0" * 64,
+                        }
+                    ],
+                ),
+                id="baseline entries unsafe path",
+            ),
+            pytest.param(
+                lambda receipt: receipt.__setitem__("manifest_before", "zzz"),
+                id="manifest before",
+            ),
+            pytest.param(
+                lambda receipt: receipt.__setitem__("manifest_after", None),
+                id="manifest after null",
+            ),
+            pytest.param(
+                lambda receipt: receipt["gate_specification"].pop(
+                    "artifact_verification"
+                ),
+                id="gate missing key",
+            ),
+            pytest.param(
+                lambda receipt: receipt["gate_specification"]["expected_placeholder"][
+                    0
+                ].__setitem__("severity", "urgent"),
+                id="gate severity",
+            ),
+            pytest.param(
+                lambda receipt: receipt["gate_specification"]["expected_placeholder"][
+                    0
+                ].__setitem__("subject_at", ".."),
+                id="gate subject path",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"][0].__setitem__("extra", 1),
+                id="operation extra key",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"][0].__setitem__("kind", "rewind"),
+                id="operation kind",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"][0].__setitem__(
+                    "planned_new", None
+                ),
+                id="create missing planned new",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"][0]["planned_new"].__setitem__(
+                    "content_id", "zzz"
+                ),
+                id="planned content id",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"][0]["planned_new"].__setitem__(
+                    "size", -1
+                ),
+                id="planned size",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"][0]["expected_old"].__setitem__(
+                    "mode", 0o7777 + 1
+                ),
+                id="observed mode out of domain",
+            ),
+            pytest.param(
+                _set_delete_planned_new,
+                id="delete with planned new",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(_receipt_with_tree_extra_key()),
+                id="tree planned new extra key",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(_receipt_with_tree_entry_extra_key()),
+                id="tree entry extra key",
+            ),
+            pytest.param(
+                _set_remove_empty_planned_new,
+                id="remove empty with planned new",
+            ),
+            pytest.param(
+                _set_remove_empty_bad_mode,
+                id="remove empty bad mode",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"][0].__setitem__(
+                    "expected_old", "x"
+                ),
+                id="expected old wrong type",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"][0].__setitem__(
+                    "planned_new", "x"
+                ),
+                id="planned new wrong type",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"][0].__setitem__(
+                    "path", "a" * 1100
+                ),
+                id="path beyond limits",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(_receipt_with_tree_expected_old()),
+                id="tree expected old not null",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(_receipt_with_tree_planned_new_type()),
+                id="tree planned new wrong type",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(_receipt_with_tree_entry_bad_mode()),
+                id="tree entry directory bad mode",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(_receipt_with_tree_entry_missing_key()),
+                id="tree entry missing key",
+            ),
+            pytest.param(
+                lambda receipt: receipt["gate_specification"].__setitem__(
+                    "operation", "other"
+                ),
+                id="gate operation",
+            ),
+            pytest.param(
+                lambda receipt: receipt["gate_specification"].__setitem__(
+                    "expected_placeholder", "x"
+                ),
+                id="gate placeholder not list",
+            ),
+            pytest.param(
+                lambda receipt: receipt.__setitem__("source_before", "x"),
+                id="source before wrong type",
+            ),
+            pytest.param(
+                lambda receipt: receipt["source_after"].__setitem__("entries", "x"),
+                id="baseline entries not list",
+            ),
+            pytest.param(
+                lambda receipt: receipt["source_after"]["entries"][0].pop("sha256"),
+                id="baseline entry missing key",
+            ),
+            pytest.param(
+                lambda receipt: receipt["source_after"]["entries"][0].__setitem__(
+                    "mode", 0o7777 + 1
+                ),
+                id="baseline entry bad mode",
+            ),
+            pytest.param(
+                lambda receipt: receipt["source_after"].__setitem__("kind", "copier"),
+                id="baseline kind copier with snapshot",
+            ),
+            pytest.param(
+                lambda receipt: receipt["source_after"]["entries"].__setitem__(0, "x"),
+                id="baseline entry not mapping",
+            ),
+            pytest.param(
+                lambda receipt: receipt["gate_specification"]["expected_placeholder"][
+                    0
+                ].__setitem__("subject_at", 5),
+                id="gate subject not string",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"][0].__setitem__("path", 5),
+                id="operation path not string",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"].__setitem__(0, "x"),
+                id="operation not mapping",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"][0]["expected_old"].__setitem__(
+                    "kind", "other"
+                ),
+                id="observed kind",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"][0]["expected_old"].__setitem__(
+                    "normalized_sha256", "zzz"
+                ),
+                id="observed normalized digest",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(_receipt_with_tree_entry_bad_digest()),
+                id="tree entry file bad digest",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"][0]["expected_old"].__setitem__(
+                    "extra", 1
+                ),
+                id="observed state extra key",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"][0]["expected_old"].__setitem__(
+                    "size", -1
+                ),
+                id="observed size",
+            ),
+            pytest.param(
+                lambda receipt: receipt.__setitem__("operations", "x"),
+                id="operations not list",
+            ),
+            pytest.param(
+                lambda receipt: receipt["operations"][0]["planned_new"].pop(
+                    "content_id"
+                ),
+                id="planned content id missing",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(_receipt_with_tree_extra_op_key()),
+                id="tree operation extra key",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(_receipt_with_tree_bad_root()),
+                id="tree root unsafe path",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(_receipt_with_tree_bad_sha()),
+                id="tree planned new bad sha",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(_receipt_with_tree_entry_not_mapping()),
+                id="tree entry not mapping",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(
+                    _receipt_with_tree_dir_entry_missing_mode()
+                ),
+                id="tree directory entry missing mode",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(
+                    _receipt_with_tree_file_entry_bad_path()
+                ),
+                id="tree file entry unsafe path",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(
+                    _receipt_with_tree_file_entry_missing_id()
+                ),
+                id="tree file entry missing content id",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(_receipt_with_remove_empty_extra_key()),
+                id="remove empty extra key",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(_receipt_with_remove_empty_bad_path()),
+                id="remove empty unsafe path",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(_receipt_with_remove_empty_old_type()),
+                id="remove empty expected old not mapping",
+            ),
+            pytest.param(
+                lambda receipt: receipt.update(
+                    _receipt_with_remove_empty_old_mode_type()
+                ),
+                id="remove empty expected old mode not int",
+            ),
+            pytest.param(
+                lambda receipt: receipt.__setitem__("source_after", None),
+                id="source after null",
+            ),
+        ],
+    )
+    def test_decode_rejects_malformed_receipts(
+        self, mutate: Callable[[dict[str, object]], object]
+    ) -> None:
+        receipt = build_receipt(github_plan())
+        mutate(receipt)
+        match decode_receipt(encode_receipt(receipt)):
+            case Err(error):
+                assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("malformed receipt decoded")
+
+    def test_decode_receipt_rejects_invalid_json_and_oversize(self) -> None:
+        match decode_receipt(b"{not json"):
+            case Err(error):
+                assert error.kind is ReceiptErrorKind.INVALID_JSON
+            case Ok(_):
+                raise AssertionError("invalid JSON receipt decoded")
+        match decode_receipt(b" " * (16 * 1024 * 1024 + 1)):
+            case Err(error):
+                assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("oversized receipt decoded")
+        match decode_receipt(b"[1]"):
+            case Err(error):
+                assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("non-object receipt decoded")
+
 
 class TestExpectedTarget:
     def test_expected_readiness_matches_predicted_placeholder_findings(self) -> None:
@@ -1374,6 +2959,90 @@ class TestExpectedTarget:
                 assert error.kind is PlanInvariantErrorKind.UNMATCHED_PRECONDITION
             case Ok(_):
                 raise AssertionError("changed snapshot overlaid")
+
+    def test_apply_plan_rejects_a_missing_removal_target(self) -> None:
+        plan = github_plan()
+        changed = github_snapshot()
+        changed = replace(
+            changed,
+            directories=tuple(
+                entry for entry in changed.directories if entry.path.value != "tests"
+            ),
+        )
+        match apply_plan(changed, plan):
+            case Err(error):
+                assert error.kind is PlanInvariantErrorKind.UNMATCHED_PRECONDITION
+            case Ok(_):
+                raise AssertionError("missing removal target overlaid")
+
+    def test_apply_plan_skips_absent_observed_files(self) -> None:
+        snapshot = github_snapshot()
+        absent = _sorted_snapshot(
+            (
+                *snapshot.files,
+                ObservedFileEntry(
+                    path=RepoPath("docs/absent.md"),
+                    state=FileState(None, None),
+                    content=b"",
+                ),
+            ),
+            snapshot.directories,
+        )
+        plan = get_plan(compile_fixture(snapshot=absent)[1])
+        match apply_plan(absent, plan):
+            case Ok(expected):
+                assert all(
+                    file.path.value != "docs/absent.md" for file in expected.files
+                )
+            case Err(error):
+                raise AssertionError(f"absent observed file broke the overlay: {error}")
+
+    def test_slot_readiness_skips_missing_and_invalid_text_files(self) -> None:
+        plan = github_plan()
+        match apply_plan(github_snapshot(), plan):
+            case Ok(expected):
+                pass
+            case Err(error):
+                raise AssertionError(f"apply_plan failed: {error}")
+        without_readme = replace(
+            expected,
+            files=tuple(
+                file for file in expected.files if file.path.value != "README.md"
+            ),
+        )
+        assert (
+            evaluate_slot_readiness(without_readme).findings
+            == evaluate_slot_readiness(expected).findings
+        )
+        invalid_utf8 = replace(
+            expected,
+            files=tuple(
+                replace(file, content=b"\xff\xfe not utf8")
+                if file.path.value == "README.md"
+                else file
+                for file in expected.files
+            ),
+        )
+        assert (
+            evaluate_slot_readiness(invalid_utf8).findings
+            == evaluate_slot_readiness(expected).findings
+        )
+        marked = replace(
+            expected,
+            files=tuple(
+                replace(
+                    file,
+                    content=b"<!-- agentic-template:placeholder:readme -->\n",
+                )
+                if file.path.value == "README.md"
+                else file
+                for file in expected.files
+            ),
+        )
+        assert any(
+            finding.code == "READINESS_README_MARKER"
+            for finding in evaluate_slot_readiness(marked).findings
+        )
 
     def test_apply_plan_rejects_a_duplicate_create_over_a_tree_entry(self) -> None:
         snapshot = fixture_copier_snapshot()

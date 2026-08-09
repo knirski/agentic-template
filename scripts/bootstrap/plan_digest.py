@@ -126,6 +126,7 @@ def _tree_entry_document(
         return {"kind": "directory", "path": entry.path.value, "mode": entry.mode.value}
     return {
         "kind": "file",
+        "file_kind": entry.identity.kind,
         "path": entry.path.value,
         "mode": entry.mode.value,
         "normalized_sha256": entry.identity.normalized_sha256,
@@ -508,6 +509,7 @@ def _decode_tree_entry(value: object) -> Result[None, ReceiptError]:
     if kind == "file":
         if set(value) != {
             "kind",
+            "file_kind",
             "path",
             "mode",
             "normalized_sha256",
@@ -521,13 +523,24 @@ def _decode_tree_entry(value: object) -> Result[None, ReceiptError]:
                 return Err(error)
             case Ok(_):
                 pass
-        match _decode_identity(value, "operation.entries"):
+        file_kind = value.get("file_kind")
+        if file_kind not in ("text", "binary"):
+            return Err(_receipt_error("operation.entries"))
+        match _decode_identity(
+            {
+                "kind": file_kind,
+                "mode": value["mode"],
+                "normalized_sha256": value["normalized_sha256"],
+                "raw_sha256": value["raw_sha256"],
+                "size": value["size"],
+                "content_id": value["content_id"],
+            },
+            "operation.entries",
+        ):
             case Err(error):
                 return Err(error)
             case Ok(_):
                 pass
-        if not _is_digest(value.get("content_id")):
-            return Err(_receipt_error("operation.entries"))
         return Ok(None)
     return Err(_receipt_error("operation.entries"))
 
