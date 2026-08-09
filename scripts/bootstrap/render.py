@@ -208,6 +208,9 @@ class CoreDefinition(StrictModel):
         ):
             if len(set(values)) != len(values):
                 raise ValueError(f"core {label} ids must be unique")
+        artifact_paths = [artifact.path for artifact in self.artifacts]
+        if len(set(artifact_paths)) != len(artifact_paths):
+            raise ValueError("core artifact paths must be unique")
         artifact_ids = {artifact.id for artifact in self.artifacts}
         for slot in self.slots:
             if slot.owner_artifact not in artifact_ids:
@@ -240,6 +243,9 @@ class CapabilityDefinition(StrictModel):
         ):
             if len(set(values)) != len(values):
                 raise ValueError(f"capability {label} ids must be unique")
+        artifact_paths = [artifact.path for artifact in self.artifacts]
+        if len(set(artifact_paths)) != len(artifact_paths):
+            raise ValueError("capability artifact paths must be unique")
         return self
 
 
@@ -782,8 +788,7 @@ def render_managed(
     seen_paths: dict[str, str] = {}
     for owner, artifacts in owner_pairs:
         for artifact in artifacts:
-            previous = seen_paths.get(artifact.path)
-            if previous is not None and previous != owner:
+            if artifact.path in seen_paths:
                 return Err(
                     RenderError(RenderErrorKind.OWNERSHIP_COLLISION, "", artifact.path)
                 )

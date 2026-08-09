@@ -1483,6 +1483,24 @@ def test_core_and_capability_definitions_reject_missing_and_duplicate_members() 
             id="dups",
             artifacts=(core.artifacts[0], core.artifacts[0]),
         )
+    duplicate_path = ArtifactDefinition(
+        id="other",
+        path=core.artifacts[0].path,
+        kind="text",
+        install_mode=0o644,
+        template_blob=cast(ContentId, "a" * 64),
+    )
+    with pytest.raises(ValidationError):
+        CoreDefinition(
+            artifacts=(core.artifacts[0], duplicate_path),
+            slots=core.slots,
+            contributions=core.contributions,
+        )
+    with pytest.raises(ValidationError):
+        CapabilityDefinition(
+            id="dup-paths",
+            artifacts=(core.artifacts[0], duplicate_path),
+        )
 
 
 def test_toml_encoder_escapes_control_characters() -> None:
