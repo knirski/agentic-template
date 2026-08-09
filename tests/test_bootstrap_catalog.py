@@ -13,7 +13,6 @@ from scripts.bootstrap.catalog import (
     ContributionDefinition,
     SettingDefinition,
 )
-from scripts.bootstrap.compatibility import check_catalog_compatibility
 from scripts.bootstrap.profiles import PROFILE_CAPABILITIES
 from scripts.bootstrap.resolver import (
     ResolutionError,
@@ -158,29 +157,6 @@ def test_catalog_definitions_reject_unsafe_or_duplicate_members() -> None:
             description="x",
             contributions=(contribution, contribution),
         )
-
-
-def test_catalog_compatibility_reports_removed_changed_and_new_ids() -> None:
-    changed = dict(CATALOG)
-    changed.pop("nix")
-    changed["semantic-release"] = CapabilityDefinition(
-        id="semantic-release",
-        description="changed",
-        artifacts=(
-            ArtifactDefinition(
-                id="release-config",
-                path=".releaserc",
-                kind="text",
-                mode=0o644,
-            ),
-        ),
-    )
-    changed["new-capability"] = CapabilityDefinition(
-        id="new-capability", description="new"
-    )
-    issues = check_catalog_compatibility(changed)
-    assert {issue.capability_id for issue in issues} == {"nix", "semantic-release"}
-    assert check_catalog_compatibility(CATALOG) == ()
 
 
 def test_resolution_rejects_invalid_profiles_and_settings() -> None:

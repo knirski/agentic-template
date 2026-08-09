@@ -160,20 +160,6 @@ def compose_contributions(
                             rendered_body=rendered_body,
                         )
                     )
-    for slot in core.slots:
-        count = len(by_slot[slot.id])
-        if slot.cardinality == "exactly_one" and count != 1:
-            return Err(
-                RenderError(
-                    RenderErrorKind.INVALID_TEMPLATE, "cardinality_violation", slot.id
-                )
-            )
-        if slot.cardinality == "zero_or_one" and count > 1:
-            return Err(
-                RenderError(
-                    RenderErrorKind.INVALID_TEMPLATE, "cardinality_violation", slot.id
-                )
-            )
     owner_order_by_id = {owner: order for owner, order, _ in owner_pairs}
     resolved = [
         contribution

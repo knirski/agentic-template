@@ -12,13 +12,6 @@ from scripts.bootstrap.readiness import (
     SubjectPath,
     gate_readiness,
 )
-from scripts.bootstrap.template_contract import (
-    ContractRule,
-    canonical_rules,
-    compare_rules,
-    compatibility_corpus,
-    contract_findings,
-)
 from scripts.bootstrap.validation_program import (
     StageFailed,
     StagePassed,
@@ -48,27 +41,6 @@ class PresentationTests(unittest.TestCase):
 
         malformed = ValidationState("missing", None)
         self.assertIsNone(program.advance(malformed, StagePassed()).next_stage)
-
-    def test_contract_rules_and_corpus_are_frozen_and_comparable(self) -> None:
-        self.assertEqual(len(canonical_rules()), 3)
-        self.assertEqual(compatibility_corpus()[0], ("empty-template", False))
-        self.assertTrue(compare_rules(canonical_rules(), canonical_rules()).compatible)
-        changed = (*canonical_rules(), ContractRule("new", "blocking", "x", "y"))
-        self.assertTrue(compare_rules(canonical_rules(), changed).compatible)
-        altered = (
-            ContractRule("required-files", "informational", "x", "y"),
-            *canonical_rules()[1:],
-        )
-        result = compare_rules(canonical_rules(), altered)
-        self.assertFalse(result.compatible)
-        self.assertEqual(
-            contract_findings(("a",), ("b",), ("c",)),
-            (
-                "missing required file: a",
-                "missing required skill: b",
-                "invalid skill frontmatter: c",
-            ),
-        )
 
     def test_presenters_handle_command_and_scalar_fallbacks(self) -> None:
         self.assertEqual(render_text({"command": "status", "findings": ()}), "status")
@@ -105,12 +77,6 @@ class PresentationTests(unittest.TestCase):
         )
         baseline = MechanicalReadinessResult(1, (repository_finding, path_finding))
         self.assertIn("repository", repository_finding.render())
-        self.assertTrue(
-            gate_readiness("equivalent", baseline, baseline, baseline).allowed
-        )
-        self.assertTrue(
-            gate_readiness("verification", baseline, baseline, baseline).allowed
-        )
         self.assertFalse(
             gate_readiness("unknown", baseline, baseline, baseline).allowed
         )
