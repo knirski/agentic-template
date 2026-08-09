@@ -40,6 +40,7 @@ from scripts.bootstrap.render import (
     SlotContent,
     SlotDefinition,
     SubstitutionDefinition,
+    _remove_marker_line,
     apply_substitutions,
     derive_managed_inventory,
     encode_scalar,
@@ -1764,6 +1765,23 @@ def test_optional_section_markers_at_line_and_file_boundaries() -> None:
     assert rendered["pyproject.toml"] == (
         b"[project]\nname = x\n[tool.ruff]\nstrict = true\n"
     )
+    store, indented_id = intern(
+        store,
+        b"[project]\n  agentic-template:if:strict:begin\n[tool.ruff]\n"
+        b"strict = true\n  agentic-template:if:strict:end\n",
+    )
+    core = render_input.core.model_copy(
+        update={
+            "artifacts": (
+                render_input.core.artifacts[0].model_copy(
+                    update={"template_blob": indented_id}
+                ),
+                *render_input.core.artifacts[1:],
+            )
+        }
+    )
+    rendered = render_bytes(replace(render_input, core=core), store)
+    assert rendered["pyproject.toml"] == b"[project]\n[tool.ruff]\nstrict = true\n"
     store, inline_id = intern(
         store,
         b"prefix agentic-template:if:strict:begin mid "
@@ -1797,6 +1815,14 @@ def test_optional_section_markers_at_line_and_file_boundaries() -> None:
     )
     rendered = render_bytes(replace(render_input, core=core), store)
     assert rendered["pyproject.toml"] == b"[project]\nname = x\n"
+
+
+def test_remove_marker_line_is_total_and_line_aware() -> None:
+    assert _remove_marker_line(b"abc", b"missing") == b"abc"
+    assert _remove_marker_line(b"  marker\nrest\n", b"marker") == b"rest\n"
+    assert _remove_marker_line(b"  marker", b"marker") == b""
+    assert _remove_marker_line(b"prefix marker\n", b"marker") == b"prefix "
+    assert _remove_marker_line(b"prefix marker", b"marker") == b"prefix "
 
 
 def test_optional_section_marker_unknown_name_is_rejected() -> None:

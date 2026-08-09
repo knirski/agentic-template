@@ -516,7 +516,17 @@ def derive_managed_inventory(managed: ManagedRender) -> ManagedInventory:
 def _remove_marker_line(content: bytes, marker: bytes) -> bytes:
     """Remove a whole-line marker plus its line's newline."""
     start = content.find(marker)
+    if start < 0:
+        return content
     end = start + len(marker)
+    line_start = content.rfind(b"\n", 0, start) + 1
+    if not content[line_start:start].strip():
+        line_end = content.find(b"\n", end)
+        if line_end < 0:
+            line_end = len(content)
+        else:
+            line_end += 1
+        return content[:line_start] + content[line_end:]
     if content[end : end + 1] == b"\n":
         return content[:start] + content[end + 1 :]
     if start > 0 and content[start - 1 : start] == b"\n":
