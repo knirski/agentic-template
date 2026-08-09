@@ -58,8 +58,8 @@ def _validate_entries(
             case "directory":
                 if entry.mode != PosixMode.DIRECTORY:
                     return Err(_source_error(entry.path.value))
-            case _:
-                return assert_never(entry.kind)
+            case _:  # pragma: no cover
+                return assert_never(entry.kind)  # pragma: no cover
         if _SHA256.fullmatch(entry.sha256) is None:
             return Err(_source_error(entry.path.value))
     return Ok(_sorted_entries(entries))
@@ -136,5 +136,5 @@ def derive_source_baseline(
                     entries=sorted_entries,
                 )
             )
-        case _:
-            return assert_never(generation)
+        case _:  # pragma: no cover
+            return assert_never(generation)  # pragma: no cover

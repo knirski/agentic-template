@@ -8,7 +8,7 @@ import time
 from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from types import MappingProxyType
-from typing import cast, override
+from typing import Literal, cast, override
 
 import pytest
 from pydantic import ValidationError
@@ -30,6 +30,7 @@ from scripts.bootstrap.render import (
     DocumentFragmentDefinition,
     LicensingInfo,
     MaintenanceInfo,
+    MaintenanceSource,
     ProfileInfo,
     ProjectInfo,
     ProjectSource,
@@ -39,6 +40,7 @@ from scripts.bootstrap.render import (
     SlotContent,
     SlotDefinition,
     SubstitutionDefinition,
+    apply_substitutions,
     derive_managed_inventory,
     encode_scalar,
     render_managed,
@@ -1383,3 +1385,605 @@ def test_contract_error_is_used_for_source_baseline_failures() -> None:
             assert error.kind is ContractErrorKind.SOURCE_CONTRACT_INVALID
         case Ok(_):
             raise AssertionError("expected a source-contract failure")
+
+
+def test_source_baseline_rejects_invalid_kind_and_file_modes() -> None:
+    match derive_source_baseline(
+        GenerationPath.GITHUB,
+        (
+            LifecycleSourceEntry(
+                path=RepoPath("a.txt"),
+                kind=cast(Literal["file", "directory"], "weird"),
+                mode=PosixMode.FILE,
+                sha256="a" * 64,
+            ),
+        ),
+        snapshot_commit="abc",
+    ):
+        case Err(error):
+            assert error.kind is ContractErrorKind.SOURCE_CONTRACT_INVALID
+        case Ok(_):
+            raise AssertionError("expected a kind failure")
+    match derive_source_baseline(
+        GenerationPath.GITHUB,
+        (
+            LifecycleSourceEntry(
+                path=RepoPath("a.txt"),
+                kind="file",
+                mode=PosixMode(0o777),
+                sha256="a" * 64,
+            ),
+        ),
+        snapshot_commit="abc",
+    ):
+        case Err(error):
+            assert error.kind is ContractErrorKind.SOURCE_CONTRACT_INVALID
+        case Ok(_):
+            raise AssertionError("expected a mode failure")
+
+
+def test_content_id_accepts_plain_hex_string() -> None:
+    artifact = ArtifactDefinition(
+        id="hex-blob",
+        path="x.txt",
+        kind="text",
+        install_mode=0o644,
+        template_blob=cast(ContentId, "0" * 64),
+    )
+    assert artifact.template_blob == ContentId("0" * 64)
+
+
+def test_artifact_definition_rejects_unsafe_path_and_duplicate_substitutions() -> None:
+    with pytest.raises(ValidationError):
+        ArtifactDefinition(
+            id="unsafe",
+            path="../unsafe",
+            kind="text",
+            install_mode=0o644,
+            template_blob=cast(ContentId, "a" * 64),
+        )
+    substitution = SubstitutionDefinition(
+        name="value", source=ProjectSource(kind="project", key="name")
+    )
+    with pytest.raises(ValidationError):
+        ArtifactDefinition(
+            id="dups",
+            path="x.txt",
+            kind="text",
+            install_mode=0o644,
+            template_blob=cast(ContentId, "a" * 64),
+            substitutions=(substitution, substitution),
+        )
+
+
+def test_core_and_capability_definitions_reject_missing_and_duplicate_members() -> None:
+    _store, content_ids = fixture_blobs()
+    core = fixture_core(content_ids)
+    with pytest.raises(ValidationError):
+        CoreDefinition(
+            artifacts=core.artifacts,
+            slots=core.slots,
+            contributions=(
+                ContributionDefinition(
+                    id="ghost",
+                    slot="ghost-slot",
+                    order=0,
+                    kind="yaml",
+                    body_blob=content_ids["core-job"],
+                ),
+            ),
+        )
+    with pytest.raises(ValidationError):
+        CapabilityDefinition(
+            id="dups",
+            artifacts=(core.artifacts[0], core.artifacts[0]),
+        )
+
+
+def test_toml_encoder_escapes_control_characters() -> None:
+    assert encode_scalar("a\\b", "toml") == '"a\\\\b"'
+    assert encode_scalar("line\nbreak", "toml") == '"line\\nbreak"'
+    assert encode_scalar("tab\there", "toml") == '"tab\\there"'
+    assert encode_scalar("carriage\rreturn", "toml") == '"carriage\\rreturn"'
+    assert encode_scalar("bell\x07", "toml") == '"bell\\u0007"'
+
+
+def test_missing_substitution_value_is_rejected() -> None:
+    store, content_ids = fixture_blobs()
+    store, broken_body = intern(
+        store, b"  broken:\n    value: agentic-template:value:ghost\n"
+    )
+    definitions = fixture_capabilities(content_ids)
+    definitions["semantic-release"] = definitions["semantic-release"].model_copy(
+        update={
+            "contributions": (
+                *definitions["semantic-release"].contributions,
+                ContributionDefinition(
+                    id="broken",
+                    slot="ci-jobs",
+                    order=0,
+                    kind="yaml",
+                    body_blob=broken_body,
+                    substitutions=(
+                        SubstitutionDefinition(
+                            name="ghost",
+                            source=SettingSource(
+                                kind="setting",
+                                capability="semantic-release",
+                                setting="ghost",
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        }
+    )
+    match compose_contributions(
+        fixture_core(content_ids),
+        definitions,
+        ("semantic-release",),
+        fixture_settings(),
+        PROJECT,
+        MAINTENANCE,
+        store,
+    ):
+        case Err(error):
+            assert error.reason == "missing_substitution_value"
+        case Ok(_):
+            raise AssertionError("expected a missing-substitution failure")
+
+
+def test_invalid_utf8_contribution_body_is_rejected() -> None:
+    store, content_ids = fixture_blobs()
+    store, invalid_id = intern(store, b"\xff\xfe binary body")
+    core = fixture_core(content_ids).model_copy(
+        update={
+            "contributions": (
+                fixture_core(content_ids)
+                .contributions[0]
+                .model_copy(update={"body_blob": invalid_id}),
+            )
+        }
+    )
+    match compose_contributions(
+        core,
+        fixture_capabilities(content_ids),
+        ("semantic-release",),
+        fixture_settings(),
+        PROJECT,
+        MAINTENANCE,
+        store,
+    ):
+        case Err(error):
+            assert error.reason == "body_encoding"
+        case Ok(_):
+            raise AssertionError("expected a body-encoding failure")
+
+
+def test_zero_or_one_cardinality_violation_is_rejected() -> None:
+    store, content_ids = fixture_blobs()
+    core = fixture_core(content_ids).model_copy(
+        update={
+            "slots": (
+                fixture_core(content_ids).slots[0],
+                fixture_core(content_ids)
+                .slots[1]
+                .model_copy(update={"cardinality": "zero_or_one"}),
+            )
+        }
+    )
+    definitions = fixture_capabilities(content_ids)
+    definitions["semantic-release"] = definitions["semantic-release"].model_copy(
+        update={
+            "contributions": (
+                ContributionDefinition(
+                    id="first",
+                    slot="release-job",
+                    order=0,
+                    kind="yaml",
+                    body_blob=content_ids["extra-job"],
+                ),
+                ContributionDefinition(
+                    id="second",
+                    slot="release-job",
+                    order=1,
+                    kind="yaml",
+                    body_blob=content_ids["audit-job"],
+                ),
+            )
+        }
+    )
+    match compose_contributions(
+        core,
+        definitions,
+        ("semantic-release",),
+        fixture_settings(),
+        PROJECT,
+        MAINTENANCE,
+        store,
+    ):
+        case Err(error):
+            assert error.reason == "cardinality_violation"
+        case Ok(_):
+            raise AssertionError("expected a cardinality failure")
+
+
+def test_composition_rejects_missing_definition() -> None:
+    store, content_ids = fixture_blobs()
+    match compose_contributions(
+        fixture_core(content_ids),
+        fixture_capabilities(content_ids),
+        ("missing-cap",),
+        fixture_settings(),
+        PROJECT,
+        MAINTENANCE,
+        store,
+    ):
+        case Err(error):
+            assert error.reason == "missing_capability_definition"
+        case Ok(_):
+            raise AssertionError("expected a missing-definition failure")
+
+
+def test_document_composition_rejects_reserved_owner_and_missing_definition() -> None:
+    store, content_ids = fixture_blobs()
+    core = fixture_core(content_ids)
+    definitions = fixture_capabilities(content_ids)
+    match compose_document_bodies(
+        core,
+        definitions,
+        ("core",),
+        fixture_settings(),
+        PROJECT,
+        MAINTENANCE,
+        store,
+    ):
+        case Err(error):
+            assert error.reason == "reserved_owner"
+        case Ok(_):
+            raise AssertionError("expected a reserved-owner failure")
+    match compose_document_bodies(
+        core,
+        definitions,
+        ("missing-cap",),
+        fixture_settings(),
+        PROJECT,
+        MAINTENANCE,
+        store,
+    ):
+        case Err(error):
+            assert error.reason == "missing_capability_definition"
+        case Ok(_):
+            raise AssertionError("expected a missing-definition failure")
+
+
+def test_document_fragment_substitution_failures_are_rejected() -> None:
+    store, content_ids = fixture_blobs()
+    store, invalid_id = intern(store, b"\xff\xfe fragment")
+    definitions = fixture_capabilities(content_ids)
+    definitions["semantic-release"] = definitions["semantic-release"].model_copy(
+        update={
+            "document_fragments": (
+                DocumentFragmentDefinition(
+                    id="broken",
+                    document="docs/capabilities.md",
+                    order=0,
+                    body_blob=content_ids["doc-fragment"],
+                ),
+            )
+        }
+    )
+    match compose_document_bodies(
+        fixture_core(content_ids),
+        definitions,
+        ("semantic-release",),
+        fixture_settings(),
+        PROJECT,
+        MAINTENANCE,
+        store,
+    ):
+        case Err(error):
+            assert error.reason == "unknown_substitution"
+        case Ok(_):
+            raise AssertionError("expected an unknown-substitution failure")
+    definitions["semantic-release"] = definitions["semantic-release"].model_copy(
+        update={
+            "document_fragments": (
+                DocumentFragmentDefinition(
+                    id="broken",
+                    document="docs/capabilities.md",
+                    order=0,
+                    body_blob=invalid_id,
+                ),
+            )
+        }
+    )
+    match compose_document_bodies(
+        fixture_core(content_ids),
+        definitions,
+        ("semantic-release",),
+        fixture_settings(),
+        PROJECT,
+        MAINTENANCE,
+        store,
+    ):
+        case Err(error):
+            assert error.reason == "body_encoding"
+        case Ok(_):
+            raise AssertionError("expected a body-encoding failure")
+
+
+def test_render_input_rejects_invalid_shapes() -> None:
+    store, content_ids = fixture_blobs()
+    render_input = make_render_input(store, content_ids)
+    with pytest.raises(ValueError, match="generation_path"):
+        replace(render_input, generation_path=cast(GenerationPath, "github"))
+    with pytest.raises(ValueError, match="project name"):
+        replace(
+            render_input, project=ProjectInfo(name="bad name", default_branch="main")
+        )
+    with pytest.raises(ValueError, match="licensing mode"):
+        replace(
+            render_input, licensing=LicensingInfo(mode="other", content_sha256=None)
+        )
+    with pytest.raises(ValueError, match="capability id"):
+        replace(render_input, effective=("Bad-ID",))
+    with pytest.raises(ValueError, match="slot mode"):
+        replace(
+            render_input,
+            slots=MappingProxyType(
+                {"readme": SlotContent(mode="other", content_sha256=None)}
+            ),
+        )
+    with pytest.raises(ValueError, match="document path"):
+        replace(
+            render_input,
+            documents=MappingProxyType({RepoPath("../x.md"): ("body",)}),
+        )
+
+
+def test_optional_section_markers_at_line_and_file_boundaries() -> None:
+    store, content_ids = fixture_blobs()
+    store, eof_id = intern(
+        store,
+        b"[project]\nname = x\nagentic-template:if:strict:begin\n"
+        b"[tool.ruff]\nstrict = true\nagentic-template:if:strict:end",
+    )
+    render_input = make_render_input(store, content_ids)
+    core = render_input.core.model_copy(
+        update={
+            "artifacts": (
+                render_input.core.artifacts[0].model_copy(
+                    update={"template_blob": eof_id}
+                ),
+                *render_input.core.artifacts[1:],
+            )
+        }
+    )
+    rendered = render_bytes(replace(render_input, core=core), store)
+    assert rendered["pyproject.toml"] == (
+        b"[project]\nname = x\n[tool.ruff]\nstrict = true\n"
+    )
+    store, inline_id = intern(
+        store,
+        b"prefix agentic-template:if:strict:begin mid "
+        b"agentic-template:if:strict:end suffix",
+    )
+    core = render_input.core.model_copy(
+        update={
+            "artifacts": (
+                render_input.core.artifacts[0].model_copy(
+                    update={"template_blob": inline_id}
+                ),
+                *render_input.core.artifacts[1:],
+            )
+        }
+    )
+    rendered = render_bytes(replace(render_input, core=core), store)
+    assert rendered["pyproject.toml"] == b"prefix  mid  suffix\n"
+    disabled = MappingProxyType(
+        {"semantic-release": {"channel": "next", "strict": False}}
+    )
+    render_input = make_render_input(store, content_ids, settings=disabled)
+    core = render_input.core.model_copy(
+        update={
+            "artifacts": (
+                render_input.core.artifacts[0].model_copy(
+                    update={"template_blob": eof_id}
+                ),
+                *render_input.core.artifacts[1:],
+            )
+        }
+    )
+    rendered = render_bytes(replace(render_input, core=core), store)
+    assert rendered["pyproject.toml"] == b"[project]\nname = x\n"
+
+
+def test_optional_section_marker_unknown_name_is_rejected() -> None:
+    store, content_ids = fixture_blobs()
+    store, template_id = intern(
+        store,
+        b"[project]\nagentic-template:if:ghost:begin\nx\nagentic-template:if:ghost:end\n",
+    )
+    render_input = make_render_input(store, content_ids)
+    core = render_input.core.model_copy(
+        update={
+            "artifacts": (
+                render_input.core.artifacts[0].model_copy(
+                    update={"template_blob": template_id}
+                ),
+                *render_input.core.artifacts[1:],
+            )
+        }
+    )
+    match render_managed(replace(render_input, core=core), store):
+        case Err(error):
+            assert error.reason == "unknown_substitution"
+        case Ok(_):
+            raise AssertionError("expected an unknown-section failure")
+
+
+def test_optional_section_end_without_begin_is_rejected() -> None:
+    store, content_ids = fixture_blobs()
+    store, template_id = intern(store, b"[project]\nagentic-template:if:strict:end\n")
+    render_input = make_render_input(store, content_ids)
+    core = render_input.core.model_copy(
+        update={
+            "artifacts": (
+                render_input.core.artifacts[0].model_copy(
+                    update={"template_blob": template_id}
+                ),
+                *render_input.core.artifacts[1:],
+            )
+        }
+    )
+    match render_managed(replace(render_input, core=core), store):
+        case Err(error):
+            assert error.reason == "unbalanced_optional_section"
+        case Ok(_):
+            raise AssertionError("expected an unbalanced-section failure")
+
+
+def test_optional_section_mismatched_names_are_rejected() -> None:
+    store, content_ids = fixture_blobs()
+    store, template_id = intern(
+        store,
+        b"[project]\nagentic-template:if:strict:begin\nagentic-template:if:other:end\n",
+    )
+    render_input = make_render_input(store, content_ids)
+    core = render_input.core.model_copy(
+        update={
+            "artifacts": (
+                render_input.core.artifacts[0].model_copy(
+                    update={
+                        "template_blob": template_id,
+                        "substitutions": (
+                            *render_input.core.artifacts[0].substitutions,
+                            SubstitutionDefinition(
+                                name="other",
+                                source=ProjectSource(kind="project", key="name"),
+                            ),
+                        ),
+                    }
+                ),
+                *render_input.core.artifacts[1:],
+            )
+        }
+    )
+    match render_managed(replace(render_input, core=core), store):
+        case Err(error):
+            assert error.reason == "unbalanced_optional_section"
+        case Ok(_):
+            raise AssertionError("expected a mismatched-section failure")
+
+
+def test_maintenance_substitutions_render_retained_paths() -> None:
+    result = apply_substitutions(
+        b"status = agentic-template:value:status\n"
+        b"retained = agentic-template:value:kept\n",
+        (
+            SubstitutionDefinition(
+                name="status",
+                source=MaintenanceSource(kind="maintenance", key="status"),
+            ),
+            SubstitutionDefinition(
+                name="kept",
+                source=MaintenanceSource(kind="maintenance", key="retained_paths"),
+            ),
+        ),
+        context="markdown",
+        settings=fixture_settings(),
+        project=PROJECT,
+        maintenance=MaintenanceInfo(
+            status="retained",
+            retained_paths=(RepoPath("a.txt"), RepoPath("b/c.txt")),
+        ),
+    )
+    match result:
+        case Ok(rendered):
+            assert rendered == b"status = retained\nretained = a.txt\nb/c.txt\n"
+        case Err(error):
+            raise AssertionError(f"unexpected substitution failure: {error}")
+
+
+def test_optional_section_missing_substitution_value_is_rejected() -> None:
+    store, content_ids = fixture_blobs()
+    store, template_id = intern(
+        store, b"agentic-template:if:ghost:begin\nx\nagentic-template:if:ghost:end\n"
+    )
+    render_input = make_render_input(store, content_ids)
+    core = render_input.core.model_copy(
+        update={
+            "artifacts": (
+                render_input.core.artifacts[0].model_copy(
+                    update={
+                        "template_blob": template_id,
+                        "substitutions": (
+                            *render_input.core.artifacts[0].substitutions,
+                            SubstitutionDefinition(
+                                name="ghost",
+                                source=SettingSource(
+                                    kind="setting",
+                                    capability="semantic-release",
+                                    setting="ghost",
+                                ),
+                            ),
+                        ),
+                    }
+                ),
+                *render_input.core.artifacts[1:],
+            )
+        }
+    )
+    match render_managed(replace(render_input, core=core), store):
+        case Err(error):
+            assert error.reason == "missing_substitution_value"
+        case Ok(_):
+            raise AssertionError("expected a missing-substitution failure")
+
+
+def test_value_marker_without_declared_context_is_rejected() -> None:
+    store, content_ids = fixture_blobs()
+    store, template_id = intern(store, b"name = agentic-template:value:anything\n")
+    render_input = make_render_input(store, content_ids)
+    core = render_input.core.model_copy(
+        update={
+            "artifacts": (
+                render_input.core.artifacts[0].model_copy(
+                    update={
+                        "template_blob": template_id,
+                        "substitutions": (),
+                        "context": None,
+                    }
+                ),
+                *render_input.core.artifacts[1:],
+            )
+        }
+    )
+    match render_managed(replace(render_input, core=core), store):
+        case Err(error):
+            assert error.reason == "missing_artifact_context"
+        case Ok(_):
+            raise AssertionError("expected a context failure")
+
+
+def test_invalid_utf8_text_artifact_is_rejected() -> None:
+    store, content_ids = fixture_blobs()
+    store, invalid_id = intern(store, b"[project]\nname = \xff\xfe\n")
+    render_input = make_render_input(store, content_ids)
+    core = render_input.core.model_copy(
+        update={
+            "artifacts": (
+                render_input.core.artifacts[0].model_copy(
+                    update={"template_blob": invalid_id, "substitutions": ()}
+                ),
+                *render_input.core.artifacts[1:],
+            )
+        }
+    )
+    match render_managed(replace(render_input, core=core), store):
+        case Err(error):
+            assert error.kind is RenderErrorKind.INVALID_TEMPLATE
+            assert error.reason == "text_artifact_encoding"
+        case Ok(_):
+            raise AssertionError("expected a text-encoding failure")
