@@ -1,6 +1,6 @@
 # Deterministic Project Bootstrap with Capability Profiles
 
-**Status:** Revision 12, assembled for owner approval
+**Status:** Revision 15, assembled for owner approval
 **Date:** 2026-08-05
 **Planning mode:** Spec-backed Plan
 **Supersedes:** earlier discovery and revision drafts, consolidated into this document and removed
@@ -254,6 +254,10 @@ permissions, and allowed declared source-only steps.
 ### Correction in revision 14
 
 | Nix remained a required source-maintainer dependency after the generated baseline was made portable | The repository source and its CI use uv, Python 3.14, and actionlint directly. Nix, flakes, Cachix, and Nix release gates are optional maintainer tooling rather than source prerequisites; only the explicitly selected generated-project `nix` capability may render Nix artifacts and CI contributions. |
+
+### Correction in revision 15
+
+| The readiness spec was listed as a separate active spec | It is superseded by this design upon approval and archived at activation; the readiness v1 rules move verbatim into the frozen readiness-rule baseline, and the readiness plan is archived rather than remaining a live checklist |
 
 ### Unchanged load-bearing decisions
 
@@ -1288,6 +1292,33 @@ immutable for manifest schema v1: reconcile additionally requires those specific
 `SourceBaseline.entries` to retain their recorded hashes. New managed-output rules are allowed only when
 their satisfier is the candidate managed render and the expected target proves the obligation satisfied.
 Both structural and behavioral gates must pass.
+
+### Frozen readiness-rule baseline v1
+
+Upon approval of this design, `docs/specs/2026-08-03-project-readiness` is superseded and archived at
+activation. Its normative content moves here and into the declarative rule catalog. The frozen
+schema-v1 baseline therefore contains exactly these readiness rules, unchanged from the released
+v1.3.0 checker:
+
+- **PRD:** reject the retained marker and known template-source boilerplate; require exactly one
+  occurrence of each level-two heading in this relative order — `Problem`, `Goals`, `Non-goals`,
+  `Users and workflows`, `Requirements`, `Quality attributes`, `Release criteria`, `Open questions` —
+  with additional level-two sections allowed;
+- **Requirement declarations:** `### REQ-###: Non-empty title` under `## Requirements` with a
+  non-empty body; identifiers unique, exactly three digits `001`..`999`, at least one declared;
+  declaration-like text inside fenced code blocks does not count;
+- **README:** reject the retained marker, template title, and known introductory boilerplate; exactly
+  one non-template level-one title; non-empty `## Setup` and `## Validation`; `Validation` names
+  `scripts/validate_repository.py`;
+- **Hook:** present at the canonical path, executable, and free of the unconfigured sentinel; and
+- the bootstrap slot rules for `security_policy` and `contributing` markers defined in the marker
+  table.
+
+The compatibility corpus is seeded from the superseded readiness fixture matrix — marker-only
+deletion, heading order and duplication, malformed/duplicate/missing-body requirement declarations,
+README structure, hook configuration, and simultaneous failures — converted to representative
+`TargetSnapshot` values. The old checker's rule constants and the four-argument `Finding` adapter
+contract are removed at activation; the shared core is the only rule source.
 
 ## Input boundary
 
@@ -2929,6 +2960,8 @@ manifest compatibility levels.
 - The licensing and provenance audit record and any resulting ADR. **Prerequisite to batch 4.**
 - `docs/project-readiness.md`, reflecting the canonical hook path, derived slot completion, `status`,
   `restore`, and the unrecognized manifest-free contract.
+- Archive `docs/specs/2026-08-03-project-readiness/` — mark its design superseded and archive its plan —
+  at activation, per the revision-15 correction.
 - Release notes for the one greenfield activation, its exact compatibility-baseline identifier,
   CLI/input schemas, generated-project prerequisites, and recovery guidance; no pre-bootstrap migration
   or compatibility path.
@@ -2948,8 +2981,9 @@ before licence-writing implementation proceeds.
 
 - `docs/prd.md`; `CONTEXT.md`; `docs/project-readiness.md`
 - `docs/adr/0001-use-copier-for-template-updates.md`
-- `docs/specs/2026-08-03-project-readiness/design.md` remains as a separate active spec and is not one of
-  this document's superseded revisions.
+- `docs/specs/2026-08-03-project-readiness/design.md` is superseded by this design upon its approval
+  and archived at activation; its approved v1.3.0 checker contract is carried forward verbatim by the
+  frozen readiness-rule baseline. It is not retained as a second active spec.
 - This document's earlier discovery and revision drafts were consolidated here and are not retained in the
   active bootstrap spec directory.
 - [GitHub: Creating a repository from a template](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template)

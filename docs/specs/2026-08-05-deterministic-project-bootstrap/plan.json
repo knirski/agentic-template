@@ -828,6 +828,47 @@
             ],
             "acceptance": []
           }
+        },
+        {
+          "id": "T16b",
+          "name": "Implement the frozen readiness-rule baseline and corpus",
+          "depends_on": [
+            "T16"
+          ],
+          "inputs": [
+            "design frozen readiness-rule baseline v1; superseded project-readiness spec US-1 criteria and fixture matrix; existing checker rule constants; readiness rule definition schema."
+          ],
+          "description": "Implement the declarative `ReadinessRuleDefinition` catalog carrying every readiness v1 rule unchanged: PRD marker/boilerplate and exactly-once ordered level-two headings, REQ-### declaration format, README marker/title/Setup/Validation contract, hook presence/mode/sentinel, and the bootstrap security/contributing slot rules. Seed the compatibility corpus from the superseded readiness fixture matrix converted to representative TargetSnapshot values, including all adopter-owned predicate boundaries. Wire validate_template.py to compare complete canonical definitions against the frozen baseline and reject a new or changed blocking definition over adopter-owned state, an informational-to-blocking transition, a new required seed-once path, or a blocking rule with no legal satisfier. The old checker's rule constants become derived from this catalog; the four-argument Finding adapter contract remains only until activation.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "create": [
+              "scripts/bootstrap/readiness_rules.py",
+              "scripts/fixtures/readiness-corpus/conforming-2026-08-03.json",
+              "scripts/fixtures/readiness-corpus/boundary-cases.json",
+              "tests/test_bootstrap_readiness_rules.py"
+            ],
+            "modify": [
+              "scripts/bootstrap/template_contract.py",
+              "scripts/bootstrap/readiness.py",
+              "scripts/validate_template.py"
+            ],
+            "remove": []
+          },
+          "validation": {
+            "tests": [
+              "the catalog carries every readiness v1 rule listed in the frozen baseline",
+              "corpus fixtures cover marker-only deletion, heading order/duplication, malformed/duplicate/missing-body REQ declarations, README structure, hook configuration, and simultaneous failures",
+              "validate_template rejects a new or changed blocking rule, an informational-to-blocking transition, a new required seed-once path, and a rule with no legal satisfier",
+              "satisfier classification covers InitialPlan, ManagedRender, AdopterEdit, and ExternalAction",
+              "shared-core findings match the frozen baseline identities",
+              "strict ty, Ruff, and pytest pass."
+            ],
+            "acceptance": []
+          }
         }
       ]
     },
@@ -839,7 +880,8 @@
           "id": "T17",
           "name": "Implement `add` and operation-specific render oracles",
           "depends_on": [
-            "T16"
+            "T16",
+            "T16b"
           ],
           "inputs": [
             "operation semantics; complete old-render verification; additive capability settings; managed inventory and source conditions."
@@ -974,7 +1016,7 @@
           "inputs": [
             "one-release activation boundary; extensionless hook; all prior batch evidence; final release gate."
           ],
-          "description": "Replace the source scaffold hook contract with `scripts/validate-project`, wire final Copier/readiness/aggregate/workflow/docs boundaries, remove stale legacy/adoption/migration references, and ensure the source tree itself is the integrated profile fixture. Do not add compatibility aliases.",
+          "description": "Replace the source scaffold hook contract with `scripts/validate-project`, wire final Copier/readiness/aggregate/workflow/docs boundaries, remove stale legacy/adoption/migration references, ensure the source tree itself is the integrated profile fixture, archive the superseded `docs/specs/2026-08-03-project-readiness` directory (mark its design superseded and archive its plan), and remove the legacy four-argument `Finding` adapter contract from the shared core. Do not add compatibility aliases.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -991,6 +1033,7 @@
               "scripts/validate_template.py",
               "scripts/check_project_readiness.py",
               "scripts/validate_repository.py",
+              "scripts/bootstrap/readiness.py",
               "docs/project-readiness.md",
               "README.md",
               "CONTEXT.md",
@@ -1004,6 +1047,8 @@
           "validation": {
             "tests": [
               "repository-wide search finds no forbidden legacy paths/lifecycles",
+              "the superseded readiness spec directory is archived and no active spec or runtime reference names it as active",
+              "no legacy four-argument Finding adapter contract remains in the shared core",
               "both generation paths pass full profile matrix",
               "actionlint and source-CI conformance pass",
               "licensing audit is reflected",
