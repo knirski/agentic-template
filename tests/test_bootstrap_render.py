@@ -1160,9 +1160,13 @@ def test_managed_render_is_sorted_by_canonical_path_bytes() -> None:
 
 def test_encode_scalar_uses_declared_context() -> None:
     assert encode_scalar("plain", "yaml") == "plain"
-    assert encode_scalar("hello world", "yaml") == "'hello world'"
-    assert encode_scalar("true", "yaml") == "'true'"
-    assert encode_scalar("123", "yaml") == "'123'"
+    assert encode_scalar("hello world", "yaml") == '"hello world"'
+    assert encode_scalar("true", "yaml") == '"true"'
+    assert encode_scalar("True", "yaml") == '"True"'
+    assert encode_scalar("YES", "yaml") == '"YES"'
+    assert encode_scalar("123", "yaml") == '"123"'
+    assert encode_scalar("1e5", "yaml") == '"1e5"'
+    assert encode_scalar("line\nbreak", "yaml") == '"line\\nbreak"'
     assert encode_scalar(True, "yaml") == "true"
     assert encode_scalar('say "hi"', "toml") == '"say \\"hi\\""'
     assert encode_scalar(False, "toml") == "false"

@@ -265,24 +265,13 @@ _OPTIONAL_SECTION_MARKER = re.compile(
     rb"agentic-template:if:([a-z][a-z0-9-]*):(begin|end)\b"
 )
 
-_YAML_PLAIN_SAFE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]*$")
+_YAML_PLAIN_SAFE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 _YAML_RESERVED = frozenset(
-    {"true", "false", "yes", "no", "on", "off", "y", "n", "null", "~"}
+    {"true", "false", "yes", "no", "on", "off", "y", "n", "null", "~", "inf", "nan"}
 )
-_NUMERIC = re.compile(r"-?\d+(?:\.\d+)?")
 
 
-def _yaml_scalar(value: str) -> str:
-    if (
-        _YAML_PLAIN_SAFE.fullmatch(value) is not None
-        and value not in _YAML_RESERVED
-        and _NUMERIC.fullmatch(value) is None
-    ):
-        return value
-    return "'" + value.replace("'", "''") + "'"
-
-
-def _toml_scalar(value: str) -> str:
+def _escaped(value: str) -> str:
     escaped: list[str] = []
     for char in value:
         if char == "\\":
@@ -299,7 +288,20 @@ def _toml_scalar(value: str) -> str:
             escaped.append(f"\\u{ord(char):04x}")
         else:
             escaped.append(char)
-    return '"' + "".join(escaped) + '"'
+    return "".join(escaped)
+
+
+def _yaml_scalar(value: str) -> str:
+    if (
+        _YAML_PLAIN_SAFE.fullmatch(value) is not None
+        and value.lower() not in _YAML_RESERVED
+    ):
+        return value
+    return '"' + _escaped(value) + '"'
+
+
+def _toml_scalar(value: str) -> str:
+    return '"' + _escaped(value) + '"'
 
 
 def _shell_scalar(value: str) -> str:
