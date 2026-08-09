@@ -8,7 +8,6 @@ compiler, which places them in the operation plan without making them managed ou
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -25,8 +24,7 @@ from scripts.bootstrap.paths import RepoPath, normalize_text, parse_path
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.schemas import Identifier, SettingName, SettingValue, StrictModel
 
-ContextName = Literal["yaml", "toml", "json", "shell", "markdown"]
-CardinalityName = Literal["exactly_one", "zero_or_one", "many"]
+ContextName = Literal["yaml", "markdown"]
 
 
 class RenderErrorKind(StrEnum):
@@ -152,7 +150,6 @@ class SlotDefinition(StrictModel):
     id: Identifier
     owner_artifact: Identifier
     context: ContextName
-    cardinality: CardinalityName
     separator: str = ""
     allowed_contribution_kind: Identifier | None = None
 
@@ -306,14 +303,6 @@ def _yaml_scalar(value: str) -> str:
     return '"' + _escaped(value) + '"'
 
 
-def _toml_scalar(value: str) -> str:
-    return '"' + _escaped(value) + '"'
-
-
-def _shell_scalar(value: str) -> str:
-    return "'" + value.replace("'", "'\\''") + "'"
-
-
 def _boolean_text(value: bool) -> str:
     return "true" if value else "false"
 
@@ -324,16 +313,6 @@ def encode_scalar(value: SettingValue, context: ContextName) -> str:
         case "yaml":
             return (
                 _yaml_scalar(value) if isinstance(value, str) else _boolean_text(value)
-            )
-        case "toml":
-            return (
-                _toml_scalar(value) if isinstance(value, str) else _boolean_text(value)
-            )
-        case "json":
-            return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-        case "shell":
-            return (
-                _shell_scalar(value) if isinstance(value, str) else _boolean_text(value)
             )
         case "markdown":
             return value if isinstance(value, str) else _boolean_text(value)
