@@ -1265,6 +1265,9 @@ def apply_plan(
                             tree.root.value,
                         )
                     )
+                directories[tree.root.value] = DirectoryEntry(
+                    tree.root, tree.planned_new.root_mode
+                )
                 for entry in tree.planned_new.entries:
                     if isinstance(entry, PlannedDirectoryEntry):
                         if entry.path.value in directories or entry.path.value in files:

@@ -3081,3 +3081,29 @@ class TestExpectedTarget:
                 assert error.kind is PlanInvariantErrorKind.UNMATCHED_PRECONDITION
             case Ok(_):
                 raise AssertionError("duplicate create over a tree entry overlaid")
+
+    def test_apply_plan_registers_each_tree_root_in_directories(self) -> None:
+        snapshot = fixture_copier_snapshot()
+        _, result = compile_fixture(
+            generation=GenerationPath.COPIER,
+            snapshot=snapshot,
+            cleanup=None,
+            snapshot_commit=None,
+        )
+        plan = get_plan(result)
+        tree_roots = tuple(
+            operation.root.value
+            for operation in plan.ordered_operations
+            if isinstance(operation, CreateTreeOperation)
+        )
+        assert tree_roots  # the Copier fixture stages wholly new hierarchies
+        match apply_plan(snapshot, plan):
+            case Ok(expected):
+                expected_dirs = {
+                    entry.path.value: entry for entry in expected.directories
+                }
+                for root in tree_roots:
+                    assert root in expected_dirs, f"tree root {root} not overlaid"
+                    assert expected_dirs[root].mode is PosixMode.DIRECTORY
+            case Err(error):
+                raise AssertionError(f"apply_plan failed: {error}")
