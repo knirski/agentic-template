@@ -400,8 +400,22 @@
           "description": "Implement pure contribution composition, `render_managed`, managed inventory derivation, source baseline derivation, operation-specific render-oracle support, and byte-addressed legal/seed inputs. Ensure every semantically output-affecting input is explicit and every missing blob fails before rendering.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-08",
+              "evidence": [
+                "uv run pytest -q tests/test_bootstrap_render.py (49 passed)",
+                "uv run pytest -q (167 passed)",
+                "uv run ruff check (clean)",
+                "uv run ruff format --check (50 files already formatted)",
+                "uv run ty check (clean)",
+                "uv lock --check (passed)",
+                "python3 scripts/validate_repository.py (expected source-scaffold exit 1; template contract passed and readiness findings were emitted in canonical order)"
+              ]
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/37"
+            ]
           },
           "files": {
             "create": [
