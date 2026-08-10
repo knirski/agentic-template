@@ -36,7 +36,11 @@ class TargetReason(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class UnsupportedGitTarget:
-    reason: TargetReason | str
+    reason: TargetReason
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.reason, TargetReason):
+            raise TypeError("git targets require a closed target reason")
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,8 +69,6 @@ class SupportedWorktree:
 
 
 type TargetEnvironment = UnsupportedGitTarget | SupportedWorktree
-OrdinaryWorktree = WorktreeContext
-ProtectedWorktree = WorktreeContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,9 +86,6 @@ class ValidatedJournal:
     operation: str
     target: TargetIdentity
     phase: str
-
-
-RecoverableJournal = ValidatedJournal
 
 
 @dataclass(frozen=True, slots=True)
@@ -311,10 +310,14 @@ type ManifestFreeShape = EmptyManifestFree | PopulatedManifestFree
 
 @dataclass(frozen=True, slots=True)
 class RecognizedScaffold:
-    generation: GenerationPath | str
+    generation: GenerationPath
     cleanup: CleanupObservation
     shape: ManifestFreeShape
     snapshot: tuple[RepoPath, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.generation, GenerationPath):
+            raise TypeError("recognized scaffolds require a generation path")
 
 
 @dataclass(frozen=True, slots=True)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import assert_never
+from typing import Literal, assert_never
 
 from scripts.bootstrap.canonical_json import canonical_json, decode_json
 from scripts.bootstrap.identity import (
@@ -335,9 +335,15 @@ def _decode_identity(
     kind = value.get("kind")
     mode = value.get("mode")
     size = value.get("size")
+    match kind:
+        case "text":
+            file_kind: Literal["text", "binary"] = "text"
+        case "binary":
+            file_kind = "binary"
+        case _:
+            return Err(_receipt_error(subject))
     if (
-        kind not in ("text", "binary")
-        or not isinstance(mode, int)
+        not isinstance(mode, int)
         or mode not in INSTALL_MODES
         or not _is_digest(value.get("normalized_sha256"))
         or not _is_digest(value.get("raw_sha256"))
@@ -350,7 +356,7 @@ def _decode_identity(
         return Err(_receipt_error(subject))
     return Ok(
         FileContentIdentity(
-            kind=kind,
+            kind=file_kind,
             normalized_sha256=value["normalized_sha256"],
             raw_sha256=value["raw_sha256"],
             size=size,
@@ -375,9 +381,15 @@ def _decode_observed_state(
     kind = value.get("kind")
     mode = value.get("mode")
     size = value.get("size")
+    match kind:
+        case "text":
+            file_kind: Literal["text", "binary"] = "text"
+        case "binary":
+            file_kind = "binary"
+        case _:
+            return Err(_receipt_error(subject))
     if (
-        kind not in ("text", "binary")
-        or not isinstance(mode, int)
+        not isinstance(mode, int)
         or not 0 <= mode <= 0o7777
         or not _is_digest(value.get("normalized_sha256"))
         or not _is_digest(value.get("raw_sha256"))
@@ -388,7 +400,7 @@ def _decode_observed_state(
     return Ok(
         FileState(
             identity=FileContentIdentity(
-                kind=kind,
+                kind=file_kind,
                 normalized_sha256=value["normalized_sha256"],
                 raw_sha256=value["raw_sha256"],
                 size=size,

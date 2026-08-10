@@ -37,7 +37,7 @@ InstallDirectoryMode: Final = frozenset({PosixMode.DIRECTORY})
 
 @dataclass(frozen=True, slots=True)
 class FileContentIdentity:
-    kind: str
+    kind: Literal["text", "binary"]
     normalized_sha256: str
     raw_sha256: str
     size: int

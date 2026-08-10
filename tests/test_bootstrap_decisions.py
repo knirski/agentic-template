@@ -90,6 +90,7 @@ from scripts.bootstrap.state import (
     StalePendingWrite,
     StateRootInvalid,
     SupportedWorktree,
+    TargetReason,
     TargetSnapshot,
     TargetUnavailable,
     TopologyError,
@@ -135,7 +136,9 @@ class StateAndDecisionTests(unittest.TestCase):
     def test_status_describes_supported_project_without_mutation(self) -> None:
         state = ProjectAvailable(
             worktree(),
-            RecognizedScaffold("github", NoSnapshotCleanup(), EmptyManifestFree(), ()),
+            RecognizedScaffold(
+                GenerationPath.GITHUB, NoSnapshotCleanup(), EmptyManifestFree(), ()
+            ),
         )
         decision = decide_project(InspectStatus(StatusOptions()), state)
         self.assertIsInstance(decision, DescribeStatus)
@@ -143,7 +146,9 @@ class StateAndDecisionTests(unittest.TestCase):
     def test_protected_target_refuses_mutation_but_allows_status(self) -> None:
         state = ProjectAvailable(
             worktree(protected=True),
-            RecognizedScaffold("github", NoSnapshotCleanup(), EmptyManifestFree(), ()),
+            RecognizedScaffold(
+                GenerationPath.GITHUB, NoSnapshotCleanup(), EmptyManifestFree(), ()
+            ),
         )
         mutation = decide_project(Apply(ApplyOptions()), state)
         self.assertIsInstance(mutation, RefuseMutation)
@@ -160,13 +165,15 @@ class StateAndDecisionTests(unittest.TestCase):
     def test_protected_target_planning_refusal_stays_in_planning_family(self) -> None:
         state = ProtectedTargetAvailable(
             worktree(protected=True).context,
-            RecognizedScaffold("github", NoSnapshotCleanup(), EmptyManifestFree(), ()),
+            RecognizedScaffold(
+                GenerationPath.GITHUB, NoSnapshotCleanup(), EmptyManifestFree(), ()
+            ),
         )
         decision = decide_project(PlanApply(ApplyPlanOptions()), state)
         self.assertIsInstance(decision, RefusePlan)
 
     def test_unsupported_target_is_refused_and_recovery_is_noop(self) -> None:
-        state = TargetUnavailable(UnsupportedGitTarget("not_a_worktree"))
+        state = TargetUnavailable(UnsupportedGitTarget(TargetReason.NOT_WORKTREE))
         mutation = decide_project(Apply(ApplyOptions()), state)
         self.assertIsInstance(mutation, RefuseMutation)
         if isinstance(mutation, RefuseMutation):
@@ -184,7 +191,10 @@ class StateAndDecisionTests(unittest.TestCase):
     ) -> None:
         mismatch = CleanupContractMismatch((RepoPath("maintenance.json"),))
         state = ProjectAvailable(
-            worktree(), RecognizedScaffold("github", mismatch, EmptyManifestFree(), ())
+            worktree(),
+            RecognizedScaffold(
+                GenerationPath.GITHUB, mismatch, EmptyManifestFree(), ()
+            ),
         )
         refused = decide_project(Apply(ApplyOptions()), state)
         self.assertIsInstance(refused, RefuseMutation)
@@ -274,7 +284,7 @@ class StateAndDecisionTests(unittest.TestCase):
                 )
 
     def test_planning_refusal_stays_in_the_planning_decision_family(self) -> None:
-        state = TargetUnavailable(UnsupportedGitTarget("not_a_worktree"))
+        state = TargetUnavailable(UnsupportedGitTarget(TargetReason.NOT_WORKTREE))
         decision = decide_project(PlanApply(ApplyPlanOptions()), state)
         self.assertIsInstance(decision, RefusePlan)
 
@@ -296,10 +306,25 @@ class StateAndDecisionTests(unittest.TestCase):
                 snapshot,
             )
 
+    def test_unsupported_git_target_rejects_out_of_vocabulary_reasons(self) -> None:
+        with self.assertRaises(TypeError):
+            UnsupportedGitTarget("bogus")  # ty: ignore[invalid-argument-type]
+
+    def test_recognized_scaffold_rejects_out_of_vocabulary_generations(self) -> None:
+        with self.assertRaises(TypeError):
+            RecognizedScaffold(
+                "other",  # ty: ignore[invalid-argument-type]
+                NoSnapshotCleanup(),
+                EmptyManifestFree(),
+                (),
+            )
+
     def test_recovery_without_journal_is_a_typed_noop(self) -> None:
         state = ProjectAvailable(
             worktree(),
-            RecognizedScaffold("github", NoSnapshotCleanup(), EmptyManifestFree(), ()),
+            RecognizedScaffold(
+                GenerationPath.GITHUB, NoSnapshotCleanup(), EmptyManifestFree(), ()
+            ),
         )
         self.assertIsInstance(
             decide_project(Recover(RecoverOptions()), state), NoRecoveryNeeded
@@ -343,12 +368,12 @@ class StateAndDecisionTests(unittest.TestCase):
             decide_project(Recover(RecoverOptions()), mismatch), RefuseRecovery
         )
         for state in (
-            TargetUnavailable(UnsupportedGitTarget("not_a_worktree")),
+            TargetUnavailable(UnsupportedGitTarget(TargetReason.NOT_WORKTREE)),
             StateRootInvalid(worktree().context, OrphanTransactionState("orphan")),
             ProtectedTargetAvailable(
                 worktree(protected=True).context,
                 RecognizedScaffold(
-                    "github", NoSnapshotCleanup(), EmptyManifestFree(), ()
+                    GenerationPath.GITHUB, NoSnapshotCleanup(), EmptyManifestFree(), ()
                 ),
             ),
             StalePendingWrite(worktree().context, PendingIdentity("digest")),
@@ -377,7 +402,7 @@ class StateAndDecisionTests(unittest.TestCase):
         scaffold = ProjectAvailable(
             worktree(),
             RecognizedScaffold(
-                "github",
+                GenerationPath.GITHUB,
                 CleanupContractValid(CleanupContract((), (), "fingerprint")),
                 EmptyManifestFree(),
                 (),
@@ -388,7 +413,9 @@ class StateAndDecisionTests(unittest.TestCase):
         )
         no_cleanup_scaffold = ProjectAvailable(
             worktree(),
-            RecognizedScaffold("github", NoSnapshotCleanup(), EmptyManifestFree(), ()),
+            RecognizedScaffold(
+                GenerationPath.GITHUB, NoSnapshotCleanup(), EmptyManifestFree(), ()
+            ),
         )
         self.assertIsInstance(
             decide_project(Apply(ApplyOptions()), no_cleanup_scaffold), InitialInstall

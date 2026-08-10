@@ -1156,11 +1156,13 @@ def compile_initial_plan(
 
 
 def _expected_kind(identity: FileContentIdentity) -> Literal["text", "binary"]:
-    if identity.kind == "text":
-        return "text"
-    if identity.kind == "binary":
-        return "binary"
-    raise ValueError("planned file kind is outside the closed vocabulary")
+    match identity.kind:
+        case "text":
+            return "text"
+        case "binary":
+            return "binary"
+        case _:
+            return assert_never(identity.kind)  # pragma: no cover
 
 
 def _apply_file_write(
