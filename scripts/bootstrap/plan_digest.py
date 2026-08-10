@@ -272,12 +272,16 @@ def decode_receipt(data: bytes) -> Result[PlanReceipt, ReceiptError]:
     generation = value.get("generation_path")
     if generation not in _GENERATION_PATHS:
         return Err(_receipt_error("generation_path"))
-    match _decode_baseline(value.get("source_before"), required=False):
+    match _decode_baseline(
+        value.get("source_before"), required=False, generation=generation
+    ):
         case Err(error):
             return Err(error)
         case Ok(_):
             pass
-    match _decode_baseline(value.get("source_after"), required=True):
+    match _decode_baseline(
+        value.get("source_after"), required=True, generation=generation
+    ):
         case Err(error):
             return Err(error)
         case Ok(_):
@@ -590,20 +594,28 @@ def _decode_gate(value: object) -> Result[None, ReceiptError]:
     return Ok(None)
 
 
-def _decode_baseline(value: object, *, required: bool) -> Result[None, ReceiptError]:
+def _decode_baseline(
+    value: object, *, required: bool, generation: str
+) -> Result[None, ReceiptError]:
     if value is None:
         if required:
             return Err(_receipt_error("source_after"))
         return Ok(None)
-    if not isinstance(value, dict) or set(value) not in (
-        {"kind", "fingerprint", "entries"},
-        {"kind", "fingerprint", "entries", "snapshot_commit"},
-    ):
+    if not isinstance(value, dict):
         return Err(_receipt_error("source_baseline"))
     kind = value.get("kind")
     fingerprint = value.get("fingerprint")
     entries = value.get("entries")
     if kind not in ("github", "copier") or not _is_digest(fingerprint):
+        return Err(_receipt_error("source_baseline"))
+    if kind != generation:
+        return Err(_receipt_error("source_baseline"))
+    expected_keys = (
+        {"kind", "fingerprint", "entries", "snapshot_commit"}
+        if kind == "github"
+        else {"kind", "fingerprint", "entries"}
+    )
+    if set(value) != expected_keys:
         return Err(_receipt_error("source_baseline"))
     if kind == "github":
         snapshot_commit = value.get("snapshot_commit")
@@ -612,8 +624,6 @@ def _decode_baseline(value: object, *, required: bool) -> Result[None, ReceiptEr
             or _COMMIT_SHA.fullmatch(snapshot_commit) is None
         ):
             return Err(_receipt_error("source_baseline"))
-    elif "snapshot_commit" in value:
-        return Err(_receipt_error("source_baseline"))
     if not isinstance(entries, list):
         return Err(_receipt_error("source_baseline.entries"))
     for entry in entries:

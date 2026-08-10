@@ -346,6 +346,7 @@ def _validate_provenance(
             not isinstance(parse_path(entry.path.value), Ok)
             or entry.kind not in ("file", "directory")
             or entry.mode not in INSTALL_MODES
+            or (entry.kind == "directory" and entry.mode != PosixMode.DIRECTORY)
             or _SHA256.fullmatch(entry.sha256) is None
         ):
             return Err(
@@ -580,6 +581,20 @@ def _expect_mapping(
     return Ok(dict(value))
 
 
+def _expect_closed_mapping(
+    value: object, subject: str, allowed: frozenset[str]
+) -> Result[dict[str, object], ManifestError]:
+    """Require an exact key set so decode accepts only documents the builder emits."""
+    match _expect_mapping(value, subject):
+        case Err(error):
+            return Err(error)
+        case Ok(mapping):
+            pass
+    if set(mapping) != allowed:
+        return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
+    return Ok(mapping)
+
+
 def _decode_string_list(
     value: object, subject: str
 ) -> Result[tuple[str, ...], ManifestError]:
@@ -615,7 +630,9 @@ def _decode_settings(
 
 
 def _decode_slot(value: object, slot_id: str) -> Result[SlotContent, ManifestError]:
-    match _expect_mapping(value, f"answers.slots.{slot_id}"):
+    match _expect_closed_mapping(
+        value, f"answers.slots.{slot_id}", frozenset({"mode", "content_sha256"})
+    ):
         case Err(error):
             return Err(error)
         case Ok(content):
@@ -641,12 +658,20 @@ def _decode_slot(value: object, slot_id: str) -> Result[SlotContent, ManifestErr
 
 
 def _decode_answers(value: object) -> Result[ManifestAnswers, ManifestError]:
-    match _expect_mapping(value, "answers"):
+    match _expect_closed_mapping(
+        value,
+        "answers",
+        frozenset({"project", "profile", "licensing", "settings", "slots"}),
+    ):
         case Err(error):
             return Err(error)
         case Ok(answers):
             pass
-    match _expect_mapping(answers.get("project"), "answers.project"):
+    match _expect_closed_mapping(
+        answers.get("project"),
+        "answers.project",
+        frozenset({"name", "default_branch"}),
+    ):
         case Err(error):
             return Err(error)
         case Ok(project):
@@ -657,7 +682,11 @@ def _decode_answers(value: object) -> Result[ManifestAnswers, ManifestError]:
         return Err(
             _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "answers.project")
         )
-    match _expect_mapping(answers.get("profile"), "answers.profile"):
+    match _expect_closed_mapping(
+        answers.get("profile"),
+        "answers.profile",
+        frozenset({"id", "requested"}),
+    ):
         case Err(error):
             return Err(error)
         case Ok(profile):
@@ -672,7 +701,11 @@ def _decode_answers(value: object) -> Result[ManifestAnswers, ManifestError]:
             return Err(error)
         case Ok(requested):
             pass
-    match _expect_mapping(answers.get("licensing"), "answers.licensing"):
+    match _expect_closed_mapping(
+        answers.get("licensing"),
+        "answers.licensing",
+        frozenset({"mode", "content_sha256"}),
+    ):
         case Err(error):
             return Err(error)
         case Ok(licensing):
@@ -726,7 +759,9 @@ def _decode_answers(value: object) -> Result[ManifestAnswers, ManifestError]:
 
 
 def _decode_additions(value: object) -> Result[ManifestAdditions, ManifestError]:
-    match _expect_mapping(value, "additions"):
+    match _expect_closed_mapping(
+        value, "additions", frozenset({"requested", "settings"})
+    ):
         case Err(error):
             return Err(error)
         case Ok(additions):
@@ -782,7 +817,9 @@ def _decode_source_entries(
         return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
     entries: list[LifecycleSourceEntry] = []
     for raw_entry in value:
-        match _expect_mapping(raw_entry, subject):
+        match _expect_closed_mapping(
+            raw_entry, subject, frozenset({"path", "kind", "mode", "sha256"})
+        ):
             case Err(error):
                 return Err(error)
             case Ok(entry):
@@ -796,6 +833,7 @@ def _decode_source_entries(
             or kind not in ("file", "directory")
             or not isinstance(mode, int)
             or mode not in INSTALL_MODES
+            or (kind == "directory" and mode != PosixMode.DIRECTORY)
             or not isinstance(raw_digest, str)
             or _SHA256.fullmatch(raw_digest) is None
         ):
@@ -823,7 +861,11 @@ def _decode_source_entries(
 
 
 def _decode_provenance(value: object) -> Result[ProvenanceRecord, ManifestError]:
-    match _expect_mapping(value, "provenance"):
+    match _expect_closed_mapping(
+        value,
+        "provenance",
+        frozenset({"generation_path", "maintenance", "source_baseline"}),
+    ):
         case Err(error):
             return Err(error)
         case Ok(provenance):
@@ -839,7 +881,11 @@ def _decode_provenance(value: object) -> Result[ProvenanceRecord, ManifestError]
         return Err(
             _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "generation_path")
         )
-    match _expect_mapping(provenance.get("maintenance"), "provenance.maintenance"):
+    match _expect_closed_mapping(
+        provenance.get("maintenance"),
+        "provenance.maintenance",
+        frozenset({"status", "retained_paths"}),
+    ):
         case Err(error):
             return Err(error)
         case Ok(maintenance):
@@ -916,6 +962,17 @@ def _decode_provenance(value: object) -> Result[ProvenanceRecord, ManifestError]
                 ManifestErrorKind.SCHEMA_VIOLATION, "provenance.source_baseline"
             )
         )
+    baseline_keys = (
+        frozenset({"kind", "fingerprint", "entries", "snapshot_commit"})
+        if kind == "github"
+        else frozenset({"kind", "fingerprint", "entries"})
+    )
+    if set(baseline) != baseline_keys:
+        return Err(
+            _manifest_error(
+                ManifestErrorKind.SCHEMA_VIOLATION, "provenance.source_baseline"
+            )
+        )
     return Ok(
         ProvenanceRecord(
             generation_path=generation_path,
@@ -930,7 +987,9 @@ def _decode_managed(value: object) -> Result[ManagedInventory, ManifestError]:
         return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "managed"))
     entries: list[ManagedInventoryEntry] = []
     for raw_entry in value:
-        match _expect_mapping(raw_entry, "managed"):
+        match _expect_closed_mapping(
+            raw_entry, "managed", frozenset({"path", "kind", "mode", "sha256"})
+        ):
             case Err(error):
                 return Err(error)
             case Ok(entry):

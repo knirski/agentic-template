@@ -7,6 +7,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
+from scripts.bootstrap.canonical_json import canonical_json, decode_json
 from scripts.bootstrap.diagnostics import (
     ActionRequired,
     ContractFailure,
@@ -69,6 +70,32 @@ class ResultTests(unittest.TestCase):
     ) -> None:
         result = accumulate(tuple(Ok(value) for value in values))
         self.assertEqual(result, Ok(tuple(values)))
+
+    @given(
+        st.recursive(
+            st.one_of(
+                st.none(),
+                st.booleans(),
+                st.integers(min_value=-(2**53 - 1), max_value=2**53 - 1),
+                st.text(max_size=16, alphabet="abcdefghijklmnopqrstuvwxyz0123456789 "),
+            ),
+            lambda children: st.one_of(
+                st.lists(children, max_size=8),
+                st.dictionaries(
+                    st.text(
+                        max_size=8, alphabet="abcdefghijklmnopqrstuvwxyz0123456789"
+                    ),
+                    children,
+                    max_size=8,
+                ),
+            ),
+            max_leaves=30,
+        )
+    )
+    def test_canonical_json_round_trips_arbitrary_strict_values(
+        self, value: object
+    ) -> None:
+        self.assertEqual(decode_json(canonical_json(value)), value)
 
 
 class ValuesTests(unittest.TestCase):
