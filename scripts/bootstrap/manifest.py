@@ -9,7 +9,6 @@ content; legal and seed-once inputs appear only as content digests.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -33,6 +32,16 @@ from scripts.bootstrap.source_baseline import (
     SourceBaseline,
 )
 from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
+from scripts.bootstrap.vocabulary import (
+    BRANCH_NAME,
+    COMMIT_SHA,
+    IDENTIFIER,
+    LICENSING_MODES,
+    PROJECT_NAME,
+    SETTING_NAME,
+    SHA256,
+    SLOT_MODES,
+)
 
 MANIFEST_SCHEMA_VERSION = 1
 MANIFEST_PATH = RepoPath(".agentic-template/project.json")
@@ -43,17 +52,6 @@ SLOT_IDS = frozenset(
     {"readme", "prd", "security_policy", "contributing", "validation_hook"}
 )
 
-_SHA256 = re.compile(r"[0-9a-f]{64}")
-_IDENTIFIER = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
-_SETTING_NAME = re.compile(r"[a-z][a-z0-9_]*")
-_PROJECT_NAME = re.compile(r"[A-Za-z][A-Za-z0-9._-]*")
-_BRANCH_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
-_COMMIT_SHA = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
-_LICENSING_MODES = frozenset(
-    {"retain-apache-2.0", "provided-project-license", "private"}
-)
-LICENSING_MODES = _LICENSING_MODES
-_SLOT_MODES = frozenset({"file", "scaffold"})
 _MAINTENANCE_STATUSES = frozenset({"clean", "retained"})
 INSTALL_MODES = InstallFileMode
 
@@ -166,15 +164,15 @@ def path_within_limits(path: RepoPath, limits: ResourceLimits = DEFAULT_LIMITS) 
 
 
 def _is_sha256(value: object) -> bool:
-    return isinstance(value, str) and _SHA256.fullmatch(value) is not None
+    return isinstance(value, str) and SHA256.fullmatch(value) is not None
 
 
 def _is_identifier(value: object) -> bool:
-    return isinstance(value, str) and _IDENTIFIER.fullmatch(value) is not None
+    return isinstance(value, str) and IDENTIFIER.fullmatch(value) is not None
 
 
 def _is_setting_name(value: object) -> bool:
-    return isinstance(value, str) and _SETTING_NAME.fullmatch(value) is not None
+    return isinstance(value, str) and SETTING_NAME.fullmatch(value) is not None
 
 
 def _validate_identifier_list(
@@ -221,7 +219,7 @@ def _validate_managed(
             not isinstance(parse_path(entry.path.value), Ok)
             or entry.kind not in ("text", "binary")
             or entry.mode not in INSTALL_MODES
-            or _SHA256.fullmatch(entry.sha256) is None
+            or SHA256.fullmatch(entry.sha256) is None
         ):
             return Err(
                 _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, entry.path.value)
@@ -237,9 +235,9 @@ def _validate_managed(
 def _validate_answers(
     answers: ManifestAnswers,
 ) -> Result[ManifestAnswers, ManifestError]:
-    if _PROJECT_NAME.fullmatch(answers.project.name) is None:
+    if PROJECT_NAME.fullmatch(answers.project.name) is None:
         return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "project.name"))
-    if _BRANCH_NAME.fullmatch(answers.project.default_branch) is None:
+    if BRANCH_NAME.fullmatch(answers.project.default_branch) is None:
         return Err(
             _manifest_error(
                 ManifestErrorKind.SCHEMA_VIOLATION, "project.default_branch"
@@ -252,7 +250,7 @@ def _validate_answers(
             return Err(error)
         case Ok(_):
             pass
-    if answers.licensing.mode not in _LICENSING_MODES:
+    if answers.licensing.mode not in LICENSING_MODES:
         return Err(
             _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "licensing.mode")
         )
@@ -270,7 +268,7 @@ def _validate_answers(
         case Ok(_):
             pass
     for slot_id, content in answers.slots.items():
-        if slot_id not in SLOT_IDS or content.mode not in _SLOT_MODES:
+        if slot_id not in SLOT_IDS or content.mode not in SLOT_MODES:
             return Err(
                 _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, f"slots.{slot_id}")
             )
@@ -311,7 +309,7 @@ def _validate_provenance(
         case GitHubSourceBaseline():
             if (
                 provenance.generation_path is not GenerationPath.GITHUB
-                or _COMMIT_SHA.fullmatch(baseline.snapshot_commit) is None
+                or COMMIT_SHA.fullmatch(baseline.snapshot_commit) is None
             ):
                 return Err(
                     _manifest_error(
@@ -329,7 +327,7 @@ def _validate_provenance(
             return Err(  # pragma: no cover
                 _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "source_baseline")
             )
-    if _SHA256.fullmatch(baseline.fingerprint) is None:
+    if SHA256.fullmatch(baseline.fingerprint) is None:
         return Err(
             _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "source_baseline")
         )
@@ -347,7 +345,7 @@ def _validate_provenance(
             or entry.kind not in ("file", "directory")
             or entry.mode not in INSTALL_MODES
             or (entry.kind == "directory" and entry.mode != PosixMode.DIRECTORY)
-            or _SHA256.fullmatch(entry.sha256) is None
+            or SHA256.fullmatch(entry.sha256) is None
         ):
             return Err(
                 _manifest_error(
@@ -641,7 +639,7 @@ def _decode_slot(value: object, slot_id: str) -> Result[SlotContent, ManifestErr
     digest = content.get("content_sha256")
     if (
         not isinstance(mode, str)
-        or mode not in _SLOT_MODES
+        or mode not in SLOT_MODES
         or (digest is not None and not _is_sha256(digest))
     ):
         return Err(
@@ -712,13 +710,13 @@ def _decode_answers(value: object) -> Result[ManifestAnswers, ManifestError]:
             pass
     licensing_mode = licensing.get("mode")
     raw_license_digest = licensing.get("content_sha256")
-    if not isinstance(licensing_mode, str) or licensing_mode not in _LICENSING_MODES:
+    if not isinstance(licensing_mode, str) or licensing_mode not in LICENSING_MODES:
         return Err(
             _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "answers.licensing")
         )
     if raw_license_digest is None:
         license_digest: str | None = None
-    elif isinstance(raw_license_digest, str) and _SHA256.fullmatch(raw_license_digest):
+    elif isinstance(raw_license_digest, str) and SHA256.fullmatch(raw_license_digest):
         license_digest = raw_license_digest
     else:
         return Err(
@@ -835,7 +833,7 @@ def _decode_source_entries(
             or mode not in INSTALL_MODES
             or (kind == "directory" and mode != PosixMode.DIRECTORY)
             or not isinstance(raw_digest, str)
-            or _SHA256.fullmatch(raw_digest) is None
+            or SHA256.fullmatch(raw_digest) is None
         ):
             return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
         match parse_path(path):
@@ -915,7 +913,7 @@ def _decode_provenance(value: object) -> Result[ProvenanceRecord, ManifestError]
     raw_fingerprint = baseline.get("fingerprint")
     if (
         not isinstance(raw_fingerprint, str)
-        or _SHA256.fullmatch(raw_fingerprint) is None
+        or SHA256.fullmatch(raw_fingerprint) is None
     ):
         return Err(
             _manifest_error(
@@ -933,7 +931,7 @@ def _decode_provenance(value: object) -> Result[ProvenanceRecord, ManifestError]
         snapshot_commit = baseline.get("snapshot_commit")
         if (
             not isinstance(snapshot_commit, str)
-            or _COMMIT_SHA.fullmatch(snapshot_commit) is None
+            or COMMIT_SHA.fullmatch(snapshot_commit) is None
         ):
             return Err(
                 _manifest_error(
@@ -1004,7 +1002,7 @@ def _decode_managed(value: object) -> Result[ManagedInventory, ManifestError]:
             or not isinstance(mode, int)
             or mode not in INSTALL_MODES
             or not isinstance(raw_digest, str)
-            or _SHA256.fullmatch(raw_digest) is None
+            or SHA256.fullmatch(raw_digest) is None
         ):
             return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "managed"))
         match parse_path(path):

@@ -8,7 +8,6 @@ and the same digest.  No receipt contains adopter, legal, generated, or backup b
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import assert_never
@@ -43,9 +42,8 @@ from scripts.bootstrap.planner import (
 from scripts.bootstrap.readiness import Finding, SubjectPath
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.values import DEFAULT_LIMITS
+from scripts.bootstrap.vocabulary import COMMIT_SHA, SHA256
 
-_SHA256 = re.compile(r"[0-9a-f]{64}")
-_COMMIT_SHA = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 _FILE_OPERATION_KINDS = frozenset({"create_file", "replace_file", "delete_file"})
 _DIRECTORY_OPERATION_KINDS = frozenset({"create_tree", "remove_empty_directory"})
 _GENERATION_PATHS = frozenset({"github", "copier"})
@@ -267,7 +265,7 @@ def decode_receipt(data: bytes) -> Result[PlanReceipt, ReceiptError]:
     if value.get("operation_kind") != "initial":
         return Err(_receipt_error("operation_kind"))
     target_binding = value.get("target_binding")
-    if not isinstance(target_binding, str) or _SHA256.fullmatch(target_binding) is None:
+    if not isinstance(target_binding, str) or SHA256.fullmatch(target_binding) is None:
         return Err(_receipt_error("target_binding"))
     generation = value.get("generation_path")
     if generation not in _GENERATION_PATHS:
@@ -323,7 +321,7 @@ def _decode_path(value: object, subject: str) -> Result[RepoPath, ReceiptError]:
 
 
 def _is_digest(value: object) -> bool:
-    return isinstance(value, str) and _SHA256.fullmatch(value) is not None
+    return isinstance(value, str) and SHA256.fullmatch(value) is not None
 
 
 def _decode_identity(
@@ -621,7 +619,7 @@ def _decode_baseline(
         snapshot_commit = value.get("snapshot_commit")
         if (
             not isinstance(snapshot_commit, str)
-            or _COMMIT_SHA.fullmatch(snapshot_commit) is None
+            or COMMIT_SHA.fullmatch(snapshot_commit) is None
         ):
             return Err(_receipt_error("source_baseline"))
     if not isinstance(entries, list):
