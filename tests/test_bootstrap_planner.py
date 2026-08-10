@@ -57,6 +57,7 @@ from scripts.bootstrap.planner import (
     CreateFileOperation,
     CreateTreeOperation,
     DeleteFileOperation,
+    DirectoryAbsent,
     ExpectedGatePass,
     ExpectedGateRefusal,
     FileState,
@@ -1617,6 +1618,86 @@ class TestPlanner:
             case Err(error):
                 raise AssertionError(f"planned manifest is invalid: {error}")
 
+    def test_apply_plan_rejects_duplicate_replace_operations(self) -> None:
+        plan = github_plan()
+        replaces = [
+            operation
+            for operation in plan.ordered_operations
+            if isinstance(operation, ReplaceFileOperation)
+        ]
+        assert replaces
+        duplicated = replace(
+            plan,
+            ordered_operations=(
+                replaces[0],
+                replaces[0],
+                *plan.ordered_operations,
+            ),
+        )
+        match apply_plan(github_snapshot(), duplicated):
+            case Err(error):
+                assert error.kind is PlanInvariantErrorKind.UNMATCHED_PRECONDITION
+            case Ok(_):
+                raise AssertionError("duplicate replace operations applied")
+
+    def test_apply_plan_rejects_duplicate_delete_operations(self) -> None:
+        plan = github_plan()
+        deletes = [
+            operation
+            for operation in plan.ordered_operations
+            if isinstance(operation, DeleteFileOperation)
+        ]
+        assert deletes
+        duplicated = replace(
+            plan,
+            ordered_operations=(
+                deletes[0],
+                deletes[0],
+                *plan.ordered_operations,
+            ),
+        )
+        match apply_plan(github_snapshot(), duplicated):
+            case Err(error):
+                assert error.kind is PlanInvariantErrorKind.UNMATCHED_PRECONDITION
+            case Ok(_):
+                raise AssertionError("duplicate delete operations applied")
+
+    def test_apply_plan_rejects_removing_directory_with_remaining_files(self) -> None:
+        plan = github_plan()
+        remove = RemoveEmptyDirectoryOperation(
+            path=RepoPath(".agentic-template"),
+            expected_old=DirectoryState(PosixMode.DIRECTORY, ()),
+            planned_new=DirectoryAbsent(),
+        )
+        augmented = replace(plan, ordered_operations=(*plan.ordered_operations, remove))
+        match apply_plan(github_snapshot(), augmented):
+            case Err(error):
+                assert error.kind is PlanInvariantErrorKind.UNMATCHED_PRECONDITION
+            case Ok(_):
+                raise AssertionError("directory with remaining files was removed")
+
+    def test_apply_plan_rejects_duplicate_remove_directory_operations(self) -> None:
+        plan = github_plan()
+        removes = [
+            operation
+            for operation in plan.ordered_operations
+            if isinstance(operation, RemoveEmptyDirectoryOperation)
+        ]
+        assert removes
+        duplicated = replace(
+            plan,
+            ordered_operations=(
+                *plan.ordered_operations,
+                removes[0],
+                removes[0],
+            ),
+        )
+        match apply_plan(github_snapshot(), duplicated):
+            case Err(error):
+                assert error.kind is PlanInvariantErrorKind.UNMATCHED_PRECONDITION
+            case Ok(_):
+                raise AssertionError("duplicate remove-directory operations applied")
+
     def test_compilation_is_deterministic(self) -> None:
         assert github_plan() == github_plan()
         assert build_receipt(github_plan()) == build_receipt(github_plan())
@@ -1748,6 +1829,99 @@ class TestPlanner:
             entry.path.value == "docs/api" for entry in docs_tree.planned_new.entries
         )
 
+    def test_output_inside_an_observed_directory_is_not_tree_grouped(self) -> None:
+        snapshot = fixture_copier_snapshot()
+        managed = tuple(
+            sorted(
+                (
+                    *fixture_managed(),
+                    ManagedFile(
+                        path=RepoPath("docs/agents/extra.md"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        content=b"# Extra\n",
+                    ),
+                ),
+                key=lambda file: file.path.value.encode("utf-8"),
+            )
+        )
+        _, result = compile_fixture(
+            generation=GenerationPath.COPIER,
+            snapshot=snapshot,
+            cleanup=None,
+            snapshot_commit=None,
+            managed=managed,
+        )
+        plan = get_plan(result)
+        tree_entries = {
+            entry.path.value
+            for operation in plan.ordered_operations
+            if isinstance(operation, CreateTreeOperation)
+            for entry in operation.planned_new.entries
+        }
+        assert "docs/agents/extra.md" not in tree_entries
+        assert any(
+            isinstance(operation, CreateFileOperation)
+            and operation.path.value == "docs/agents/extra.md"
+            for operation in plan.ordered_operations
+        )
+        match apply_plan(snapshot, plan):
+            case Ok(expected):
+                pass
+            case Err(error):
+                raise AssertionError(f"plan did not overlay: {error}")
+        assert any(file.path.value == "docs/agents/extra.md" for file in expected.files)
+
+    def test_output_below_observed_directory_roots_tree_at_first_absent_dir(
+        self,
+    ) -> None:
+        snapshot = fixture_copier_snapshot()
+        managed = tuple(
+            sorted(
+                (
+                    *fixture_managed(),
+                    ManagedFile(
+                        path=RepoPath("docs/agents/x/y.md"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        content=b"# Deep\n",
+                    ),
+                ),
+                key=lambda file: file.path.value.encode("utf-8"),
+            )
+        )
+        _, result = compile_fixture(
+            generation=GenerationPath.COPIER,
+            snapshot=snapshot,
+            cleanup=None,
+            snapshot_commit=None,
+            managed=managed,
+        )
+        plan = get_plan(result)
+        trees = [
+            operation
+            for operation in plan.ordered_operations
+            if isinstance(operation, CreateTreeOperation)
+        ]
+        assert {tree.root.value for tree in trees} == {
+            "docs",
+            "docs/agents/x",
+            ".agentic-template",
+        }
+        deep_tree = next(tree for tree in trees if tree.root.value == "docs/agents/x")
+        assert {entry.path.value for entry in deep_tree.planned_new.entries} == {
+            "docs/agents/x/y.md"
+        }
+        match apply_plan(snapshot, plan):
+            case Ok(expected):
+                pass
+            case Err(error):
+                raise AssertionError(f"plan did not overlay: {error}")
+        assert any(file.path.value == "docs/agents/x/y.md" for file in expected.files)
+        assert any(
+            entry.path.value == "docs/agents/x" for entry in expected.directories
+        )
+
     def test_retain_maintenance_deletes_nothing_and_records_paths(self) -> None:
         plan = get_plan(
             compile_fixture(maintenance=RetainMaintenance(paths=CLEANUP_PATHS))[1]
@@ -1828,6 +2002,51 @@ class TestPlanner:
                 assert error.kind is CompileErrorKind.INVALID_TARGET
             case Ok(_):
                 raise AssertionError("nested planned outputs compiled")
+
+    def test_nested_planned_outputs_with_interleaving_sibling_are_refused(
+        self,
+    ) -> None:
+        managed = tuple(
+            sorted(
+                (
+                    *fixture_managed(),
+                    ManagedFile(
+                        path=RepoPath("docs"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        content=b"a file named docs\n",
+                    ),
+                    ManagedFile(
+                        path=RepoPath("docs.txt"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        content=b"a sibling file\n",
+                    ),
+                    ManagedFile(
+                        path=RepoPath("docs/x"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        content=b"# Nested\n",
+                    ),
+                ),
+                key=lambda file: file.path.value.encode("utf-8"),
+            )
+        )
+        _, result = compile_fixture(
+            generation=GenerationPath.COPIER,
+            snapshot=fixture_copier_snapshot(),
+            cleanup=None,
+            snapshot_commit=None,
+            managed=managed,
+        )
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+                assert error.subject == "docs"
+            case Ok(_):
+                raise AssertionError(
+                    "nested planned outputs with interleaving sibling compiled"
+                )
 
     def test_planned_path_beyond_limits_is_refused(self) -> None:
         managed = tuple(
@@ -2395,6 +2614,35 @@ class TestCollisionsAndCleanup:
                 assert error.kind is CompileErrorKind.CLEANUP_DISAGREEMENT
             case Ok(_):
                 raise AssertionError("nested cleanup paths compiled")
+
+    def test_nested_cleanup_paths_with_interleaving_sibling_are_refused(
+        self,
+    ) -> None:
+        snapshot = github_snapshot()
+        files = (
+            *snapshot.files,
+            observed_file(RepoPath("docs.txt"), b"docs sibling\n"),
+        )
+        directories = (
+            *snapshot.directories,
+            observed_directory(
+                RepoPath("docs/x"),
+                ((RepoPath("docs/x/doc.md"), b"# Doc\n"),),
+            ),
+        )
+        snapshot = _sorted_snapshot(files, directories)
+        cleanup = replace(
+            fixture_cleanup(),
+            cleanup_paths=(RepoPath("docs"), RepoPath("docs.txt"), RepoPath("docs/x")),
+        )
+        _, result = compile_fixture(snapshot=snapshot, cleanup=cleanup)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.CLEANUP_DISAGREEMENT
+            case Ok(_):
+                raise AssertionError(
+                    "nested cleanup paths with interleaving sibling compiled"
+                )
 
     def test_cleanup_listing_the_inventory_is_refused(self) -> None:
         cleanup = replace(

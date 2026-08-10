@@ -11,7 +11,6 @@ derived in ``plan_digest``.
 
 from __future__ import annotations
 
-import itertools
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -607,6 +606,8 @@ def _build_tree(
     root: RepoPath,
     outputs: tuple[_PlannedOutput, ...],
     blobs: VerifiedBlobStore,
+    observed_files: Mapping[str, ObservedFileEntry],
+    observed_dirs: Mapping[str, ObservedDirectoryEntry],
 ) -> Result[MaterializedTree, CompileError]:
     entries: list[PlannedTreeEntry] = []
     directories: set[str] = set()
@@ -629,6 +630,8 @@ def _build_tree(
                 parent.value != root.value
                 and parent.value.startswith(root.value + "/")
                 and parent.value not in directories
+                and parent.value not in observed_files
+                and parent.value not in observed_dirs
             ):
                 directories.add(parent.value)
                 entries.append(PlannedDirectoryEntry(parent, PosixMode.DIRECTORY))
@@ -716,7 +719,10 @@ def _build_trees(
                     _compile_error(CompileErrorKind.INVALID_TARGET, output.path.value)
                 )
             if parent.value in observed_dirs:
-                break
+                # Drop every ancestor at or above an observed directory: only
+                # absent parents below the nearest existing ancestor may root a tree.
+                chain = []
+                continue
             chain.append(parent)
         if chain:
             # One wholly new hierarchy is staged as one tree: the grouping root is
@@ -728,7 +734,9 @@ def _build_trees(
         root = RepoPath(root_value)
         if root.value in observed_dirs or root.value in observed_files:
             return Err(_compile_error(CompileErrorKind.INVALID_TARGET, root.value))
-        match _build_tree(root, tuple(grouped[root_value]), blobs):
+        match _build_tree(
+            root, tuple(grouped[root_value]), blobs, observed_files, observed_dirs
+        ):
             case Err(error):
                 return Err(error)
             case Ok(tree):
@@ -765,15 +773,19 @@ def _cleanup_operations(
         (path.value for path in cleanup.cleanup_paths),
         key=lambda value: value.encode("utf-8"),
     )
-    for before, after in itertools.pairwise(cleanup_values):
-        if after.startswith(before + "/") or before == MAINTENANCE_INVENTORY_PATH.value:
-            return Err(_compile_error(CompileErrorKind.CLEANUP_DISAGREEMENT, before))
-    if cleanup_values and cleanup_values[-1] == MAINTENANCE_INVENTORY_PATH.value:
+    if MAINTENANCE_INVENTORY_PATH.value in cleanup_values:
         return Err(
             _compile_error(
                 CompileErrorKind.CLEANUP_DISAGREEMENT, MAINTENANCE_INVENTORY_PATH.value
             )
         )
+    cleanup_set = set(cleanup_values)
+    for value in cleanup_values:
+        for parent in _parent_paths(RepoPath(value)):
+            if parent.value in cleanup_set:
+                return Err(
+                    _compile_error(CompileErrorKind.CLEANUP_DISAGREEMENT, parent.value)
+                )
     for path in cleanup.cleanup_paths:
         observed_file = observed_files.get(path.value)
         if observed_file is not None:
@@ -864,9 +876,13 @@ def _validate_no_nested_outputs(
         (output.path.value for output in outputs),
         key=lambda value: value.encode("utf-8"),
     )
-    for before, after in itertools.pairwise(values):
-        if after.startswith(before + "/"):
-            return Err(_compile_error(CompileErrorKind.INVALID_TARGET, before))
+    value_set = set(values)
+    for value in values:
+        for parent in _parent_paths(RepoPath(value)):
+            if parent.value in value_set:
+                return Err(
+                    _compile_error(CompileErrorKind.INVALID_TARGET, parent.value)
+                )
     return Ok(None)
 
 
@@ -1156,18 +1172,14 @@ def _apply_file_write(
     directories: Mapping[str, DirectoryEntry],
     files: dict[str, ExpectedFile],
     blobs: VerifiedBlobStore,
+    written: set[str],
 ) -> Result[None, PlanInvariantError]:
-    duplicate = (
-        operation.path.value in files
-        if isinstance(operation, CreateFileOperation)
-        else False
-    )
     if (
-        observed_states.get(operation.path.value, FileState(None, None))
+        operation.path.value in written
+        or observed_states.get(operation.path.value, FileState(None, None))
         != operation.expected_old
         or operation.path.value in observed_dir_states
         or operation.path.value in directories
-        or duplicate
     ):
         return Err(
             _invariant_error(
@@ -1185,6 +1197,7 @@ def _apply_file_write(
         mode=operation.planned_new.mode,
         content=content,
     )
+    written.add(operation.path.value)
     return Ok(None)
 
 
@@ -1211,6 +1224,7 @@ def apply_plan(
         entry.path.value: DirectoryEntry(entry.path, entry.state.root_mode)
         for entry in target.directories
     }
+    written: set[str] = set()
     for operation in plan.ordered_operations:
         match operation:
             case CreateFileOperation() as create:
@@ -1221,6 +1235,7 @@ def apply_plan(
                     directories,
                     files,
                     plan.blob_store,
+                    written,
                 ):
                     case Err(error):
                         return Err(error)
@@ -1234,6 +1249,7 @@ def apply_plan(
                     directories,
                     files,
                     plan.blob_store,
+                    written,
                 ):
                     case Err(error):
                         return Err(error)
@@ -1241,7 +1257,9 @@ def apply_plan(
                         pass
             case DeleteFileOperation() as delete:
                 if (
-                    observed_states.get(delete.path.value) != delete.expected_old
+                    delete.path.value in written
+                    or delete.path.value not in files
+                    or observed_states.get(delete.path.value) != delete.expected_old
                     or delete.path.value in observed_dir_states
                     or delete.path.value in directories
                 ):
@@ -1251,10 +1269,12 @@ def apply_plan(
                             delete.path.value,
                         )
                     )
-                files.pop(delete.path.value, None)
+                files.pop(delete.path.value)
+                written.add(delete.path.value)
             case CreateTreeOperation() as tree:
                 if (
-                    tree.root.value in observed_dir_states
+                    tree.root.value in written
+                    or tree.root.value in observed_dir_states
                     or tree.root.value in directories
                     or tree.root.value in observed_states
                     or tree.root.value in files
@@ -1302,15 +1322,24 @@ def apply_plan(
                             mode=entry.mode,
                             content=content,
                         )
+                written.add(tree.root.value)
+                written.update(entry.path.value for entry in tree.planned_new.entries)
             case RemoveEmptyDirectoryOperation() as remove:
-                if remove.path.value not in observed_dir_states:
+                prefix = remove.path.value + "/"
+                if (
+                    remove.path.value in written
+                    or remove.path.value not in directories
+                    or any(path.startswith(prefix) for path in files)
+                    or any(path.startswith(prefix) for path in directories)
+                ):
                     return Err(
                         _invariant_error(
                             PlanInvariantErrorKind.UNMATCHED_PRECONDITION,
                             remove.path.value,
                         )
                     )
-                directories.pop(remove.path.value, None)
+                directories.pop(remove.path.value)
+                written.add(remove.path.value)
     return Ok(
         ExpectedTarget(
             files=tuple(
