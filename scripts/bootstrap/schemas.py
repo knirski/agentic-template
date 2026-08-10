@@ -16,13 +16,21 @@ from pydantic import (
 
 from scripts.bootstrap.paths import parse_path
 from scripts.bootstrap.result import Ok
+from scripts.bootstrap.vocabulary import (
+    BRANCH_NAME_PATTERN,
+    IDENTIFIER_PATTERN,
+    PATH_BEARING_LICENSING_MODES,
+    PROJECT_NAME_PATTERN,
+    SETTING_NAME_PATTERN,
+    is_secret_setting_name,
+)
 
 Identifier = Annotated[
     str,
     StringConstraints(
         min_length=1,
         max_length=64,
-        pattern=r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+        pattern=IDENTIFIER_PATTERN,
         strict=True,
     ),
 ]
@@ -31,7 +39,7 @@ SettingName = Annotated[
     StringConstraints(
         min_length=1,
         max_length=64,
-        pattern=r"^[a-z][a-z0-9_]*$",
+        pattern=SETTING_NAME_PATTERN,
         strict=True,
     ),
 ]
@@ -40,7 +48,7 @@ ProjectName = Annotated[
     StringConstraints(
         min_length=1,
         max_length=128,
-        pattern=r"^[A-Za-z][A-Za-z0-9._-]*$",
+        pattern=PROJECT_NAME_PATTERN,
         strict=True,
     ),
 ]
@@ -49,7 +57,7 @@ BranchName = Annotated[
     StringConstraints(
         min_length=1,
         max_length=255,
-        pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$",
+        pattern=BRANCH_NAME_PATTERN,
         strict=True,
     ),
 ]
@@ -79,7 +87,7 @@ class FileContent(StrictModel):
     @classmethod
     def validate_path(cls, value: str) -> str:
         parsed = parse_path(value)
-        if hasattr(parsed, "error"):
+        if not isinstance(parsed, Ok):
             raise ValueError("path must be a safe repository-relative path")
         return value
 
@@ -103,6 +111,7 @@ class ContentInputs(StrictModel):
 
 
 class LicensingInput(StrictModel):
+    # The literal mirrors vocabulary.LICENSING_MODES; tests pin the two in sync.
     mode: Literal["retain-apache-2.0", "provided-project-license", "private"]
     path: RepoPathString | None = None
 
@@ -115,7 +124,7 @@ class LicensingInput(StrictModel):
 
     @model_validator(mode="after")
     def validate_mode_path(self) -> LicensingInput:
-        requires_path = self.mode in {"provided-project-license", "private"}
+        requires_path = self.mode in PATH_BEARING_LICENSING_MODES
         if requires_path != (self.path is not None):
             raise ValueError(
                 "licensing path is required exactly for supplied license modes"
@@ -169,16 +178,8 @@ class BootstrapBundle(StrictModel):
     def reject_secret_settings(
         cls, value: dict[str, dict[str, SettingValue]]
     ) -> dict[str, dict[str, SettingValue]]:
-        secret_words = (
-            "secret",
-            "token",
-            "password",
-            "credential",
-            "api-key",
-            "api_key",
-        )
         if any(
-            any(word in key.lower() for word in secret_words)
+            is_secret_setting_name(key)
             for settings in value.values()
             for key in settings
         ):
@@ -219,16 +220,8 @@ class AdditionsInput(StrictModel):
     def reject_secret_settings(
         cls, value: dict[str, dict[str, SettingValue]]
     ) -> dict[str, dict[str, SettingValue]]:
-        secret_words = (
-            "secret",
-            "token",
-            "password",
-            "credential",
-            "api-key",
-            "api_key",
-        )
         if any(
-            any(word in key.lower() for word in secret_words)
+            is_secret_setting_name(key)
             for settings in value.values()
             for key in settings
         ):

@@ -71,6 +71,7 @@ from scripts.bootstrap.values import (
     ResourceLimits,
     check_limit,
 )
+from scripts.bootstrap.vocabulary import LICENSING_MODES, PATH_BEARING_LICENSING_MODES
 
 PLAN_SCHEMA_VERSION = 1
 PLAN_OPERATION_KIND: Literal["initial"] = "initial"
@@ -375,15 +376,12 @@ def _parent_paths(path: RepoPath) -> tuple[RepoPath, ...]:
 
 def legal_output_paths(mode: str) -> tuple[RepoPath, ...] | None:
     """Return the legal/provenance seed-once paths the licensing mode requires."""
-    if mode == "retain-apache-2.0":
-        return (RepoPath("LICENSE"), RepoPath("NOTICE.md"))
-    if mode in {"provided-project-license", "private"}:
-        return (
-            RepoPath("LICENSE"),
-            RepoPath("NOTICE.md"),
-            RepoPath("LICENSES/Apache-2.0.txt"),
-        )
-    return None
+    if mode not in LICENSING_MODES:
+        return None
+    paths = (RepoPath("LICENSE"), RepoPath("NOTICE.md"))
+    if mode in PATH_BEARING_LICENSING_MODES:
+        return (*paths, RepoPath("LICENSES/Apache-2.0.txt"))
+    return paths
 
 
 def _placeholder_finding(rule: SlotPlaceholderRule) -> Finding:

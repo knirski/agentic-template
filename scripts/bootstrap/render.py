@@ -24,6 +24,15 @@ from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.paths import RepoPath, normalize_text, parse_path
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.schemas import Identifier, SettingName, SettingValue, StrictModel
+from scripts.bootstrap.vocabulary import (
+    BRANCH_NAME,
+    IDENTIFIER,
+    LICENSING_MODES,
+    MARKER_NAME_PATTERN,
+    PROJECT_NAME,
+    SHA256,
+    SLOT_MODES,
+)
 
 ContextName = Literal["yaml", "markdown"]
 
@@ -76,7 +85,7 @@ class SlotContent:
 def _as_content_id(value: object) -> ContentId:
     if isinstance(value, ContentId):
         return value
-    if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value):
+    if isinstance(value, str) and SHA256.fullmatch(value):
         return ContentId(value)
     raise ValueError("blob reference must be a 64-hex content address")
 
@@ -263,10 +272,11 @@ OPTIONAL_SECTION_PREFIX = "agentic-template:if:"
 OPTIONAL_SECTION_BEGIN_SUFFIX = ":begin"
 OPTIONAL_SECTION_END_SUFFIX = ":end"
 
-_SLOT_MARKER = re.compile(rb"agentic-template:slot:([a-z][a-z0-9-]*)")
-_VALUE_MARKER = re.compile(rb"agentic-template:value:([a-z][a-z0-9-]*)")
+_MARKER_NAME = MARKER_NAME_PATTERN.encode()
+_SLOT_MARKER = re.compile(rb"agentic-template:slot:(" + _MARKER_NAME + rb")")
+_VALUE_MARKER = re.compile(rb"agentic-template:value:(" + _MARKER_NAME + rb")")
 _OPTIONAL_SECTION_MARKER = re.compile(
-    rb"agentic-template:if:([a-z][a-z0-9-]*):(begin|end)\b"
+    rb"agentic-template:if:(" + _MARKER_NAME + rb"):(begin|end)\b"
 )
 
 
@@ -383,30 +393,23 @@ class RenderInput:
     def __post_init__(self) -> None:
         if not isinstance(self.generation_path, GenerationPath):
             raise ValueError("generation_path must be a GenerationPath")
-        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9._-]*", self.project.name):
+        if PROJECT_NAME.fullmatch(self.project.name) is None:
             raise ValueError("project name is outside the ASCII class")
-        if not re.fullmatch(
-            r"[A-Za-z0-9][A-Za-z0-9._/-]*", self.project.default_branch
-        ):
+        if BRANCH_NAME.fullmatch(self.project.default_branch) is None:
             raise ValueError("default_branch is outside the ASCII class")
-        if self.licensing.mode not in {
-            "retain-apache-2.0",
-            "provided-project-license",
-            "private",
-        }:
+        if self.licensing.mode not in LICENSING_MODES:
             raise ValueError("licensing mode is outside the closed vocabulary")
-        identifier = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
         for capability_id in (*self.effective, *self.additions):
-            if identifier.fullmatch(capability_id) is None:
+            if IDENTIFIER.fullmatch(capability_id) is None:
                 raise ValueError("capability id is outside the identifier class")
         for digest in (
             self.licensing.content_sha256,
             *(slot.content_sha256 for slot in self.slots.values()),
         ):
-            if digest is not None and re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            if digest is not None and SHA256.fullmatch(digest) is None:
                 raise ValueError("content digest must be a 64-hex sha256")
         for slot in self.slots.values():
-            if slot.mode not in {"file", "scaffold"}:
+            if slot.mode not in SLOT_MODES:
                 raise ValueError("slot mode is outside the closed vocabulary")
         for path in self.maintenance.retained_paths:
             if not isinstance(parse_path(path.value), Ok):

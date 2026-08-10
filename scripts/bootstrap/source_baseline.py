@@ -7,7 +7,6 @@ used for targeted repair; Copier projects record no commit because Copier suppli
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Literal, assert_never
 
@@ -17,9 +16,7 @@ from scripts.bootstrap.identity import PosixMode, tagged_digest
 from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.paths import RepoPath, parse_path
 from scripts.bootstrap.result import Err, Ok, Result
-
-_SHA256 = re.compile(r"[0-9a-f]{64}")
-_COMMIT_SHA = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
+from scripts.bootstrap.vocabulary import COMMIT_SHA, SHA256
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -61,7 +58,7 @@ def _validate_entries(
                     return Err(_source_error(entry.path.value))
             case _:  # pragma: no cover
                 return assert_never(entry.kind)  # pragma: no cover
-        if _SHA256.fullmatch(entry.sha256) is None:
+        if SHA256.fullmatch(entry.sha256) is None:
             return Err(_source_error(entry.path.value))
     return Ok(_sorted_entries(entries))
 
@@ -117,10 +114,7 @@ def derive_source_baseline(
     fingerprint = template_source_fingerprint(sorted_entries)
     match generation:
         case GenerationPath.GITHUB:
-            if (
-                snapshot_commit is None
-                or _COMMIT_SHA.fullmatch(snapshot_commit) is None
-            ):
+            if snapshot_commit is None or COMMIT_SHA.fullmatch(snapshot_commit) is None:
                 return Err(_source_error("snapshot_commit"))
             return Ok(
                 GitHubSourceBaseline(
