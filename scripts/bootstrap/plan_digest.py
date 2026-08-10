@@ -601,10 +601,7 @@ def _decode_baseline(
         if required:
             return Err(_receipt_error("source_after"))
         return Ok(None)
-    if not isinstance(value, dict) or set(value) not in (
-        {"kind", "fingerprint", "entries"},
-        {"kind", "fingerprint", "entries", "snapshot_commit"},
-    ):
+    if not isinstance(value, dict):
         return Err(_receipt_error("source_baseline"))
     kind = value.get("kind")
     fingerprint = value.get("fingerprint")
@@ -613,6 +610,13 @@ def _decode_baseline(
         return Err(_receipt_error("source_baseline"))
     if kind != generation:
         return Err(_receipt_error("source_baseline"))
+    expected_keys = (
+        {"kind", "fingerprint", "entries", "snapshot_commit"}
+        if kind == "github"
+        else {"kind", "fingerprint", "entries"}
+    )
+    if set(value) != expected_keys:
+        return Err(_receipt_error("source_baseline"))
     if kind == "github":
         snapshot_commit = value.get("snapshot_commit")
         if (
@@ -620,8 +624,6 @@ def _decode_baseline(
             or _COMMIT_SHA.fullmatch(snapshot_commit) is None
         ):
             return Err(_receipt_error("source_baseline"))
-    elif "snapshot_commit" in value:
-        return Err(_receipt_error("source_baseline"))
     if not isinstance(entries, list):
         return Err(_receipt_error("source_baseline.entries"))
     for entry in entries:
