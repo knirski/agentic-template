@@ -1698,6 +1698,30 @@ class TestPlanner:
             case Ok(_):
                 raise AssertionError("duplicate remove-directory operations applied")
 
+    def test_apply_plan_rejects_remove_directory_with_mismatched_precondition(
+        self,
+    ) -> None:
+        plan = github_plan()
+        removes = [
+            operation
+            for operation in plan.ordered_operations
+            if isinstance(operation, RemoveEmptyDirectoryOperation)
+        ]
+        assert removes
+        tampered = replace(removes[0], expected_old=DirectoryState(PosixMode.FILE, ()))
+        augmented = replace(
+            plan,
+            ordered_operations=tuple(
+                tampered if operation is removes[0] else operation
+                for operation in plan.ordered_operations
+            ),
+        )
+        match apply_plan(github_snapshot(), augmented):
+            case Err(error):
+                assert error.kind is PlanInvariantErrorKind.UNMATCHED_PRECONDITION
+            case Ok(_):
+                raise AssertionError("remove with mismatched precondition applied")
+
     def test_compilation_is_deterministic(self) -> None:
         assert github_plan() == github_plan()
         assert build_receipt(github_plan()) == build_receipt(github_plan())

@@ -1329,6 +1329,8 @@ def apply_plan(
                 if (
                     remove.path.value in written
                     or remove.path.value not in directories
+                    or remove.expected_old.root_mode
+                    != directories[remove.path.value].mode
                     or any(path.startswith(prefix) for path in files)
                     or any(path.startswith(prefix) for path in directories)
                 ):
