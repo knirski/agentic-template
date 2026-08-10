@@ -9,6 +9,8 @@ from types import MappingProxyType
 from typing import Literal, cast
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
 from scripts.bootstrap.canonical_json import canonical_json
@@ -1541,6 +1543,94 @@ class TestManifest:
                 ),
                 id="managed duplicate entries",
             ),
+            pytest.param(
+                lambda document: document["answers"].__setitem__("junk_key", True),
+                id="answers extra key",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["project"].__setitem__(
+                    "junk_key", True
+                ),
+                id="project extra key",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["profile"].__setitem__(
+                    "junk_key", True
+                ),
+                id="profile extra key",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["licensing"].__setitem__(
+                    "junk_key", True
+                ),
+                id="licensing extra key",
+            ),
+            pytest.param(
+                lambda document: document["answers"]["slots"]["readme"].__setitem__(
+                    "junk_key", True
+                ),
+                id="slot content extra key",
+            ),
+            pytest.param(
+                lambda document: document["additions"].__setitem__("junk_key", True),
+                id="additions extra key",
+            ),
+            pytest.param(
+                lambda document: document["provenance"].__setitem__("junk_key", True),
+                id="provenance extra key",
+            ),
+            pytest.param(
+                lambda document: document["provenance"]["maintenance"].__setitem__(
+                    "junk_key", True
+                ),
+                id="maintenance extra key",
+            ),
+            pytest.param(
+                lambda document: document["provenance"]["source_baseline"].__setitem__(
+                    "junk_key", True
+                ),
+                id="baseline extra key",
+            ),
+            pytest.param(
+                lambda document: document.__setitem__(
+                    "managed",
+                    [
+                        {
+                            "path": "a.txt",
+                            "kind": "text",
+                            "mode": 420,
+                            "sha256": "0" * 64,
+                            "junk_key": True,
+                        }
+                    ],
+                ),
+                id="managed entry extra key",
+            ),
+            pytest.param(
+                lambda document: document["provenance"]["source_baseline"][
+                    "entries"
+                ].__setitem__(
+                    0,
+                    {
+                        **document["provenance"]["source_baseline"]["entries"][0],
+                        "junk_key": True,
+                    },
+                ),
+                id="source entry extra key",
+            ),
+            pytest.param(
+                lambda document: document["provenance"]["source_baseline"][
+                    "entries"
+                ].__setitem__(
+                    0,
+                    {
+                        **document["provenance"]["source_baseline"]["entries"][0],
+                        "kind": "directory",
+                        "mode": 420,
+                    },
+                ),
+                id="directory entry with file mode",
+            ),
         ],
     )
     def test_decode_rejects_malformed_documents(
@@ -1564,6 +1654,120 @@ class TestManifest:
                 assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
             case Ok(_):
                 raise AssertionError("manifest with unknown top-level key decoded")
+
+    @given(
+        licensing_mode=st.sampled_from(
+            ("retain-apache-2.0", "provided-project-license", "private")
+        ),
+        file_slots=st.sampled_from(
+            (
+                (),
+                ("readme",),
+                ("readme", "prd", "security_policy", "contributing", "validation_hook"),
+            )
+        ),
+    )
+    def test_manifest_round_trip_is_byte_stable(
+        self, licensing_mode: str, file_slots: tuple[str, ...]
+    ) -> None:
+        provenance = ProvenanceRecord(
+            generation_path=GenerationPath.GITHUB,
+            maintenance=MaintenanceRecord(status="clean"),
+            source_baseline=GitHubSourceBaseline(
+                kind="github",
+                fingerprint=sha256_hex(b"source"),
+                entries=fixture_source_entries(),
+                snapshot_commit="0" * 40,
+            ),
+        )
+        match build_candidate_manifest(
+            answers=fixture_answers(
+                licensing_mode=licensing_mode, file_slots=file_slots
+            ),
+            additions=ManifestAdditions(),
+            provenance=provenance,
+            managed=(),
+        ):
+            case Ok(manifest):
+                pass
+            case Err(error):
+                raise AssertionError(f"manifest build failed: {error}")
+        encoded = encode_manifest(manifest)
+        match decode_manifest(encoded):
+            case Ok(decoded):
+                assert decoded == manifest
+            case Err(error):
+                raise AssertionError(f"manifest round trip failed: {error}")
+        assert encode_manifest(decoded) == encoded
+
+    def test_manifest_round_trip_preserves_directory_source_entries(self) -> None:
+        provenance = ProvenanceRecord(
+            generation_path=GenerationPath.GITHUB,
+            maintenance=MaintenanceRecord(status="clean"),
+            source_baseline=GitHubSourceBaseline(
+                kind="github",
+                fingerprint=sha256_hex(b"source"),
+                entries=(
+                    *fixture_source_entries(),
+                    LifecycleSourceEntry(
+                        path=RepoPath("scripts/bootstrap"),
+                        kind="directory",
+                        mode=PosixMode.DIRECTORY,
+                        sha256=sha256_hex(b"dir"),
+                    ),
+                ),
+                snapshot_commit="0" * 40,
+            ),
+        )
+        match build_candidate_manifest(
+            answers=fixture_answers(),
+            additions=ManifestAdditions(),
+            provenance=provenance,
+            managed=(),
+        ):
+            case Ok(manifest):
+                pass
+            case Err(error):
+                raise AssertionError(f"manifest build failed: {error}")
+        match decode_manifest(encode_manifest(manifest)):
+            case Ok(decoded):
+                assert decoded == manifest
+            case Err(error):
+                raise AssertionError(f"manifest round trip failed: {error}")
+
+    _INJECTION_PATHS = (
+        ("answers",),
+        ("answers", "project"),
+        ("answers", "profile"),
+        ("answers", "licensing"),
+        ("additions",),
+        ("provenance",),
+        ("provenance", "maintenance"),
+        ("provenance", "source_baseline"),
+    )
+
+    @given(
+        path=st.sampled_from(_INJECTION_PATHS),
+        key=st.text(min_size=1, max_size=10, alphabet="abcdefghijklmnopqrstuvwxyz").map(
+            lambda key: "zzz" + key
+        ),
+    )
+    def test_decode_rejects_extra_nested_keys(
+        self, path: tuple[str, ...], key: str
+    ) -> None:
+        document = manifest_document(self._github_manifest_value())
+        target: object = document
+        for segment in path:
+            assert isinstance(target, dict)
+            target = target[segment]
+        assert isinstance(target, dict)
+        target[key] = True
+        encoded = canonical_json({**document, "checksum": manifest_checksum(document)})
+        match decode_manifest(encoded):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError(f"manifest with extra nested key {path} decoded")
 
 
 class TestPlanner:
@@ -3148,6 +3352,32 @@ class TestPlanDigest:
                 assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION
             case Ok(_):
                 raise AssertionError("non-object receipt decoded")
+
+    def test_receipt_rejects_generation_kind_mismatch(self) -> None:
+        receipt = _copier_receipt()
+        source_after = receipt["source_after"]
+        assert isinstance(source_after, dict)
+        source_after["kind"] = "github"
+        source_after["snapshot_commit"] = "0" * 40
+        match decode_receipt(encode_receipt(receipt)):
+            case Err(error):
+                assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("receipt with mismatched generation kind decoded")
+
+    def test_receipt_rejects_github_generation_with_copier_baseline(self) -> None:
+        receipt = build_receipt(github_plan())
+        source_after = receipt["source_after"]
+        assert isinstance(source_after, dict)
+        source_after["kind"] = "copier"
+        source_after.pop("snapshot_commit")
+        match decode_receipt(encode_receipt(receipt)):
+            case Err(error):
+                assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError(
+                    "receipt with github generation and copier baseline decoded"
+                )
 
 
 class TestExpectedTarget:
