@@ -13,7 +13,10 @@ permissions:
 jobs:
   python-source:
     name: Python 3.14 source checks
-    if: github.repository == 'knirski/agentic-template'
+    if: >
+      github.repository == 'knirski/agentic-template' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -96,7 +99,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Run actionlint
-        uses: docker://docker.io/rhysd/actionlint:1.7.7
+        uses: docker://docker.io/rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 # 1.7.7
 
   release:
     name: Semantic Release
