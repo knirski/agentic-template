@@ -3236,6 +3236,20 @@ class TestPlanDigest:
                 id="observed kind",
             ),
             pytest.param(
+                lambda receipt: receipt["operations"][0]["planned_new"].__setitem__(
+                    "kind", "other"
+                ),
+                id="planned new identity kind",
+            ),
+            pytest.param(
+                lambda receipt: next(
+                    operation
+                    for operation in receipt["operations"]
+                    if operation["kind"] == "delete_file"
+                )["expected_old"].__setitem__("kind", "other"),
+                id="delete expected old identity kind",
+            ),
+            pytest.param(
                 lambda receipt: receipt["operations"][0]["expected_old"].__setitem__(
                     "normalized_sha256", "zzz"
                 ),
