@@ -2962,6 +2962,31 @@ class TestPlanDigest:
             case Err(error):
                 raise AssertionError(f"receipt decode failed: {error}")
 
+    def test_receipt_round_trip_with_binary_observed_state(self) -> None:
+        snapshot = github_snapshot()
+        snapshot = replace(
+            snapshot,
+            files=tuple(
+                replace(
+                    entry,
+                    state=file_state_identity(
+                        entry.content, text=False, mode=PosixMode.FILE
+                    ),
+                )
+                if entry.path.value == "uv.lock"
+                else entry
+                for entry in snapshot.files
+            ),
+        )
+        _, result = compile_fixture(snapshot=snapshot)
+        plan = get_plan(result)
+        receipt = build_receipt(plan)
+        match decode_receipt(encode_receipt(receipt)):
+            case Ok(decoded):
+                assert decoded == receipt
+            case Err(error):
+                raise AssertionError(f"receipt decode failed: {error}")
+
     def test_receipt_round_trip_with_observed_directory_mode_outside_install_modes(
         self,
     ) -> None:
