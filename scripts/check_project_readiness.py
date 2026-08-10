@@ -351,10 +351,10 @@ def evaluate_hook(state: HookState) -> tuple[Finding, ...]:
     if not state.regular_file:
         return (
             Finding(
-                "READINESS_HOOK_NOT_EXECUTABLE",
+                "READINESS_HOOK_NOT_REGULAR",
                 state.path,
                 "project-validation hook is not a regular file",
-                "create an executable scripts/validate_project.py hook",
+                "create a regular executable scripts/validate_project.py hook",
             ),
         )
     findings: list[Finding] = []
@@ -467,7 +467,7 @@ def inspect_hook(path: Path, findings: list[Finding]) -> HookState:
 def main(argv: list[str]) -> int:
     if argv:
         print(
-            "INTERNAL_READINESS_ERROR: scripts/check_project_readiness.py: unexpected arguments; next: run it without arguments",
+            "READINESS_USAGE_ERROR: scripts/check_project_readiness.py: unexpected arguments; next: run it without arguments",
             file=sys.stderr,
         )
         return 2

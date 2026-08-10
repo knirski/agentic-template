@@ -273,8 +273,12 @@ OPTIONAL_SECTION_BEGIN_SUFFIX = ":begin"
 OPTIONAL_SECTION_END_SUFFIX = ":end"
 
 _MARKER_NAME = MARKER_NAME_PATTERN.encode()
-_SLOT_MARKER = re.compile(rb"agentic-template:slot:(" + _MARKER_NAME + rb")")
-_VALUE_MARKER = re.compile(rb"agentic-template:value:(" + _MARKER_NAME + rb")")
+_SLOT_MARKER = re.compile(
+    rb"agentic-template:slot:(" + _MARKER_NAME + rb")(?![a-z0-9_-])"
+)
+_VALUE_MARKER = re.compile(
+    rb"agentic-template:value:(" + _MARKER_NAME + rb")(?![a-z0-9_-])"
+)
 _OPTIONAL_SECTION_MARKER = re.compile(
     rb"agentic-template:if:(" + _MARKER_NAME + rb"):(begin|end)\b"
 )
