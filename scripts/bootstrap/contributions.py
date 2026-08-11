@@ -128,7 +128,14 @@ def compose_contributions(
                     )
                 )
             body = blobs.get(contribution.body_blob)
-            assert body is not None
+            if body is None:  # pragma: no cover - pre-checked by compose_contributions
+                return Err(
+                    RenderError(
+                        RenderErrorKind.MISSING_BLOB,
+                        "missing_body_blob",
+                        _identity(owner, contribution.id),
+                    )
+                )
             match apply_substitutions(
                 body,
                 contribution.substitutions,
@@ -250,7 +257,16 @@ def compose_document_bodies(
     for owner, owner_order, fragments in fragment_pairs:
         for fragment in fragments:
             body = blobs.get(fragment.body_blob)
-            assert body is not None
+            if (
+                body is None
+            ):  # pragma: no cover - pre-checked by compose_document_bodies
+                return Err(
+                    RenderError(
+                        RenderErrorKind.MISSING_BLOB,
+                        "missing_fragment_blob",
+                        _identity(owner, fragment.id),
+                    )
+                )
             match apply_substitutions(
                 body,
                 fragment.substitutions,

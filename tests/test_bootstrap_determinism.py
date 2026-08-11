@@ -40,6 +40,16 @@ class CanonicalJsonTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 decode_json(payload)
 
+    def test_rejects_documents_beyond_the_maximum_nesting_depth(self) -> None:
+        deep = b"[" * 200 + b"0" + b"]" * 200
+        with self.assertRaises(ValueError):
+            decode_json(deep)
+        nested: object = 0
+        for _ in range(200):
+            nested = [nested]
+        with self.assertRaises(ValueError):
+            canonical_json(nested)
+
 
 class PathTests(unittest.TestCase):
     def test_accepts_repository_relative_posix_paths(self) -> None:

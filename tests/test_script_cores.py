@@ -76,6 +76,27 @@ class FunctionalCoreTests(unittest.TestCase):
         )
         self.assertEqual(findings[0].code, "READINESS_README_COMMAND")
 
+    def test_non_regular_hook_reports_the_regular_file_code(self) -> None:
+        findings = readiness.evaluate_hook(
+            readiness.HookState(
+                path=Path("scripts/validate_project.py"),
+                exists=True,
+                regular_file=False,
+                executable=False,
+                text=None,
+            )
+        )
+        self.assertEqual(findings[0].code, "READINESS_HOOK_NOT_REGULAR")
+        self.assertEqual(readiness.exit_code(findings), 1)
+
+    def test_unexpected_arguments_report_a_usage_error(self) -> None:
+        output = io.StringIO()
+        with contextlib.redirect_stderr(output):
+            result = readiness.main(["unexpected"])
+
+        self.assertEqual(result, 2)
+        self.assertIn("READINESS_USAGE_ERROR", output.getvalue())
+
     def test_repository_core_stops_after_nonzero_stage(self) -> None:
         self.assertTrue(repository.stage_failed(7))
         self.assertFalse(repository.stage_failed(0))

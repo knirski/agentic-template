@@ -657,6 +657,22 @@ def test_unknown_substitution_marker_is_rejected() -> None:
             raise AssertionError("expected an unknown-substitution failure")
 
 
+def test_value_marker_prefix_is_not_partially_substituted() -> None:
+    result = apply_substitutions(
+        b"name = agentic-template:value:repo_url\n",
+        (
+            SubstitutionDefinition(
+                name="repo", source=ProjectSource(kind="project", key="name")
+            ),
+        ),
+        context="markdown",
+        settings={},
+        project=PROJECT,
+        maintenance=MaintenanceInfo(status="clean", retained_paths=()),
+    )
+    assert result == Ok(b"name = agentic-template:value:repo_url\n")
+
+
 def test_contribution_order_changes_output() -> None:
     store, content_ids = fixture_blobs()
     render_input = make_render_input(store, content_ids)
