@@ -516,8 +516,9 @@
           "description": "Implement shell observers/effects for verified Git worktrees, descriptor-relative path walking, lock acquisition, bounded coherent re-observation, journal encoding, atomic journal replacement, state-root fsync, transaction/preparation identity derivation, and orphan/invalid-state classification.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "in_progress",
+            "completion": null,
+            "github_prs": []
           },
           "files": {
             "create": [
