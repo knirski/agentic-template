@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from scripts.bootstrap.errors import InputError, InputErrorKind
 from scripts.bootstrap.result import Err, Ok, Result
@@ -32,6 +32,7 @@ class VerifiedBlobStore:
     limits: ResourceLimits
     records: tuple[BlobRecord, ...]
     unique_bytes: int
+    _index: dict[str, bytes] = field(default_factory=dict, compare=False, repr=False)
 
     @classmethod
     def empty(cls, limits: ResourceLimits = DEFAULT_LIMITS) -> VerifiedBlobStore:
@@ -42,10 +43,7 @@ class VerifiedBlobStore:
         return len(self.records)
 
     def get(self, content_id: ContentId) -> bytes | None:
-        for record in self.records:
-            if record.content_id == content_id:
-                return record.content
-        return None
+        return self._index.get(content_id.value)
 
     def intern(
         self, content: bytes
@@ -54,7 +52,7 @@ class VerifiedBlobStore:
         if len(owned) > self.limits.max_file_bytes:
             return Err(InputError(InputErrorKind.INPUT_LIMIT_EXCEEDED, "file_bytes"))
         content_id = ContentId.from_bytes(owned)
-        if self.get(content_id) is not None:
+        if content_id.value in self._index:
             return Ok((content_id, self))
         if self.unique_bytes + len(owned) > self.limits.max_unique_bytes:
             return Err(InputError(InputErrorKind.INPUT_LIMIT_EXCEEDED, "unique_bytes"))
@@ -66,6 +64,7 @@ class VerifiedBlobStore:
                     limits=self.limits,
                     records=(*self.records, record),
                     unique_bytes=self.unique_bytes + len(owned),
+                    _index={**self._index, content_id.value: owned},
                 ),
             )
         )

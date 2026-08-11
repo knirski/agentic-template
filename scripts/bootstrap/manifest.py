@@ -19,11 +19,6 @@ from scripts.bootstrap.canonical_json import canonical_json, decode_json
 from scripts.bootstrap.identity import InstallFileMode, PosixMode, tagged_digest
 from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.paths import RepoPath, parse_path
-from scripts.bootstrap.render import (
-    ManagedInventory,
-    ManagedInventoryEntry,
-    SlotContent,
-)
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.source_baseline import (
     CopierSourceBaseline,
@@ -51,6 +46,23 @@ MANIFEST_PATH = RepoPath(".agentic-template/project.json")
 SLOT_IDS = frozenset(
     {"readme", "prd", "security_policy", "contributing", "validation_hook"}
 )
+
+
+@dataclass(frozen=True, slots=True)
+class SlotContent:
+    mode: str
+    content_sha256: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ManagedInventoryEntry:
+    path: RepoPath
+    kind: Literal["text", "binary"]
+    mode: PosixMode
+    sha256: str
+
+
+ManagedInventory = tuple[ManagedInventoryEntry, ...]
 
 _MAINTENANCE_STATUSES = frozenset({"clean", "retained"})
 INSTALL_MODES = InstallFileMode

@@ -21,6 +21,7 @@ from scripts.bootstrap.contributions import (
 from scripts.bootstrap.errors import ContractError, ContractErrorKind
 from scripts.bootstrap.identity import PosixMode, sha256_hex
 from scripts.bootstrap.intents import GenerationPath
+from scripts.bootstrap.manifest import SlotContent
 from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.render import (
     ArtifactDefinition,
@@ -37,7 +38,6 @@ from scripts.bootstrap.render import (
     RenderErrorKind,
     RenderInput,
     SettingSource,
-    SlotContent,
     SlotDefinition,
     SubstitutionDefinition,
     _remove_marker_line,

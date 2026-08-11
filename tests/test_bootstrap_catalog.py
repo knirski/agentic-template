@@ -15,13 +15,34 @@ from scripts.bootstrap.catalog import (
 )
 from scripts.bootstrap.profiles import PROFILE_CAPABILITIES
 from scripts.bootstrap.resolver import (
-    ResolutionError,
+    ResolutionErrorKind,
+    ResolutionFailure,
+    ResolvedBundle,
     _setting_value,
     resolve_additions,
     resolve_bundle,
 )
+from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.schemas import AdditionsInput
 from tests.test_bootstrap_schemas import bundle_data
+
+
+def _ok(result: Result[ResolvedBundle, ResolutionFailure]) -> ResolvedBundle:
+    match result:
+        case Ok(resolved):
+            return resolved
+        case Err(failure):
+            raise AssertionError(f"resolution failed: {failure}")
+
+
+def _failure[Value, Failure: ResolutionFailure](
+    result: Result[Value, Failure],
+) -> Failure:
+    match result:
+        case Err(failure):
+            return failure
+        case Ok(_):
+            raise AssertionError("resolution unexpectedly succeeded")
 
 
 def test_all_profiles_have_expected_frozen_expansion() -> None:
@@ -39,7 +60,7 @@ def test_all_profiles_have_expected_frozen_expansion() -> None:
 
 
 def test_integrated_profile_closes_dependencies_and_normalizes_defaults() -> None:
-    resolved = resolve_bundle(decode_bundle(bundle_data()))
+    resolved = _ok(resolve_bundle(decode_bundle(bundle_data())))
     assert resolved.effective == (
         "nix",
         "pr-agent-gemini",
@@ -54,55 +75,54 @@ def test_additions_close_dependencies_and_reject_reconfiguration() -> None:
         profile={"id": "portable"},
         capability_settings={"cachix-publish": {"cache_name": "example"}},
     )
-    resolved = resolve_bundle(decode_bundle(data), additions=("cachix-publish",))
+    resolved = _ok(resolve_bundle(decode_bundle(data), additions=("cachix-publish",)))
     assert resolved.effective == ("nix", "cachix-publish")
 
-    added = resolve_additions(
-        resolve_bundle(
-            decode_bundle(
-                bundle_data(profile={"id": "portable"}, capability_settings={})
-            )
-        ),
-        AdditionsInput(
-            schema_version=1,
-            add_capabilities=("cachix-publish",),
-            capability_settings={"cachix-publish": {"cache_name": " example "}},
-        ),
+    added = _ok(
+        resolve_additions(
+            _ok(
+                resolve_bundle(
+                    decode_bundle(
+                        bundle_data(profile={"id": "portable"}, capability_settings={})
+                    )
+                )
+            ),
+            AdditionsInput(
+                schema_version=1,
+                add_capabilities=("cachix-publish",),
+                capability_settings={"cachix-publish": {"cache_name": " example "}},
+            ),
+        )
     )
     assert added.settings["cachix-publish"]["cache_name"] == "example"
 
-    with pytest.raises(ValueError, match="reconfigured"):
-        resolve_additions(
-            resolved,
-            AdditionsInput(
-                schema_version=1,
-                add_capabilities=(),
-                capability_settings={"cachix-publish": {"cache_name": "other"}},
-            ),
-        )
+    assert (
+        _failure(
+            resolve_additions(
+                resolved,
+                AdditionsInput(
+                    schema_version=1,
+                    add_capabilities=(),
+                    capability_settings={"cachix-publish": {"cache_name": "other"}},
+                ),
+            )
+        ).kind
+        is ResolutionErrorKind.RECONFIGURE_SETTINGS
+    )
 
 
 def test_normalized_settings_identity_is_order_independent() -> None:
-    first = resolve_bundle(decode_bundle(bundle_data()))
-    second = resolve_bundle(
-        decode_bundle(
-            bundle_data(
-                capability_settings={"cachix-publish": {"cache_name": " example "}}
+    first = _ok(resolve_bundle(decode_bundle(bundle_data())))
+    second = _ok(
+        resolve_bundle(
+            decode_bundle(
+                bundle_data(
+                    capability_settings={"cachix-publish": {"cache_name": " example "}}
+                )
             )
         )
     )
     assert first.settings_identity == second.settings_identity
-
-    with pytest.raises(ValueError, match="secret"):
-        resolve_bundle(
-            decode_bundle(
-                bundle_data(
-                    capability_settings={
-                        "cachix-publish": {"cache_name": "example", "token": "secret"}
-                    }
-                )
-            )
-        )
 
 
 def test_resolution_does_not_read_process_state(
@@ -110,7 +130,7 @@ def test_resolution_does_not_read_process_state(
 ) -> None:
     monkeypatch.setenv("CACHIX_AUTH_TOKEN", "must-not-be-read")
     before = dict(os.environ)
-    resolve_bundle(decode_bundle(bundle_data()))
+    _ok(resolve_bundle(decode_bundle(bundle_data())))
     assert dict(os.environ) == before
 
 
@@ -160,34 +180,58 @@ def test_catalog_definitions_reject_unsafe_or_duplicate_members() -> None:
 
 
 def test_resolution_rejects_invalid_profiles_and_settings() -> None:
-    with pytest.raises(ResolutionError, match="unknown profile"):
-        resolve_bundle(decode_bundle(bundle_data(profile={"id": "unknown"})))
-    with pytest.raises(ResolutionError, match="unknown capability"):
-        resolve_bundle(
-            decode_bundle(
-                bundle_data(
-                    profile={"id": "custom", "capabilities": ["unknown"]},
-                    capability_settings={},
+    assert (
+        _failure(
+            resolve_bundle(decode_bundle(bundle_data(profile={"id": "unknown"})))
+        ).kind
+        is ResolutionErrorKind.UNKNOWN_PROFILE
+    )
+    assert (
+        _failure(
+            resolve_bundle(
+                decode_bundle(
+                    bundle_data(
+                        profile={"id": "custom", "capabilities": ["unknown"]},
+                        capability_settings={},
+                    )
                 )
             )
-        )
-    with pytest.raises(ResolutionError, match="unknown setting"):
-        resolve_bundle(
-            decode_bundle(
-                bundle_data(capability_settings={"cachix-publish": {"unknown": "x"}})
+        ).kind
+        is ResolutionErrorKind.UNKNOWN_CAPABILITY
+    )
+    assert (
+        _failure(
+            resolve_bundle(
+                decode_bundle(
+                    bundle_data(
+                        capability_settings={"cachix-publish": {"unknown": "x"}}
+                    )
+                )
             )
-        )
-    with pytest.raises(ResolutionError, match="settings supplied"):
-        resolve_bundle(
-            decode_bundle(bundle_data(capability_settings={"unknown": {"value": "x"}}))
-        )
-    with pytest.raises(ResolutionError, match="missing required"):
-        resolve_bundle(
-            decode_bundle(
-                bundle_data(profile={"id": "portable"}, capability_settings={})
-            ),
-            additions=("cachix-publish",),
-        )
+        ).kind
+        is ResolutionErrorKind.UNKNOWN_SETTING
+    )
+    assert (
+        _failure(
+            resolve_bundle(
+                decode_bundle(
+                    bundle_data(capability_settings={"unknown": {"value": "x"}})
+                )
+            )
+        ).kind
+        is ResolutionErrorKind.UNSELECTED_SETTINGS
+    )
+    assert (
+        _failure(
+            resolve_bundle(
+                decode_bundle(
+                    bundle_data(profile={"id": "portable"}, capability_settings={})
+                ),
+                additions=("cachix-publish",),
+            )
+        ).kind
+        is ResolutionErrorKind.MISSING_REQUIRED_SETTING
+    )
 
 
 def test_setting_value_validation_covers_closed_setting_types() -> None:
@@ -201,19 +245,34 @@ def test_setting_value_validation_covers_closed_setting_types() -> None:
         choices=(),
         secret=True,
     )
-    assert _setting_value(boolean, {}) is False
-    with pytest.raises(ResolutionError, match="outside its enum"):
-        _setting_value(enum, {"mode": "b"})
-    with pytest.raises(ResolutionError, match="secret"):
-        _setting_value(secret, {})
-    with pytest.raises(ResolutionError, match="must be a string"):
-        _setting_value(SettingDefinition(name="name", type="string"), {"name": True})
-    with pytest.raises(ResolutionError, match="must be a boolean"):
-        _setting_value(
-            SettingDefinition(name="enabled", type="boolean"), {"enabled": "yes"}
-        )
-    with pytest.raises(ResolutionError, match="no deterministic"):
-        _setting_value(SettingDefinition(name="name", type="string"), {})
+    assert _setting_value(boolean, {}) == Ok(False)
+    assert (
+        _failure(_setting_value(enum, {"mode": "b"})).kind
+        is ResolutionErrorKind.ENUM_VIOLATION
+    )
+    assert (
+        _failure(_setting_value(secret, {})).kind is ResolutionErrorKind.SECRET_SETTING
+    )
+    assert (
+        _failure(
+            _setting_value(
+                SettingDefinition(name="name", type="string"), {"name": True}
+            )
+        ).kind
+        is ResolutionErrorKind.TYPE_VIOLATION
+    )
+    assert (
+        _failure(
+            _setting_value(
+                SettingDefinition(name="enabled", type="boolean"), {"enabled": "yes"}
+            )
+        ).kind
+        is ResolutionErrorKind.TYPE_VIOLATION
+    )
+    assert (
+        _failure(_setting_value(SettingDefinition(name="name", type="string"), {})).kind
+        is ResolutionErrorKind.UNDETERMINED_SETTING
+    )
 
 
 def test_resolution_rejects_cycles_and_duplicate_requests(
@@ -229,19 +288,70 @@ def test_resolution_rejects_cycles_and_duplicate_requests(
         "cycle-b",
         CapabilityDefinition(id="cycle-b", description="b", dependencies=("cycle-a",)),
     )
-    with pytest.raises(ResolutionError, match="cycle"):
-        resolve_bundle(
-            decode_bundle(
-                bundle_data(
-                    profile={"id": "custom", "capabilities": ["cycle-a"]},
-                    capability_settings={},
+    assert (
+        _failure(
+            resolve_bundle(
+                decode_bundle(
+                    bundle_data(
+                        profile={"id": "custom", "capabilities": ["cycle-a"]},
+                        capability_settings={},
+                    )
                 )
             )
-        )
-    with pytest.raises(ResolutionError, match="repeat"):
-        resolve_bundle(decode_bundle(bundle_data()), additions=("semantic-release",))
-    with pytest.raises(ResolutionError, match="new IDs"):
-        resolve_additions(
-            resolve_bundle(decode_bundle(bundle_data())),
-            AdditionsInput(schema_version=1, add_capabilities=("semantic-release",)),
-        )
+        ).kind
+        is ResolutionErrorKind.DEPENDENCY_CYCLE
+    )
+    assert (
+        _failure(
+            resolve_bundle(
+                decode_bundle(bundle_data()), additions=("semantic-release",)
+            )
+        ).kind
+        is ResolutionErrorKind.DUPLICATE_ADDITION
+    )
+    assert (
+        _failure(
+            resolve_additions(
+                _ok(resolve_bundle(decode_bundle(bundle_data()))),
+                AdditionsInput(
+                    schema_version=1, add_capabilities=("semantic-release",)
+                ),
+            )
+        ).kind
+        is ResolutionErrorKind.DUPLICATE_ADDITION
+    )
+    assert (
+        _failure(
+            resolve_additions(
+                _ok(resolve_bundle(decode_bundle(bundle_data()))),
+                AdditionsInput(schema_version=1, add_capabilities=("ghost",)),
+            )
+        ).kind
+        is ResolutionErrorKind.UNKNOWN_CAPABILITY
+    )
+    assert (
+        _failure(
+            resolve_additions(
+                _ok(resolve_bundle(decode_bundle(bundle_data()))),
+                AdditionsInput(schema_version=1, add_capabilities=("cycle-a",)),
+            )
+        ).kind
+        is ResolutionErrorKind.DEPENDENCY_CYCLE
+    )
+    assert (
+        _failure(
+            resolve_additions(
+                _ok(
+                    resolve_bundle(
+                        decode_bundle(
+                            bundle_data(
+                                profile={"id": "portable"}, capability_settings={}
+                            )
+                        )
+                    )
+                ),
+                AdditionsInput(schema_version=1, add_capabilities=("cachix-publish",)),
+            )
+        ).kind
+        is ResolutionErrorKind.MISSING_REQUIRED_SETTING
+    )

@@ -35,6 +35,7 @@ from scripts.bootstrap.identity import (
     TargetIdentity,
     content_identity,
     directory_tree_hash,
+    sha256_hex,
 )
 from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.manifest import (
@@ -43,6 +44,7 @@ from scripts.bootstrap.manifest import (
     ManifestAdditions,
     ManifestAnswers,
     ProvenanceRecord,
+    SlotContent,
     build_candidate_manifest,
     encode_manifest,
     manifest_checksum,
@@ -54,7 +56,6 @@ from scripts.bootstrap.paths import RepoPath, parse_path
 from scripts.bootstrap.readiness import Finding, MechanicalReadinessResult, SubjectPath
 from scripts.bootstrap.render import (
     ManagedRender,
-    SlotContent,
     derive_managed_inventory,
 )
 from scripts.bootstrap.result import Err, Ok, Result
@@ -566,6 +567,23 @@ def _validate_slot_coverage(
         found = rule.marker in planned
         if (content.mode == "scaffold") != found:
             return Err(_compile_error(CompileErrorKind.INVALID_TARGET, rule.path.value))
+        if (
+            content.content_sha256 is not None
+            and sha256_hex(planned) != content.content_sha256
+        ):
+            return Err(_compile_error(CompileErrorKind.INVALID_TARGET, rule.path.value))
+    license_digest = answers.licensing.content_sha256
+    if license_digest is not None:
+        license_seed = by_path.get("LICENSE")
+        license_bytes = (
+            blobs.get(license_seed.content_id) if license_seed is not None else None
+        )
+        if license_bytes is None or sha256_hex(license_bytes) != license_digest:
+            return Err(
+                _compile_error(
+                    CompileErrorKind.INVALID_TARGET, "licensing.content_sha256"
+                )
+            )
     return Ok(None)
 
 

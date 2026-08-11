@@ -21,6 +21,11 @@ from pydantic import BeforeValidator, Field, field_validator, model_validator
 from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
 from scripts.bootstrap.identity import PosixMode, content_identity
 from scripts.bootstrap.intents import GenerationPath
+from scripts.bootstrap.manifest import (
+    ManagedInventory,
+    ManagedInventoryEntry,
+    SlotContent,
+)
 from scripts.bootstrap.paths import RepoPath, normalize_text, parse_path
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.schemas import Identifier, SettingName, SettingValue, StrictModel
@@ -74,12 +79,6 @@ class ProfileInfo:
 class MaintenanceInfo:
     status: str
     retained_paths: tuple[RepoPath, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class SlotContent:
-    mode: str
-    content_sha256: str | None
 
 
 def _as_content_id(value: object) -> ContentId:
@@ -447,17 +446,6 @@ class ManagedFile:
 
 
 ManagedRender = tuple[ManagedFile, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class ManagedInventoryEntry:
-    path: RepoPath
-    kind: Literal["text", "binary"]
-    mode: PosixMode
-    sha256: str
-
-
-ManagedInventory = tuple[ManagedInventoryEntry, ...]
 
 
 def derive_managed_inventory(managed: ManagedRender) -> ManagedInventory:
