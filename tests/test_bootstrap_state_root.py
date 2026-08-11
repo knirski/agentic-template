@@ -484,6 +484,22 @@ class LockingTests(unittest.TestCase):
             self.assertEqual(error.primitive, TransactionPrimitive.WRITE_FILE)
             self.assertEqual(error.errno_class, ErrnoClass.OTHER_SANITIZED_ERRNO)
 
+    def test_failed_acquisitions_do_not_leak_descriptors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state = self._state_root(tmp)
+            first = _ok(acquire_lock(state, operation="apply", target_digest="d" * 64))
+            try:
+                before = len(os.listdir("/proc/self/fd"))
+                for _ in range(50):
+                    error = _err(
+                        acquire_lock(state, operation="apply", target_digest="d" * 64)
+                    )
+                    self.assertEqual(error.kind, TransitionErrorKind.LOCK_HELD)
+                after = len(os.listdir("/proc/self/fd"))
+                self.assertEqual(after, before)
+            finally:
+                release_lock(first)
+
 
 class GitStateTests(unittest.TestCase):
     def _git(
@@ -612,6 +628,23 @@ class GitStateTests(unittest.TestCase):
         self.assertEqual(
             result, Err(UnsupportedGitTarget(TargetReason.GIT_UNAVAILABLE))
         )
+
+    def test_missing_working_directory_is_an_unsupported_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = os.fsencode(os.path.join(tmp, "absent"))
+            result = run_git(("--version",), cwd=missing)
+            self.assertEqual(
+                result, Err(UnsupportedGitTarget(TargetReason.NOT_WORKTREE))
+            )
+
+    def test_file_as_working_directory_is_an_unsupported_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = os.fsencode(os.path.join(tmp, "file"))
+            _write(os.path.join(tmp, "file"), b"x")
+            result = run_git(("--version",), cwd=cwd)
+            self.assertEqual(
+                result, Err(UnsupportedGitTarget(TargetReason.NOT_WORKTREE))
+            )
 
     def test_non_executable_git_is_reported_unavailable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1348,6 +1381,14 @@ class JournalTests(unittest.TestCase):
         base = _sample_envelope()
         with self.assertRaises(TypeError):
             JournalTarget(root_hex="", device=1, inode=2, digest=identity.digest)
+        with self.assertRaises(TypeError):
+            JournalTarget(
+                root_hex="2F73616D706C65", device=1, inode=2, digest=identity.digest
+            )
+        with self.assertRaises(TypeError):
+            JournalTarget(
+                root_hex="2f 73 61", device=1, inode=2, digest=identity.digest
+            )
         with self.assertRaises(TypeError):
             JournalTarget(
                 root_hex="2f73616d706c65",

@@ -50,13 +50,52 @@ def _primitive_failed(error: OSError, subject: str) -> TransactionError:
     )
 
 
+def _try_acquire(
+    fd: int, *, operation: str, target_digest: str
+) -> Result[LockGuard, TransitionError | ObservationError | TransactionError]:
+    """Acquire and label an already-opened lock descriptor."""
+
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except InterruptedError:
+            continue
+        except OSError as error:
+            if error.errno in (errno.EWOULDBLOCK, errno.EAGAIN):
+                return Err(TransitionError(TransitionErrorKind.LOCK_HELD, "lock"))
+            if error.errno in (errno.ENOTSUP, errno.EINVAL, errno.ENOLCK):
+                return Err(
+                    ObservationError(
+                        ObservationErrorKind.UNSUPPORTED_FILESYSTEM, "flock"
+                    )
+                )
+            return Err(_primitive_failed(error, "flock"))
+    content = canonical_json(
+        {"pid": os.getpid(), "operation": operation, "target": target_digest}
+    )
+    try:
+        os.ftruncate(fd, 0)
+    except OSError as error:
+        return Err(_primitive_failed(error, "lock content"))
+    match write_all(fd, content):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            return Ok(LockGuard(fd=fd))
+
+
 def acquire_lock(
     state_root_fd: int,
     *,
     operation: str,
     target_digest: str,
 ) -> Result[LockGuard, TransitionError | ObservationError | TransactionError]:
-    """Acquire the canonical state-root lock without blocking."""
+    """Acquire the canonical state-root lock without blocking.
+
+    The descriptor is closed on every failed acquisition; only the returned
+    ``LockGuard`` keeps it open.
+    """
 
     try:
         fd = os.open("lock", _LOCK_FLAGS, 0o600, dir_fd=state_root_fd)
@@ -69,37 +108,16 @@ def acquire_lock(
             )
         return Err(_primitive_failed(error, "lock"))
     try:
-        while True:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except InterruptedError:
-                continue
-            except OSError as error:
-                if error.errno in (errno.EWOULDBLOCK, errno.EAGAIN):
-                    return Err(TransitionError(TransitionErrorKind.LOCK_HELD, "lock"))
-                if error.errno in (errno.ENOTSUP, errno.EINVAL, errno.ENOLCK):
-                    return Err(
-                        ObservationError(
-                            ObservationErrorKind.UNSUPPORTED_FILESYSTEM, "flock"
-                        )
-                    )
-                return Err(_primitive_failed(error, "flock"))
-        content = canonical_json(
-            {"pid": os.getpid(), "operation": operation, "target": target_digest}
-        )
-        try:
-            os.ftruncate(fd, 0)
-        except OSError as error:
-            return Err(_primitive_failed(error, "lock content"))
-        match write_all(fd, content):
-            case Err(error):
-                return Err(error)
-            case Ok(_):
-                return Ok(LockGuard(fd=fd))
+        outcome = _try_acquire(fd, operation=operation, target_digest=target_digest)
     except BaseException:
         os.close(fd)
         raise
+    match outcome:
+        case Ok(guard):
+            return Ok(guard)
+        case Err(_):
+            os.close(fd)
+            return outcome
 
 
 def release_lock(guard: LockGuard) -> None:

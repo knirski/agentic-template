@@ -61,6 +61,7 @@ from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
 
 JOURNAL_SCHEMA_VERSION = 1
 _TRANSACTION_HEX = re.compile(r"[0-9a-f]{64}\Z")
+_ROOT_HEX = re.compile(r"(?:[0-9a-f]{2})+\Z")
 _O_PENDING = os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW | os.O_CLOEXEC
 _O_READ = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
 
@@ -92,12 +93,9 @@ class JournalTarget:
     digest: str
 
     def __post_init__(self) -> None:
-        try:
-            root = bytes.fromhex(self.root_hex)
-        except ValueError:
-            raise TypeError("journal target root must be lowercase hex") from None
-        if not root:
-            raise TypeError("journal target root cannot be empty")
+        if not isinstance(self.root_hex, str) or not _ROOT_HEX.fullmatch(self.root_hex):
+            raise TypeError("journal target root must be lowercase hex")
+        root = bytes.fromhex(self.root_hex)
         if type(self.device) is not int or type(self.inode) is not int:
             raise TypeError("journal target device and inode must be integers")
         if self.device < 0 or self.inode < 0:

@@ -80,10 +80,10 @@ def run_git(
             check=False,
             timeout=timeout,
         )
-    except FileNotFoundError:
-        return Err(UnsupportedGitTarget(TargetReason.GIT_UNAVAILABLE))
-    except PermissionError:
-        return Err(UnsupportedGitTarget(TargetReason.GIT_UNAVAILABLE))
+    except (FileNotFoundError, NotADirectoryError) as error:
+        return Err(UnsupportedGitTarget(_launch_target_reason(error, cwd)))
+    except PermissionError as error:
+        return Err(UnsupportedGitTarget(_launch_target_reason(error, cwd)))
     except subprocess.TimeoutExpired:
         return Err(UnsupportedGitTarget(TargetReason.NOT_WORKTREE))
     if process.returncode < 0:
@@ -104,6 +104,18 @@ def run_git(
             stderr=process.stderr,
         )
     )
+
+
+def _launch_target_reason(error: OSError, cwd: bytes) -> TargetReason:
+    """Classify a git launch failure by the path that failed to resolve.
+
+    A missing or non-directory working directory is a target problem; a
+    missing or non-executable ``git`` executable is an environment problem.
+    """
+
+    if error.filename is not None and os.fsdecode(error.filename) == os.fsdecode(cwd):
+        return TargetReason.NOT_WORKTREE
+    return TargetReason.GIT_UNAVAILABLE
 
 
 def _reports_true(result: GitCommandResult) -> bool:
