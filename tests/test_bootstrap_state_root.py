@@ -232,6 +232,28 @@ class FsEffectsTests(unittest.TestCase):
                 os.close(fd)
             self.assertEqual(_read(os.path.join(tmp, "f")), b"payload")
 
+    def test_open_regular_rejects_unreadable_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _write(os.path.join(tmp, "f"), b"x")
+            os.chmod(os.path.join(tmp, "f"), 0o000)
+            error = _err(open_regular_no_follow(_open_dir(tmp), b"f"))
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
+
+    def test_ensure_state_root_rejects_unwritable_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            os.chmod(tmp, 0o500)
+            error = _err(ensure_state_root(_open_dir(tmp), b"state-root"))
+            self.assertEqual(error.kind, TransactionErrorKind.PRIMITIVE_FAILED)
+            self.assertEqual(error.primitive, TransactionPrimitive.CREATE_DIRECTORY)
+
+    def test_classify_child_rejects_unsearchable_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "d"))
+            fd = _open_dir(os.path.join(tmp, "d"))
+            os.chmod(os.path.join(tmp, "d"), 0o400)
+            error = _err(classify_child(fd, b"x"))
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
+
     def test_fsync_file_and_directory_succeed_on_real_tree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             fd = os.open(os.path.join(tmp, "f"), os.O_CREAT | os.O_WRONLY)
@@ -818,6 +840,158 @@ class GitStateTests(unittest.TestCase):
 
             error = _err(resolve_git_worktree(root, runner=runner))
             self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
+
+    def test_path_format_probe_failure_is_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.fsencode(tmp)
+
+            def runner(
+                args: tuple[str, ...],
+            ) -> Result[
+                GitCommandResult,
+                UnsupportedGitTarget | ObservationError | InternalFailure,
+            ]:
+                if args == ("rev-parse", "--is-inside-work-tree"):
+                    return Ok(GitCommandResult(0, b"true\n", b""))
+                if args == (
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--git-path",
+                    "agentic-template",
+                ):
+                    return Err(UnsupportedGitTarget(TargetReason.GIT_UNAVAILABLE))
+                raise AssertionError(f"unexpected git call: {args}")
+
+            result = resolve_git_worktree(root, runner=runner)
+            self.assertEqual(
+                result, Ok(UnsupportedGitTarget(TargetReason.GIT_UNAVAILABLE))
+            )
+
+    def test_fallback_probe_failure_is_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.fsencode(tmp)
+
+            def runner(
+                args: tuple[str, ...],
+            ) -> Result[
+                GitCommandResult,
+                UnsupportedGitTarget | ObservationError | InternalFailure,
+            ]:
+                if args == ("rev-parse", "--is-inside-work-tree"):
+                    return Ok(GitCommandResult(0, b"true\n", b""))
+                if args == (
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--git-path",
+                    "agentic-template",
+                ):
+                    return Ok(
+                        GitCommandResult(
+                            129, b"", b"error: unknown option `path-format'\n"
+                        )
+                    )
+                if args == ("rev-parse", "--git-path", "agentic-template"):
+                    return Err(UnsupportedGitTarget(TargetReason.GIT_UNAVAILABLE))
+                raise AssertionError(f"unexpected git call: {args}")
+
+            result = resolve_git_worktree(root, runner=runner)
+            self.assertEqual(
+                result, Ok(UnsupportedGitTarget(TargetReason.GIT_UNAVAILABLE))
+            )
+
+    def test_git_dir_probe_failure_is_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.fsencode(tmp)
+
+            def runner(
+                args: tuple[str, ...],
+            ) -> Result[
+                GitCommandResult,
+                UnsupportedGitTarget | ObservationError | InternalFailure,
+            ]:
+                if args == ("rev-parse", "--is-inside-work-tree"):
+                    return Ok(GitCommandResult(0, b"true\n", b""))
+                if args == (
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--git-path",
+                    "agentic-template",
+                ):
+                    return Ok(GitCommandResult(0, b"/x/agentic-template\n", b""))
+                if args == ("rev-parse", "--absolute-git-dir"):
+                    return Err(UnsupportedGitTarget(TargetReason.GIT_UNAVAILABLE))
+                raise AssertionError(f"unexpected git call: {args}")
+
+            result = resolve_git_worktree(root, runner=runner)
+            self.assertEqual(
+                result, Ok(UnsupportedGitTarget(TargetReason.GIT_UNAVAILABLE))
+            )
+
+    def test_missing_root_is_a_typed_observation_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.fsencode(os.path.join(tmp, "missing"))
+            state_root = os.path.join(tmp, "tree", "agentic-template")
+            os.makedirs(state_root, exist_ok=True)
+
+            def runner(
+                args: tuple[str, ...],
+            ) -> Result[
+                GitCommandResult,
+                UnsupportedGitTarget | ObservationError | InternalFailure,
+            ]:
+                if args == ("rev-parse", "--is-inside-work-tree"):
+                    return Ok(GitCommandResult(0, b"true\n", b""))
+                if args == (
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--git-path",
+                    "agentic-template",
+                ):
+                    return Ok(GitCommandResult(0, os.fsencode(state_root) + b"\n", b""))
+                if args == ("rev-parse", "--absolute-git-dir"):
+                    return Ok(
+                        GitCommandResult(
+                            0, os.fsencode(os.path.join(tmp, "tree")) + b"\n", b""
+                        )
+                    )
+                raise AssertionError(f"unexpected git call: {args}")
+
+            error = _err(resolve_git_worktree(root, runner=runner))
+            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
+
+    def test_unsearchable_root_is_permission_denied(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "denied"))
+            os.chmod(os.path.join(tmp, "denied"), 0o000)
+            root = os.fsencode(os.path.join(tmp, "denied", "repo"))
+            state_root = os.path.join(tmp, "tree", "agentic-template")
+            os.makedirs(state_root, exist_ok=True)
+
+            def runner(
+                args: tuple[str, ...],
+            ) -> Result[
+                GitCommandResult,
+                UnsupportedGitTarget | ObservationError | InternalFailure,
+            ]:
+                if args == ("rev-parse", "--is-inside-work-tree"):
+                    return Ok(GitCommandResult(0, b"true\n", b""))
+                if args == (
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--git-path",
+                    "agentic-template",
+                ):
+                    return Ok(GitCommandResult(0, os.fsencode(state_root) + b"\n", b""))
+                if args == ("rev-parse", "--absolute-git-dir"):
+                    return Ok(
+                        GitCommandResult(
+                            0, os.fsencode(os.path.join(tmp, "tree")) + b"\n", b""
+                        )
+                    )
+                raise AssertionError(f"unexpected git call: {args}")
+
+            error = _err(resolve_git_worktree(root, runner=runner))
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
 
     def test_symlinked_root_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1512,6 +1686,31 @@ class JournalTests(unittest.TestCase):
             self.assertIsInstance(
                 _err(capture_state_root(state, self._target())), InternalFailure
             )
+
+    def test_capture_rejects_unsearchable_state_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state = self._state_root(tmp)
+            os.chmod(os.path.join(tmp, "state-root"), 0o400)
+            error = _err(capture_state_root(state, self._target()))
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
+
+    def test_capture_rejects_unreadable_journal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state = self._state_root(tmp)
+            journal = os.path.join(tmp, "state-root", "journal.json")
+            _write(journal, b"{}")
+            os.chmod(journal, 0o000)
+            error = _err(capture_state_root(state, self._target()))
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
+
+    def test_capture_rejects_unreadable_pending(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state = self._state_root(tmp)
+            pending = os.path.join(tmp, "state-root", "journal.pending")
+            _write(pending, b"x")
+            os.chmod(pending, 0o000)
+            error = _err(capture_state_root(state, self._target()))
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
 
     def test_observe_transactions_without_journal_is_orphan_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

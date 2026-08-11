@@ -265,8 +265,6 @@ def read_file_bounded(
     while remaining > 0:
         try:
             chunk = os.read(fd, min(64 * 1024, remaining))
-        except InterruptedError:
-            continue
         except OSError as error:
             return Err(map_observation_error(error, subject))
         if not chunk:
@@ -285,8 +283,6 @@ def write_all(fd: int, data: bytes) -> Result[None, TransactionError]:
     while view:
         try:
             written = os.write(fd, view)
-        except InterruptedError:
-            continue
         except OSError as error:
             return Err(_transaction_error(TransactionPrimitive.WRITE_FILE, error))
         if written <= 0:
