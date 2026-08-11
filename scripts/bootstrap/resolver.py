@@ -4,17 +4,36 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from types import MappingProxyType
 
 from scripts.bootstrap.canonical_json import canonical_json
 from scripts.bootstrap.catalog import CATALOG, CapabilityDefinition, SettingDefinition
 from scripts.bootstrap.identity import tagged_digest
 from scripts.bootstrap.profiles import PROFILE_CAPABILITIES
+from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.schemas import AdditionsInput, BootstrapBundle, SettingValue
 
 
-class ResolutionError(ValueError):
-    """A deterministic input or catalog resolution failure."""
+class ResolutionErrorKind(StrEnum):
+    UNKNOWN_CAPABILITY = "unknown_capability"
+    UNKNOWN_PROFILE = "unknown_profile"
+    DEPENDENCY_CYCLE = "dependency_cycle"
+    DUPLICATE_ADDITION = "duplicate_addition"
+    UNKNOWN_SETTING = "unknown_setting"
+    MISSING_REQUIRED_SETTING = "missing_required_setting"
+    UNDETERMINED_SETTING = "undetermined_setting"
+    SECRET_SETTING = "secret_setting"
+    TYPE_VIOLATION = "type_violation"
+    ENUM_VIOLATION = "enum_violation"
+    UNSELECTED_SETTINGS = "unselected_settings"
+    RECONFIGURE_SETTINGS = "reconfigure_settings"
+
+
+@dataclass(frozen=True, slots=True)
+class ResolutionFailure:
+    kind: ResolutionErrorKind
+    subject: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,7 +48,9 @@ class ResolvedBundle:
         return normalized_settings_identity(self.settings)
 
 
-def _topological_order(capability_ids: set[str]) -> tuple[str, ...]:
+def _topological_order(
+    capability_ids: set[str],
+) -> Result[tuple[str, ...], ResolutionFailure]:
     result: list[str] = []
     remaining = set(capability_ids)
     while remaining:
@@ -39,15 +60,15 @@ def _topological_order(capability_ids: set[str]) -> tuple[str, ...]:
             if set(CATALOG[capability_id].dependencies).isdisjoint(remaining)
         )
         if not available:
-            raise ResolutionError("capability dependency cycle")
+            return Err(ResolutionFailure(ResolutionErrorKind.DEPENDENCY_CYCLE))
         result.extend(available)
         remaining.difference_update(available)
-    return tuple(result)
+    return Ok(tuple(result))
 
 
 def _closure(
     requested: tuple[str, ...], catalog: Mapping[str, CapabilityDefinition]
-) -> set[str]:
+) -> Result[set[str], ResolutionFailure]:
     effective: set[str] = set()
     pending = list(requested)
     while pending:
@@ -55,44 +76,63 @@ def _closure(
         if capability_id in effective:
             continue
         if capability_id not in catalog:
-            raise ResolutionError(f"unknown capability: {capability_id}")
+            return Err(
+                ResolutionFailure(ResolutionErrorKind.UNKNOWN_CAPABILITY, capability_id)
+            )
         effective.add(capability_id)
         pending.extend(catalog[capability_id].dependencies)
-    return effective
+    return Ok(effective)
 
 
 def _setting_value(
     definition: SettingDefinition,
     supplied: Mapping[str, SettingValue],
-) -> SettingValue:
+) -> Result[SettingValue, ResolutionFailure]:
     if definition.name in supplied:
         value = supplied[definition.name]
     elif definition.default is not None:
         value = definition.default
     elif definition.required:
-        raise ResolutionError(f"missing required setting: {definition.name}")
+        return Err(
+            ResolutionFailure(
+                ResolutionErrorKind.MISSING_REQUIRED_SETTING, definition.name
+            )
+        )
     else:
-        raise ResolutionError(f"setting has no deterministic value: {definition.name}")
+        return Err(
+            ResolutionFailure(ResolutionErrorKind.UNDETERMINED_SETTING, definition.name)
+        )
     if definition.secret:
-        raise ResolutionError(f"secret setting is not accepted: {definition.name}")
+        return Err(
+            ResolutionFailure(ResolutionErrorKind.SECRET_SETTING, definition.name)
+        )
     if definition.type == "string" and not isinstance(value, str):
-        raise ResolutionError(f"setting must be a string: {definition.name}")
+        return Err(
+            ResolutionFailure(ResolutionErrorKind.TYPE_VIOLATION, definition.name)
+        )
     if definition.type == "boolean" and not isinstance(value, bool):
-        raise ResolutionError(f"setting must be a boolean: {definition.name}")
+        return Err(
+            ResolutionFailure(ResolutionErrorKind.TYPE_VIOLATION, definition.name)
+        )
     if definition.type == "enum" and (
         not isinstance(value, str) or value not in definition.choices
     ):
-        raise ResolutionError(f"setting is outside its enum: {definition.name}")
-    return value.strip() if isinstance(value, str) else value
+        return Err(
+            ResolutionFailure(ResolutionErrorKind.ENUM_VIOLATION, definition.name)
+        )
+    return Ok(value.strip() if isinstance(value, str) else value)
 
 
 def _resolve_settings(
     effective: tuple[str, ...], supplied: Mapping[str, Mapping[str, SettingValue]]
-) -> Mapping[str, Mapping[str, SettingValue]]:
+) -> Result[Mapping[str, Mapping[str, SettingValue]], ResolutionFailure]:
     unknown_capabilities = set(supplied).difference(effective)
     if unknown_capabilities:
-        raise ResolutionError(
-            f"settings supplied for unselected capability: {sorted(unknown_capabilities)[0]}"
+        return Err(
+            ResolutionFailure(
+                ResolutionErrorKind.UNSELECTED_SETTINGS,
+                sorted(unknown_capabilities)[0],
+            )
         )
     resolved: dict[str, Mapping[str, SettingValue]] = {}
     for capability_id in effective:
@@ -102,20 +142,27 @@ def _resolve_settings(
         unknown_settings = set(values).difference(declared)
         if unknown_settings:
             key = sorted(unknown_settings)[0]
-            raise ResolutionError(f"unknown setting: {capability_id}.{key}")
-        normalized = {
-            setting.name: _setting_value(setting, values)
-            for setting in definition.settings
-        }
+            return Err(
+                ResolutionFailure(
+                    ResolutionErrorKind.UNKNOWN_SETTING, f"{capability_id}.{key}"
+                )
+            )
+        normalized: dict[str, SettingValue] = {}
+        for setting in definition.settings:
+            match _setting_value(setting, values):
+                case Err(failure):
+                    return Err(failure)
+                case Ok(value):
+                    normalized[setting.name] = value
         resolved[capability_id] = MappingProxyType(normalized)
-    return MappingProxyType(resolved)
+    return Ok(MappingProxyType(resolved))
 
 
 def resolve_bundle(
     bundle: BootstrapBundle,
     *,
     additions: tuple[str, ...] = (),
-) -> ResolvedBundle:
+) -> Result[ResolvedBundle, ResolutionFailure]:
     profile_id = bundle.profile.id
     requested = (
         bundle.profile.capabilities
@@ -123,16 +170,26 @@ def resolve_bundle(
         else PROFILE_CAPABILITIES.get(profile_id)
     )
     if requested is None:
-        raise ResolutionError(f"unknown profile: {profile_id}")
+        return Err(ResolutionFailure(ResolutionErrorKind.UNKNOWN_PROFILE, profile_id))
     combined = tuple(requested) + tuple(additions)
     if len(set(combined)) != len(combined):
-        raise ResolutionError(
-            "capability additions must not repeat profile capabilities"
-        )
-    effective_set = _closure(combined, CATALOG)
-    effective = _topological_order(effective_set)
-    settings = _resolve_settings(effective, bundle.capability_settings)
-    return ResolvedBundle(profile_id, combined, effective, settings)
+        return Err(ResolutionFailure(ResolutionErrorKind.DUPLICATE_ADDITION))
+    match _closure(combined, CATALOG):
+        case Err(failure):
+            return Err(failure)
+        case Ok(effective_set):
+            pass
+    match _topological_order(effective_set):
+        case Err(failure):
+            return Err(failure)
+        case Ok(effective):
+            pass
+    match _resolve_settings(effective, bundle.capability_settings):
+        case Err(failure):
+            return Err(failure)
+        case Ok(settings):
+            pass
+    return Ok(ResolvedBundle(profile_id, combined, effective, settings))
 
 
 def normalized_settings_identity(
@@ -150,14 +207,22 @@ def normalized_settings_identity(
 def resolve_additions(
     current: ResolvedBundle,
     additions: AdditionsInput,
-) -> ResolvedBundle:
+) -> Result[ResolvedBundle, ResolutionFailure]:
     """Resolve an append-only capability addition against an existing frozen selection."""
 
     requested = current.requested + additions.add_capabilities
     if len(set(requested)) != len(requested):
-        raise ResolutionError("capability additions must be new IDs")
-    effective_set = _closure(requested, CATALOG)
-    effective = _topological_order(effective_set)
+        return Err(ResolutionFailure(ResolutionErrorKind.DUPLICATE_ADDITION))
+    match _closure(requested, CATALOG):
+        case Err(failure):
+            return Err(failure)
+        case Ok(effective_set):
+            pass
+    match _topological_order(effective_set):
+        case Err(failure):
+            return Err(failure)
+        case Ok(effective):
+            pass
     supplied: dict[str, Mapping[str, SettingValue]] = {
         capability_id: dict(values)
         for capability_id, values in current.settings.items()
@@ -171,9 +236,15 @@ def resolve_additions(
             capability_id in current.settings
             and dict(current.settings[capability_id]) != normalized_values
         ):
-            raise ResolutionError(
-                f"existing settings cannot be reconfigured: {capability_id}"
+            return Err(
+                ResolutionFailure(
+                    ResolutionErrorKind.RECONFIGURE_SETTINGS, capability_id
+                )
             )
         supplied[capability_id] = normalized_values
-    settings = _resolve_settings(effective, supplied)
-    return ResolvedBundle(current.profile_id, requested, effective, settings)
+    match _resolve_settings(effective, supplied):
+        case Err(failure):
+            return Err(failure)
+        case Ok(settings):
+            pass
+    return Ok(ResolvedBundle(current.profile_id, requested, effective, settings))
