@@ -185,7 +185,7 @@ class ReadinessFixtures(unittest.TestCase):
         hook.symlink_to(target)
         result = self.run_checker()
         self.assertEqual(result.returncode, 1)
-        self.assertIn("READINESS_HOOK_NOT_EXECUTABLE", result.stderr)
+        self.assertIn("READINESS_HOOK_NOT_REGULAR", result.stderr)
 
     def test_internal_read_error_returns_two(self) -> None:
         (self.root / "docs/prd.md").write_bytes(b"\xff")
@@ -221,7 +221,7 @@ class ReadinessFixtures(unittest.TestCase):
     def test_unexpected_arguments_are_usage_errors(self) -> None:
         result = self.run_checker("unexpected")
         self.assertEqual(result.returncode, 2)
-        self.assertIn("INTERNAL_READINESS_ERROR", result.stderr)
+        self.assertIn("READINESS_USAGE_ERROR", result.stderr)
 
 
 if __name__ == "__main__":

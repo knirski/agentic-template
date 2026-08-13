@@ -147,14 +147,16 @@ def file_state_identity(
 def file_state_hash(kind: bytes, state: FileState) -> str:
     if not state.present:
         return tagged_digest(kind + b"/absent", b"")
-    assert state.identity is not None
+    identity = state.identity
+    if identity is None:  # pragma: no cover - present files always carry an identity
+        raise ValueError("a present file state must carry an identity")
     payload = canonical_json(
         {
-            "kind": state.identity.kind,
+            "kind": identity.kind,
             "mode": state.mode.value if state.mode is not None else None,
-            "normalized_sha256": state.identity.normalized_sha256,
-            "raw_sha256": state.identity.raw_sha256,
-            "size": state.identity.size,
+            "normalized_sha256": identity.normalized_sha256,
+            "raw_sha256": identity.raw_sha256,
+            "size": identity.size,
         }
     )
     return tagged_digest(kind + b"/file", payload)

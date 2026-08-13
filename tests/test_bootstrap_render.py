@@ -21,6 +21,7 @@ from scripts.bootstrap.contributions import (
 from scripts.bootstrap.errors import ContractError, ContractErrorKind
 from scripts.bootstrap.identity import PosixMode, sha256_hex
 from scripts.bootstrap.intents import GenerationPath
+from scripts.bootstrap.manifest import SlotContent
 from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.render import (
     ArtifactDefinition,
@@ -37,7 +38,6 @@ from scripts.bootstrap.render import (
     RenderErrorKind,
     RenderInput,
     SettingSource,
-    SlotContent,
     SlotDefinition,
     SubstitutionDefinition,
     _remove_marker_line,
@@ -655,6 +655,22 @@ def test_unknown_substitution_marker_is_rejected() -> None:
             assert error.reason == "unknown_substitution"
         case Ok(_):
             raise AssertionError("expected an unknown-substitution failure")
+
+
+def test_value_marker_prefix_is_not_partially_substituted() -> None:
+    result = apply_substitutions(
+        b"name = agentic-template:value:repo_url\n",
+        (
+            SubstitutionDefinition(
+                name="repo", source=ProjectSource(kind="project", key="name")
+            ),
+        ),
+        context="markdown",
+        settings={},
+        project=PROJECT,
+        maintenance=MaintenanceInfo(status="clean", retained_paths=()),
+    )
+    assert result == Ok(b"name = agentic-template:value:repo_url\n")
 
 
 def test_contribution_order_changes_output() -> None:

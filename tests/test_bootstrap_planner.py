@@ -29,12 +29,15 @@ from scripts.bootstrap.manifest import (
     CandidateManifest,
     LicensingRecord,
     MaintenanceRecord,
+    ManagedInventory,
+    ManagedInventoryEntry,
     ManifestAdditions,
     ManifestAnswers,
     ManifestErrorKind,
     ProfileSelection,
     ProjectFacts,
     ProvenanceRecord,
+    SlotContent,
     build_candidate_manifest,
     decode_manifest,
     encode_manifest,
@@ -84,9 +87,6 @@ from scripts.bootstrap.planner import (
 )
 from scripts.bootstrap.render import (
     ManagedFile,
-    ManagedInventory,
-    ManagedInventoryEntry,
-    SlotContent,
 )
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.source_baseline import (
@@ -2621,6 +2621,37 @@ class TestPlanner:
                 assert error.kind is CompileErrorKind.INVALID_TARGET
             case Ok(_):
                 raise AssertionError("marker-bearing file slot compiled")
+
+    def test_file_slot_declaring_a_wrong_digest_is_refused(self) -> None:
+        answers = replace(
+            fixture_answers(file_slots=("readme",)),
+            slots=MappingProxyType(
+                {
+                    **fixture_answers(file_slots=("readme",)).slots,
+                    "readme": SlotContent(mode="file", content_sha256="0" * 64),
+                }
+            ),
+        )
+        _, result = compile_fixture(answers=answers)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("file slot with a wrong declared digest compiled")
+
+    def test_licensing_declaring_a_wrong_digest_is_refused(self) -> None:
+        answers = replace(
+            fixture_answers(licensing_mode="provided-project-license"),
+            licensing=LicensingRecord(
+                mode="provided-project-license", content_sha256="0" * 64
+            ),
+        )
+        _, result = compile_fixture(answers=answers)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("licensing with a wrong declared digest compiled")
 
 
 class TestCollisionsAndCleanup:

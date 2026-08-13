@@ -73,7 +73,16 @@ class GitHubSnapshot(unittest.TestCase):
                 ROOT,
                 self.project,
                 ignore=shutil.ignore_patterns(
-                    ".git", ".direnv", "__pycache__", "result"
+                    ".git",
+                    ".direnv",
+                    "__pycache__",
+                    "result",
+                    ".venv",
+                    ".hypothesis",
+                    ".pytest_cache",
+                    ".ruff_cache",
+                    ".mypy_cache",
+                    ".coverage",
                 ),
             )
         self.assertFalse((self.project / ".git").exists())

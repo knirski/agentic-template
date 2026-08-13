@@ -20,6 +20,7 @@ from scripts.bootstrap.intents import (
     Recover,
     Restore,
 )
+from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.state import (
     BundleState,
     CleanupContractMismatch,
@@ -54,7 +55,7 @@ from scripts.bootstrap.state import (
 
 @dataclass(frozen=True, slots=True)
 class WriteBundle:
-    output: object
+    output: RepoPath
 
 
 @dataclass(frozen=True, slots=True)
