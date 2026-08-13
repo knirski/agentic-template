@@ -126,7 +126,8 @@ show the affected range and ask for separate approval before rebasing.
 ## Step 6: Prepare the PR
 
 Steps 1-5 (simplification, documentation, validation, review, commits) must all be complete
-before proceeding. **If code-review found blocking or scope-changing issues, stop and return
+before proceeding, and the repository's `verification-before-completion` gate must have passed
+on the final state. **If code-review found blocking or scope-changing issues, stop and return
 to spec-implement to fix them. Do not proceed to Step 6b.**
 
 ### Step 6a: Present Completion Summary
@@ -140,6 +141,7 @@ Before creating the PR, present a summary to the human:
 **Tests:** [passed/failed]
 **Type Check:** [passed/failed]
 **Lint:** [passed/failed]
+**Verification:** [verification-before-completion evidence]
 **Review:** [passed/issues found]
 **Commits:** [N commits in stack]
 **Ready for PR:** [yes/no]
