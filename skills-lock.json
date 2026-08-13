@@ -5,7 +5,7 @@
       "source": "martinffx/atelier",
       "sourceType": "github",
       "skillPath": "skills/atelier-orchestrator/SKILL.md",
-      "computedHash": "96eb240793a7ade18aad93a237d4cd2ae9a0e42bde6db59d1df445b8af9ee94f"
+      "computedHash": "1e0c07021cf025b45d39b7aa9facc23ce92ab17372ef1729646409bda89ed0be"
     },
     "atelier-setup": {
       "source": "martinffx/atelier",
@@ -35,7 +35,7 @@
       "source": "martinffx/atelier",
       "sourceType": "github",
       "skillPath": "skills/code-review/SKILL.md",
-      "computedHash": "7b7780bcf4d559f906f738b6522394c544993876ec4b7ee79412727becc1f18b"
+      "computedHash": "862a6d91ec2fc997fb7e7c89c33618af20c4e8997d1c60652af97148218c2306"
     },
     "code-subagents": {
       "source": "martinffx/atelier",
@@ -48,12 +48,6 @@
       "sourceType": "github",
       "skillPath": "cursor-team-kit/skills/loop-on-ci/SKILL.md",
       "computedHash": "2d6eaadbe66bf8c3fc872c74f08e867e3a1f51c2f5948f71a77a90b2cc12d4cd"
-    },
-    "modern-python": {
-      "source": "trailofbits/skills",
-      "sourceType": "github",
-      "skillPath": "plugins/modern-python/skills/modern-python/SKILL.md",
-      "computedHash": "9d30ad6831ecc4b0ba267a20fddd5414c0bc8016a6c533352833b40016396b7b"
     },
     "oracle-debug": {
       "source": "martinffx/atelier",
@@ -79,29 +73,65 @@
       "skillPath": "pr-review-loop/SKILL.md",
       "computedHash": "7d1c9fb1e19aafefb690f47c903753ca7609fa6e4a9f66fdfc73f2ffa76aee5a"
     },
+    "python-build-tools": {
+      "source": "martinffx/python-skills",
+      "sourceType": "github",
+      "skillPath": "skills/python-build-tools/SKILL.md",
+      "computedHash": "dedde0d098062958811968ffafffa53fecdbb860b1aebd472ffad4080c87e02f"
+    },
+    "python-fastapi": {
+      "source": "martinffx/python-skills",
+      "sourceType": "github",
+      "skillPath": "skills/python-fastapi/SKILL.md",
+      "computedHash": "d49ff6fece2638aad1ce65c0fb55e5d9a934978161ee4875e99feb50855d5255"
+    },
+    "python-modern-python": {
+      "source": "martinffx/python-skills",
+      "sourceType": "github",
+      "skillPath": "skills/python-modern-python/SKILL.md",
+      "computedHash": "5f638284272959e97533776b4a456a0dbab863693ecfe3a4715795a468ea9717"
+    },
+    "python-monorepo": {
+      "source": "martinffx/python-skills",
+      "sourceType": "github",
+      "skillPath": "skills/python-monorepo/SKILL.md",
+      "computedHash": "fde22ad49a8680f26b98a355c1a56fb0b75b5ee5973bf3363712ea8ffc99d38a"
+    },
+    "python-sqlalchemy": {
+      "source": "martinffx/python-skills",
+      "sourceType": "github",
+      "skillPath": "skills/python-sqlalchemy/SKILL.md",
+      "computedHash": "2b87cea95457cdfb2c700ace131a2f986a9243baa94acd5a603ebb6eeddd3688"
+    },
+    "python-temporal": {
+      "source": "martinffx/python-skills",
+      "sourceType": "github",
+      "skillPath": "skills/python-temporal/SKILL.md",
+      "computedHash": "c239b6dad35b131ba8b8e6874e4e49548c6b9b9da484b03f3a440af274debd1f"
+    },
     "spec-brainstorm": {
       "source": "martinffx/atelier",
       "sourceType": "github",
       "skillPath": "skills/spec-brainstorm/SKILL.md",
-      "computedHash": "9ef16e546da1dfe51b4c10c055fd6f5456bc64a7ad85355655518065bd7af70b"
+      "computedHash": "96f7904b5d530fb0af8b854f38d4004a12533f29ca28fc92f97b7ae99731d6cc"
     },
     "spec-finish": {
       "source": "martinffx/atelier",
       "sourceType": "github",
       "skillPath": "skills/spec-finish/SKILL.md",
-      "computedHash": "af081ff93a4a85d6ae0a93f9bf6a3f9923778bd82d7aa833aeb66a9ab1c9a44f"
+      "computedHash": "e97010323390e84b9ff79a9045c137c05e2355274f318a83875013ff31f7e265"
     },
     "spec-implement": {
       "source": "martinffx/atelier",
       "sourceType": "github",
       "skillPath": "skills/spec-implement/SKILL.md",
-      "computedHash": "711665437c74b1f774af54f3a658d6ae2b8358626bbe6d7810ff47ce141da3cc"
+      "computedHash": "d1c0c1465fb217d84142de3b4773da485321da29c81836e31f577e354bc69b79"
     },
     "spec-plan": {
       "source": "martinffx/atelier",
       "sourceType": "github",
       "skillPath": "skills/spec-plan/SKILL.md",
-      "computedHash": "6e6f6eaf6200c3a262c7902b19d92424ebbe067ad101065c8b4f2e3b1fe8f207"
+      "computedHash": "db74e88ce87a3f8d77d71b42cc2db01a9ce5352e6593bb55ea611f5106351be5"
     },
     "verification-before-completion": {
       "source": "obra/superpowers",

@@ -57,7 +57,10 @@ def map_observation_error(
         errno.ELOOP: ObservationErrorKind.SYMLINK_ENCOUNTERED,
         errno.ENOTDIR: ObservationErrorKind.PATH_MISSING,
     }
-    kind = mapping.get(error.errno)
+    errno_value = error.errno
+    if errno_value is None:
+        return InternalFailure(InternalCode.UNCLASSIFIED_EXCEPTION)
+    kind = mapping.get(errno_value)
     if kind is None:
         return InternalFailure(InternalCode.UNCLASSIFIED_EXCEPTION)
     return ObservationError(kind, subject)

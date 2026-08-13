@@ -237,4 +237,7 @@ def sanitize_errno(error: OSError) -> ErrnoClass:
         errno.ENOTSUP: ErrnoClass.UNSUPPORTED,
         errno.EINTR: ErrnoClass.INTERRUPTED,
     }
-    return mapping.get(error.errno, ErrnoClass.OTHER_SANITIZED_ERRNO)
+    errno_value = error.errno
+    if errno_value is None:
+        return ErrnoClass.OTHER_SANITIZED_ERRNO
+    return mapping.get(errno_value, ErrnoClass.OTHER_SANITIZED_ERRNO)

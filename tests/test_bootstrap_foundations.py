@@ -43,6 +43,7 @@ from scripts.bootstrap.errors import (
     TransitionErrorKind,
     UsageError,
     UsageErrorKind,
+    sanitize_errno,
 )
 from scripts.bootstrap.result import Err, Ok, accumulate
 from scripts.bootstrap.values import (
@@ -104,14 +105,14 @@ class ValuesTests(unittest.TestCase):
         self.assertEqual(frozen, (("nested", (1, (("value", "x"),))),))
         self.assertIsInstance(frozen, tuple)
         with self.assertRaises(TypeError):
-            frozen[0] = ("changed", ())  # ty: ignore[invalid-assignment]
+            frozen[0] = ("changed", ())  # pyright: ignore[reportIndexIssue]  frozen tuple rejects __setitem__ at runtime
 
     def test_limits_are_frozen_and_have_the_v1_values(self) -> None:
         self.assertTrue(dataclasses.is_dataclass(DEFAULT_LIMITS))
         self.assertTrue(dataclasses.is_dataclass(ResourceLimits))
         self.assertEqual(DEFAULT_LIMITS.max_paths, 4096)
         with self.assertRaises(dataclasses.FrozenInstanceError):
-            DEFAULT_LIMITS.max_paths = 1  # ty: ignore[invalid-assignment]
+            DEFAULT_LIMITS.max_paths = 1  # pyright: ignore[reportAttributeAccessIssue]  frozen dataclass rejects attribute set at runtime
         self.assertEqual(LimitKind.PATHS.value, "paths")
 
     def test_every_resource_limit_accepts_exact_and_rejects_one_over(self) -> None:
@@ -223,7 +224,7 @@ class DiagnosticTests(unittest.TestCase):
         self.assertEqual(succeeded.exit_code, 0)
         self.assertEqual(action_required.exit_code, 1)
         with self.assertRaises(dataclasses.FrozenInstanceError):
-            diagnostic.code = "changed"  # ty: ignore[invalid-assignment]
+            diagnostic.code = "changed"  # pyright: ignore[reportAttributeAccessIssue]  frozen dataclass rejects attribute set at runtime
 
     def test_error_outcomes_preserve_each_error_family(self) -> None:
         cases = (
@@ -243,9 +244,18 @@ class DiagnosticTests(unittest.TestCase):
 
     def test_diagnostic_sanitizes_non_string_subjects(self) -> None:
         diagnostic = command_error_diagnostic(
-            UsageError(UsageErrorKind.UNKNOWN_COMMAND, 42)  # ty: ignore[invalid-argument-type]
+            UsageError(UsageErrorKind.UNKNOWN_COMMAND, 42)  # pyright: ignore[reportArgumentType]  intentional non-string subject negative test
         )
         self.assertEqual(diagnostic.subject, "")
+
+    def test_sanitize_errno_without_errno_uses_sanitized_class(self) -> None:
+        # An OSError raised from a bare message has errno=None; the closed
+        # vocabulary must still receive the sanitized fallback instead of
+        # leaking a raw errno or failing to classify.
+        self.assertEqual(
+            sanitize_errno(OSError("no errno attached")),
+            ErrnoClass.OTHER_SANITIZED_ERRNO,
+        )
 
     def test_limit_diagnostic_reports_observed_and_configured_limits(self) -> None:
         diagnostic = limit_diagnostic("paths", 11, 10)

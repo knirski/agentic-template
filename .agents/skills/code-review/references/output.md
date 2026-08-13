@@ -12,6 +12,23 @@
 - Files reviewed: N
 - Findings: N Critical, N High, N Medium, N Low
 - Pre-existing: N | Introduced: N
+- Honored decisions: N
+
+## Unnecessary scope
+
+- {Unrequested behavior or infrastructure, or `None`}
+
+## Deletion candidates
+
+- {Files, symbols, wrappers, or tests that can be removed, or `None`}
+
+## Smallest viable alternative
+
+{The smallest implementation that preserves the user goal and prior behavior, or `None`}
+
+## Required SDD corrections
+
+- {Changes needed so the SDD records the smaller result, or `None`}
 
 ## Critical (Fix before merge)
 
@@ -28,6 +45,8 @@
   {Detailed explanation of why this was flagged}
   </details>
 - **Suggestion**: {How to fix}
+- **Requires user approval**: {Yes when the suggestion expands behavior or infrastructure; otherwise No}
+- **Prior decision reopened**: {Why the recorded rationale no longer applies; omit when not applicable}
 
 ## High Priority
 
@@ -45,7 +64,16 @@
 - {What the code does well}
 - {Smart patterns to keep}
 - {Good practices observed}
+
+## Honored Decisions
+
+- `{comment-file}:{line}` — {Concern}: {Short rationale and why it still applies}
 ```
+
+Omit the **Honored Decisions** section when there are no honored decisions. Keep each entry to
+one compact bullet; do not repeat the full finding, impact, reasoning, or suggestion.
+Severity and pre-existing/introduced statistics count active findings only.
+Always render the four simplicity sections, using `None` when no evidence supports an item.
 
 ---
 
@@ -60,6 +88,8 @@ Pre-existing: {Yes/No}
 Issue: {Brief description}
 Reasoning: {Why this matters}
 Suggestion: {Fix}
+Requires user approval: {Yes/No}
+Prior decision reopened: {Why the recorded rationale no longer applies; omit when not applicable}
 ```
 
 ---
@@ -98,6 +128,9 @@ Each finding includes a collapsible section with:
 3. **Evidence**: Code snippets, references, or examples
 4. **Alternative view**: If uncertain, what else to consider
 
+When a recorded decision is reopened, also identify the comment location and the evidence that
+invalidated its rationale or met its reconsideration condition.
+
 Example:
 ```markdown
 <details>
@@ -107,7 +140,7 @@ Example:
 
 **Verification**: Pattern match detected: `f"SELECT * FROM {table}"` - Python f-string in SQL context.
 
-**Evidence**:
+**Evidence**: 
 ```python
 query = f"SELECT * FROM users WHERE id = {user_id}"  # Line 42
 ```
@@ -130,6 +163,23 @@ Implements OAuth login flow with token refresh. Generally well-structured with p
 - Files reviewed: 1
 - Findings: 1 Critical, 1 High, 0 Medium, 2 Low
 - Pre-existing: 1 | Introduced: 3
+- Honored decisions: 0
+
+## Unnecessary scope
+
+- None
+
+## Deletion candidates
+
+- None
+
+## Smallest viable alternative
+
+None
+
+## Required SDD corrections
+
+- None
 
 ## Critical (Fix before merge)
 
@@ -143,16 +193,16 @@ Implements OAuth login flow with token refresh. Generally well-structured with p
 - **Reasoning**:
   <details>
   <summary>Extended reasoning</summary>
-
+  
   **Why flagged**: localStorage is accessible to any JavaScript on the page.
-
+  
   **Verification**: Direct localStorage API usage detected.
-
+  
   **Evidence**:
   ```typescript
   localStorage.setItem('accessToken', token); // Line 45
   ```
-
+  
   **Alternative view**: If using httpOnly cookies is not possible, consider short-lived tokens with refresh rotation.
   </details>
 - **Suggestion**: Use httpOnly cookies or secure session storage
@@ -198,3 +248,5 @@ Implements OAuth login flow with token refresh. Generally well-structured with p
 2. **Pre-existing detection** requires git blame check (not just diff)
 3. **Extended reasoning** should be collapsible in markdown renderers
 4. **Positive findings** help balance the review tone
+5. **Honored decisions** stay out of active severity counts and are summarized without restating the finding
+6. **Expansion findings** require user approval even when an SDD proposes the expansion

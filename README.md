@@ -115,7 +115,7 @@ uv sync --all-groups --locked
 uv run python scripts/validate_template.py
 uv run ruff check
 uv run ruff format --check
-uv run ty check
+uv run basedpyright
 ```
 
 Focused mutation testing runs against the deterministic bootstrap and validation cores. It is

@@ -296,24 +296,24 @@ class StateAndDecisionTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             SnapshotExistingProject(
                 recorded,
-                CopierSourceSame(ManagedVerified()),  # ty: ignore[invalid-argument-type]
+                CopierSourceSame(ManagedVerified()),  # pyright: ignore[reportArgumentType]  intentional wrong-condition-type negative test
                 snapshot,
             )
         with self.assertRaises(TypeError):
             CopierExistingProject(
                 recorded,
-                SnapshotSourceSame(ManagedVerified()),  # ty: ignore[invalid-argument-type]
+                SnapshotSourceSame(ManagedVerified()),  # pyright: ignore[reportArgumentType]  intentional wrong-condition-type negative test
                 snapshot,
             )
 
     def test_unsupported_git_target_rejects_out_of_vocabulary_reasons(self) -> None:
         with self.assertRaises(TypeError):
-            UnsupportedGitTarget("bogus")  # ty: ignore[invalid-argument-type]
+            UnsupportedGitTarget("bogus")  # pyright: ignore[reportArgumentType]  intentional out-of-vocabulary negative test
 
     def test_recognized_scaffold_rejects_out_of_vocabulary_generations(self) -> None:
         with self.assertRaises(TypeError):
             RecognizedScaffold(
-                "other",  # ty: ignore[invalid-argument-type]
+                "other",  # pyright: ignore[reportArgumentType]  intentional out-of-vocabulary negative test
                 NoSnapshotCleanup(),
                 EmptyManifestFree(),
                 (),

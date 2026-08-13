@@ -33,6 +33,18 @@ The plan may be inline in the conversation or backed by persisted spec artifacts
 the mode before invoking an artifact-producing skill, state the choice with one brief
 reason, and let the human override it.
 
+## Governing Principles
+
+Invoking a skill selects relevant guidance. It does not make every pattern in every loaded
+skill part of the solution. Existing source, explicit requirements, and the smallest correct
+change determine which patterns apply.
+
+Begin with the current design and the minimum behavior-preserving change. Product,
+infrastructure, and architectural expansion require explicit scope. Keep **ponytail** active
+throughout development when it is available or required by the repository. Keep
+**writing-clearly-and-concisely** active whenever writing or editing prose for humans. Before
+returning or persisting that prose, apply **humanizer** in embedded mode.
+
 ## Planning Modes
 
 ### Inline Plan (default)
@@ -40,8 +52,9 @@ reason, and let the human override it.
 Use for bounded, well-understood work, including ordinary features, bug fixes, refactors,
 configuration changes, and multi-file changes. Route to **spec-plan** with Inline mode
 explicitly selected. It presents a concise plan in conversation, creates no planning artifacts
-or tracker entries, and stops for approval. After approval, implement the plan directly; do
-not invoke `spec-implement`, `spec-finish`, or `code-subagents`.
+or tracker entries, and stops for approval. Approval ends the `spec-plan` invocation. A later,
+explicit implementation request may implement the plan directly; do not invoke
+`spec-implement`, `spec-finish`, or `code-subagents` for Inline work.
 
 Direct Inline implementation must:
 
@@ -71,14 +84,17 @@ design.md    ← spec-brainstorm (requirements + research + architecture)
 plan.json    ← spec-plan (tasks, dependencies)
 ```
 
+Each skill produces only its declared output and stops. The human starts the next phase with a
+separate request.
+
 Do not infer substantial work from size alone. If no concrete signal applies, use Inline Plan.
 
 ## Skill Routing
 
 ```
 atelier-orchestrator → Select and announce planning mode
-spec-brainstorm   → Spec-backed discovery + design → design.md
-spec-plan         → Inline Plan or Spec-backed Plan → approval
+spec-brainstorm   → Spec-backed discovery + design → only design.md → stop
+spec-plan         → Inline conversation or only plan.json → stop
 spec-implement    → Execute approved Spec-backed Plans; track tasks
 spec-finish       → Post-implementation validation for Spec-backed Plans
 code-subagents    → Parallel dispatch for Spec-backed Plan tasks
@@ -87,13 +103,16 @@ code-subagents    → Parallel dispatch for Spec-backed Plan tasks
 ### Ordinary bounded work
 
 ```
-spec-plan (Inline mode) → approval → implement directly
+spec-plan (Inline mode) → approval → STOP
+new implementation request → implement directly
 ```
 
 ### Substantial work or explicit spec request
 
 ```
-spec-brainstorm → spec-plan (Spec-backed Plan) → approval → spec-implement → spec-finish
+spec-brainstorm → design.md → STOP
+new spec-plan request → plan.json → STOP
+new spec-implement request → implementation → spec-finish
 ```
 
 ### Truly mechanical change
@@ -105,13 +124,16 @@ choice to review. If any choice exists, use an Inline Plan.
 
 | After completing... | Next step |
 |---------------------|-----------|
-| spec-brainstorm | spec-plan in Spec-backed mode |
-| approved Inline Plan | implement the approved plan directly |
-| approved Spec-backed Plan | spec-implement in Spec-backed mode |
+| spec-brainstorm | Stop; wait for a separate spec-plan request |
+| approved Inline Plan | Stop; wait for a separate implementation request |
+| approved Spec-backed Plan | Stop; wait for a separate spec-implement request |
 | spec-implement | spec-finish |
 
 Do not begin implementation without an approved written plan. Spec-backed work must not
 jump from research to implementation.
+
+`spec-brainstorm` and `spec-plan` are terminal within their invocation. They must not chain into
+the next workflow skill, even when the original request asks for multiple phases at once.
 
 ## Iteration Patterns
 

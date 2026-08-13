@@ -43,6 +43,7 @@ from scripts.bootstrap.fs_effects import (
     fsync_directory,
     fsync_file,
     list_directory_entries,
+    map_observation_error,
     open_regular_no_follow,
     read_file_bounded,
     walk_no_follow,
@@ -51,6 +52,7 @@ from scripts.bootstrap.fs_effects import (
 from scripts.bootstrap.git_state import (
     GitCommandResult,
     ResolvedGitWorktree,
+    _stat_error,
     resolve_git_worktree,
     run_git,
 )
@@ -127,7 +129,7 @@ class FsEffectsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             os.makedirs(os.path.join(tmp, "a", "b", "c"))
             fd = _ok(walk_no_follow(_open_dir(tmp), (b"a", b"b", b"c")))
-            self.assertIsNotNone(fd)
+            assert fd is not None
             _write(os.path.join(tmp, "a", "b", "c", "f"), b"x")
             os.lseek(fd, 0, os.SEEK_SET)
             self.assertEqual(os.listdir(fd), ["f"])
@@ -135,21 +137,34 @@ class FsEffectsTests(unittest.TestCase):
     def test_walk_rejects_missing_intermediate_component(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             error = _err(walk_no_follow(_open_dir(tmp), (b"a", b"b")))
-            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
+            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_walk_rejects_symlink_component(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             os.makedirs(os.path.join(tmp, "real"))
             os.symlink(os.path.join(tmp, "real"), os.path.join(tmp, "link"))
             error = _err(walk_no_follow(_open_dir(tmp), (b"link", b"child")))
-            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)
+            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)  # pyright: ignore[reportAttributeAccessIssue]
+
+    def test_observation_error_without_errno_is_internal_failure(self) -> None:
+        # An OSError raised from a bare message carries errno=None; the closed
+        # vocabulary must map it to InternalFailure rather than an unmapped
+        # ObservationError kind.
+        mapped = map_observation_error(OSError("no errno attached"), "subject")
+        self.assertIsInstance(mapped, InternalFailure)
+
+    def test_stat_error_without_errno_is_internal_failure(self) -> None:
+        # Same guarantee for the git-state stat path: an errno-less OSError
+        # must not produce an unbounded ObservationError kind.
+        mapped = _stat_error(OSError("no errno attached"), b"subject")
+        self.assertIsInstance(mapped, InternalFailure)
 
     def test_walk_rejects_symlink_final_component(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             os.makedirs(os.path.join(tmp, "real"))
             os.symlink(os.path.join(tmp, "real"), os.path.join(tmp, "link"))
             error = _err(walk_no_follow(_open_dir(tmp), (b"link",)))
-            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)
+            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_walk_allows_absent_final_component(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -182,25 +197,25 @@ class FsEffectsTests(unittest.TestCase):
             _write(os.path.join(tmp, "f"), b"x")
             os.symlink(os.path.join(tmp, "f"), os.path.join(tmp, "l"))
             error = _err(open_regular_no_follow(_open_dir(tmp), b"l"))
-            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)
+            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_open_regular_rejects_hardlink(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             _write(os.path.join(tmp, "f"), b"x")
             os.link(os.path.join(tmp, "f"), os.path.join(tmp, "h"))
             error = _err(open_regular_no_follow(_open_dir(tmp), b"h"))
-            self.assertEqual(error.kind, ObservationErrorKind.HARDLINK_ENCOUNTERED)
+            self.assertEqual(error.kind, ObservationErrorKind.HARDLINK_ENCOUNTERED)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_open_regular_rejects_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             os.mkdir(os.path.join(tmp, "d"))
             error = _err(open_regular_no_follow(_open_dir(tmp), b"d"))
-            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
+            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_open_regular_missing_is_path_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             error = _err(open_regular_no_follow(_open_dir(tmp), b"absent"))
-            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
+            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_read_file_bounded_returns_exact_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -218,7 +233,8 @@ class FsEffectsTests(unittest.TestCase):
             try:
                 error = _err(read_file_bounded(fd, 2))
                 self.assertEqual(
-                    error.kind, ObservationErrorKind.OBSERVATION_LIMIT_EXCEEDED
+                    error.kind,  # pyright: ignore[reportAttributeAccessIssue]
+                    ObservationErrorKind.OBSERVATION_LIMIT_EXCEEDED,
                 )
             finally:
                 os.close(fd)
@@ -237,7 +253,7 @@ class FsEffectsTests(unittest.TestCase):
             _write(os.path.join(tmp, "f"), b"x")
             os.chmod(os.path.join(tmp, "f"), 0o000)
             error = _err(open_regular_no_follow(_open_dir(tmp), b"f"))
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_ensure_state_root_rejects_unwritable_parent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -252,7 +268,7 @@ class FsEffectsTests(unittest.TestCase):
             fd = _open_dir(os.path.join(tmp, "d"))
             os.chmod(os.path.join(tmp, "d"), 0o400)
             error = _err(classify_child(fd, b"x"))
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_fsync_file_and_directory_succeed_on_real_tree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -301,8 +317,8 @@ class FsEffectsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             os.mkfifo(os.path.join(tmp, "p"))
             error = _err(open_regular_no_follow(_open_dir(tmp), b"p"))
-            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
-            self.assertIn("not a regular file", error.subject)
+            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)  # pyright: ignore[reportAttributeAccessIssue]
+            self.assertIn("not a regular file", error.subject)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_open_regular_propagates_classify_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -316,7 +332,7 @@ class FsEffectsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             _write(os.path.join(tmp, "file"), b"x")
             error = _err(walk_no_follow(_open_dir(tmp), (b"file", b"child")))
-            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
+            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_walk_oversized_component_is_internal_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -481,8 +497,8 @@ class LockingTests(unittest.TestCase):
             os.close(state)
             error = _err(acquire_lock(state, operation="apply", target_digest="d" * 64))
             self.assertEqual(error.kind, TransactionErrorKind.PRIMITIVE_FAILED)
-            self.assertEqual(error.primitive, TransactionPrimitive.WRITE_FILE)
-            self.assertEqual(error.errno_class, ErrnoClass.OTHER_SANITIZED_ERRNO)
+            self.assertEqual(error.primitive, TransactionPrimitive.WRITE_FILE)  # pyright: ignore[reportAttributeAccessIssue]
+            self.assertEqual(error.errno_class, ErrnoClass.OTHER_SANITIZED_ERRNO)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_failed_acquisitions_do_not_leak_descriptors(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -548,7 +564,7 @@ class GitStateTests(unittest.TestCase):
             self._git("add", "f", cwd=repo)
             self._git("commit", "-qm", "init", cwd=repo)
             resolved = _ok(resolve_git_worktree(os.fsencode(repo)))
-            self.assertIsInstance(resolved, ResolvedGitWorktree)
+            assert isinstance(resolved, ResolvedGitWorktree)
             self.assertFalse(os.path.exists(resolved.state_root_abs))
 
     def test_linked_worktrees_have_independent_state_roots(self) -> None:
@@ -562,8 +578,8 @@ class GitStateTests(unittest.TestCase):
             self._git("worktree", "add", "-q", other, cwd=repo)
             first = _ok(resolve_git_worktree(os.fsencode(repo)))
             second = _ok(resolve_git_worktree(os.fsencode(other)))
-            self.assertIsInstance(first, ResolvedGitWorktree)
-            self.assertIsInstance(second, ResolvedGitWorktree)
+            assert isinstance(first, ResolvedGitWorktree)
+            assert isinstance(second, ResolvedGitWorktree)
             self.assertNotEqual(first.state_root_abs, second.state_root_abs)
             self.assertIn(b"worktrees", second.git_dir_abs)
             self.assertNotEqual(first.target, second.target)
@@ -593,7 +609,7 @@ class GitStateTests(unittest.TestCase):
             resolved = _ok(
                 resolve_git_worktree(os.fsencode(os.path.join(main, "submodule")))
             )
-            self.assertIsInstance(resolved, ResolvedGitWorktree)
+            assert isinstance(resolved, ResolvedGitWorktree)
             self.assertIn(b"modules", resolved.git_dir_abs)
 
     def test_bare_repository_is_unsupported(self) -> None:
@@ -725,7 +741,7 @@ class GitStateTests(unittest.TestCase):
                 raise AssertionError(f"unexpected git call: {args}")
 
             error = _err(resolve_git_worktree(root, runner=runner))
-            self.assertEqual(error.kind, ObservationErrorKind.GIT_COMMAND_FAILED)
+            self.assertEqual(error.kind, ObservationErrorKind.GIT_COMMAND_FAILED)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_bare_probe_failure_is_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -872,7 +888,7 @@ class GitStateTests(unittest.TestCase):
                 raise AssertionError(f"unexpected git call: {args}")
 
             error = _err(resolve_git_worktree(root, runner=runner))
-            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
+            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_path_format_probe_failure_is_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -990,7 +1006,7 @@ class GitStateTests(unittest.TestCase):
                 raise AssertionError(f"unexpected git call: {args}")
 
             error = _err(resolve_git_worktree(root, runner=runner))
-            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
+            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_unsearchable_root_is_permission_denied(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1024,7 +1040,7 @@ class GitStateTests(unittest.TestCase):
                 raise AssertionError(f"unexpected git call: {args}")
 
             error = _err(resolve_git_worktree(root, runner=runner))
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_symlinked_root_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1036,7 +1052,7 @@ class GitStateTests(unittest.TestCase):
             link = os.path.join(tmp, "link")
             os.symlink(repo, link)
             error = _err(resolve_git_worktree(os.fsencode(link)))
-            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)
+            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_run_git_reports_nonzero_exit_as_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1081,7 +1097,7 @@ class GitStateTests(unittest.TestCase):
                 raise AssertionError(f"unexpected git call: {args}")
 
             resolved = _ok(resolve_git_worktree(root, runner=runner))
-            self.assertIsInstance(resolved, ResolvedGitWorktree)
+            assert isinstance(resolved, ResolvedGitWorktree)
             self.assertEqual(
                 resolved.state_root_abs,
                 posixpath.normpath(posixpath.join(root, b".git", b"agentic-template")),
@@ -1113,7 +1129,7 @@ class GitStateTests(unittest.TestCase):
                 raise AssertionError(f"unexpected git call: {args}")
 
             error = _err(resolve_git_worktree(root, runner=runner))
-            self.assertEqual(error.kind, ObservationErrorKind.GIT_COMMAND_FAILED)
+            self.assertEqual(error.kind, ObservationErrorKind.GIT_COMMAND_FAILED)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_state_root_symlink_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1130,7 +1146,7 @@ class GitStateTests(unittest.TestCase):
             # git canonicalizes the symlink away, so the resolved state root no
             # longer equals the git-dir child and the equality check fails closed.
             error = _err(resolve_git_worktree(os.fsencode(repo)))
-            self.assertEqual(error.kind, ObservationErrorKind.GIT_COMMAND_FAILED)
+            self.assertEqual(error.kind, ObservationErrorKind.GIT_COMMAND_FAILED)  # pyright: ignore[reportAttributeAccessIssue]
 
 
 _HEX64 = st.text(alphabet="0123456789abcdef", min_size=64, max_size=64)
@@ -1733,7 +1749,7 @@ class JournalTests(unittest.TestCase):
             state = self._state_root(tmp)
             os.chmod(os.path.join(tmp, "state-root"), 0o400)
             error = _err(capture_state_root(state, self._target()))
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_capture_rejects_unreadable_journal(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1742,7 +1758,7 @@ class JournalTests(unittest.TestCase):
             _write(journal, b"{}")
             os.chmod(journal, 0o000)
             error = _err(capture_state_root(state, self._target()))
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_capture_rejects_unreadable_pending(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1751,7 +1767,7 @@ class JournalTests(unittest.TestCase):
             _write(pending, b"x")
             os.chmod(pending, 0o000)
             error = _err(capture_state_root(state, self._target()))
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_observe_transactions_without_journal_is_orphan_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1793,7 +1809,8 @@ class JournalTests(unittest.TestCase):
             limits = ResourceLimits(max_file_bytes=32)
             error = _err(capture_state_root(state, self._target(), limits=limits))
             self.assertEqual(
-                error.kind, ObservationErrorKind.OBSERVATION_LIMIT_EXCEEDED
+                error.kind,  # pyright: ignore[reportAttributeAccessIssue]
+                ObservationErrorKind.OBSERVATION_LIMIT_EXCEEDED,
             )
 
     def test_collect_returns_stable_observation(self) -> None:
@@ -1828,7 +1845,7 @@ class JournalTests(unittest.TestCase):
             error = _err(
                 collect_state_root_observation(state, target, capture=alternating)
             )
-            self.assertEqual(error.kind, ObservationErrorKind.CONCURRENT_TARGET_CHANGE)
+            self.assertEqual(error.kind, ObservationErrorKind.CONCURRENT_TARGET_CHANGE)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_collect_propagates_capture_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1845,7 +1862,7 @@ class JournalTests(unittest.TestCase):
                 )
 
             error = _err(collect_state_root_observation(state, target, capture=failing))
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_collect_propagates_second_pass_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1876,7 +1893,7 @@ class JournalTests(unittest.TestCase):
             error = _err(
                 collect_state_root_observation(state, target, capture=failing_second)
             )
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_collect_rejects_non_positive_attempts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

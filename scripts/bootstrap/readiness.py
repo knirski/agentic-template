@@ -46,10 +46,13 @@ class Finding:
             severity: Severity = "blocking"
         else:
             code = kwargs.pop("code", args[0] if len(args) > 0 else None)
-            subject_at = kwargs.pop("subject_at", args[1] if len(args) > 1 else None)
+            # The legacy 4-arg adapter is intentionally dynamic: the isinstance
+            # narrowing at lines 57-62 enforces the SubjectAt/Severity contract
+            # at runtime, so pyright cannot see the guarantee through `.pop()`.
+            subject_at = kwargs.pop("subject_at", args[1] if len(args) > 1 else None)  # pyright: ignore[reportAssignmentType]
             subject = kwargs.pop("subject", args[2] if len(args) > 2 else None)
             rule = kwargs.pop("rule", args[3] if len(args) > 3 else None)
-            severity = kwargs.pop("severity", args[4] if len(args) > 4 else "blocking")
+            severity = kwargs.pop("severity", args[4] if len(args) > 4 else "blocking")  # pyright: ignore[reportAssignmentType]
             message = kwargs.pop("message", args[5] if len(args) > 5 else None)
             next_action = kwargs.pop("next_action", args[6] if len(args) > 6 else None)
             if kwargs:

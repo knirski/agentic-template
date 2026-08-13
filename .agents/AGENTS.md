@@ -37,6 +37,28 @@ The repository-root `AGENTS.md` still applies. These rules govern `.agents/`.
 - Never add credentials, local settings, generated agent state, or unrelated
   upstream changes.
 
+## Skill install scope
+
+This repository tracks skills in exactly two agent directories:
+
+- `.agents/skills/<skill>/` -- real files; the single source of truth for skill
+  content.
+- `.claude/skills/<skill>` -- a symlink to `../../.agents/skills/<skill>`
+  (git mode `120000`), so Claude Code reads the same content without a copy.
+
+`npx skills update -p` auto-limits to the agent mappings already present
+(Universal + Claude Code), so it touches only `.agents/` and `.claude/`. It is
+safe to run unchanged.
+
+`npx skills add ... --all` is NOT safe here: it installs into ~76 agent
+directories (`.aider-desk`, `.augment`, `.bob`, `data/`, `skills/`, ...), only
+two of which (`agents`, `claude`) this repository tracks. Never use `--all`.
+Scope adds to the two tracked mirrors, write real files under `.agents/`
+(`--copy`), and make the `.claude/skills/<name>` entry a symlink -- not a real
+directory -- so it matches the existing layout. After any `add`, remove every
+untracked top-level agent directory it created before considering the change
+complete.
+
 ## Patching Atelier skills
 
 When an Atelier skill update is available:

@@ -36,16 +36,37 @@ class TemplateContractTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_no_shell_scripts_or_bash_shebangs(self) -> None:
+        # Dependency and generated directories are environment state, not
+        # repository content. A venv contains vendored third-party files --
+        # e.g. basedpyright's `nodejs-wheel` ships `.sh` scripts under
+        # `.venv/.../node-gyp/` and `.../npm/` -- that are outside the
+        # no-shell-scripts repo contract this test enforces. Excluding them
+        # keeps the check scoped to repository source, matching the existing
+        # `.git` exclusion. This is scoping, not weakening: a real shell
+        # script or bash shebang introduced into `scripts/` or `tests/`
+        # would still fail here.
+        excluded_dirs = {
+            ".git",
+            ".venv",
+            ".pytest_cache",
+            ".ruff_cache",
+            ".worktrees",
+            ".hypothesis",
+            "mutants",
+            "target",
+        }
         shell_files = sorted(
             path.relative_to(ROOT)
             for path in ROOT.rglob("*")
-            if path.is_file() and ".git" not in path.parts and path.suffix == ".sh"
+            if path.is_file()
+            and excluded_dirs.isdisjoint(path.parts)
+            and path.suffix == ".sh"
         )
         bash_files = sorted(
             path.relative_to(ROOT)
             for path in ROOT.rglob("*")
             if path.is_file()
-            and ".git" not in path.parts
+            and excluded_dirs.isdisjoint(path.parts)
             and path.read_bytes().startswith(b"#!")
             and b"bash" in path.read_bytes().splitlines()[0]
         )
