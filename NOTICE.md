@@ -11,14 +11,17 @@ This template vendors reusable agent skills so generated projects are self-conta
   the CI gate after every pushed review fix.
 - `verification-before-completion` originates from
   [`obra/superpowers`](https://github.com/obra/superpowers).
-- `modern-python` originates from
-  [`trailofbits/skills`](https://github.com/trailofbits/skills) and is distributed under the
-  [Creative Commons Attribution-ShareAlike 4.0 International licence](https://creativecommons.org/licenses/by-sa/4.0/).
-  Retain this attribution and indicate material changes when adapting the bundled copy; it is not
-  relicensed under this repository's Apache-2.0 licence.
+- The Python skills (`python-architecture`, `python-build-tools`, `python-fastapi`,
+  `python-modern-python`, `python-monorepo`, `python-sqlalchemy`, `python-temporal`,
+  `python-testing`) originate from
+  [`martinffx/python-skills`](https://github.com/martinffx/python-skills) and are distributed under
+  MIT terms. `python-architecture` and `python-testing` are vendored manually because their upstream
+  frontmatter is malformed and the `skills` CLI skips them; the only local change is quoting the
+  `description` value so the YAML is valid. Reinstall those two through the CLI once the upstream
+  frontmatter is fixed, then let `skills-lock.json` manage them.
 
-The Atelier, Cursor plugins, xpepper, and Superpowers skill sources are distributed under MIT terms.
-Their copyright and licence notices must remain available when the bundled skills are redistributed.
+All bundled skill sources above are distributed under MIT terms. Their copyright and licence notices
+must remain available when the bundled skills are redistributed.
 Adopter additions to this notice are preserved as seed-once project-owned content.
 
 Review upstream repositories for their current licenses and notices before redistributing this

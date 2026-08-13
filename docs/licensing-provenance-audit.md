@@ -1,6 +1,6 @@
 # Licensing and provenance audit
 
-**Audit date:** 2026-08-07
+**Audit date:** 2026-08-13
 **Scope:** every bundled skill in `.agents/skills`, the repository Apache-2.0 license and notice,
 and all bootstrap licensing modes in the approved deterministic-project-bootstrap design.
 **Purpose:** establish preservation requirements before licence-writing implementation. This is a
@@ -16,7 +16,7 @@ publication.
 
 ## Bundled skill inventory
 
-All 18 local `SKILL.md` files are covered:
+All 25 local `SKILL.md` files are covered:
 
 | Local skills | Upstream source | Licence and preservation result |
 | --- | --- | --- |
@@ -24,26 +24,26 @@ All 18 local `SKILL.md` files are covered:
 | `loop-on-ci` | [cursor/plugins](https://github.com/cursor/plugins) | MIT; retain upstream attribution and licence reference |
 | `pr-review-loop` | [xpepper/pr-review-agent-skill](https://github.com/xpepper/pr-review-agent-skill) | MIT; retain upstream MIT metadata and attribution |
 | `verification-before-completion` | [obra/superpowers](https://github.com/obra/superpowers) / [obra/superpowers-skills](https://github.com/obra/superpowers-skills) | MIT; retain upstream attribution and licence reference |
-| `modern-python` | [trailofbits/skills](https://github.com/trailofbits/skills) | CC BY-SA 4.0; retain attribution, the licence reference, and an indication of material changes |
+| `python-architecture`, `python-build-tools`, `python-fastapi`, `python-modern-python`, `python-monorepo`, `python-sqlalchemy`, `python-temporal`, `python-testing` | [martinffx/python-skills](https://github.com/martinffx/python-skills) | MIT; retain copyright and licence notice. `python-architecture` and `python-testing` are hand-vendored with a quoted `description` because upstream frontmatter is malformed |
 
-The upstream pages identify MIT terms for Atelier, Cursor plugins, xpepper's skill repository, and
-Superpowers, and CC BY-SA 4.0 for Trail of Bits. The local `modern-python` copy must not be
-represented as Apache-2.0 content merely because the surrounding template is Apache-2.0.
+The upstream pages identify MIT terms for Atelier, Cursor plugins, xpepper's skill repository,
+Superpowers, and martinffx/python-skills. With `modern-python` (Trail of Bits, CC BY-SA 4.0) removed,
+every bundled skill is now MIT-licensed.
 
 ## Existing notice and required preservation
 
 The root `LICENSE` remains the Apache License 2.0 for original template material. `NOTICE.md` is
 the provenance notice for bundled skills and must remain available in every generated-project mode.
-It must contain the source repository and attribution for each skill family, the applicable MIT or
-CC BY-SA 4.0 licence reference, an indication that bundled copies may be adapted locally, and a
+It must contain the source repository and attribution for each skill family, the applicable MIT
+licence reference, an indication that bundled copies may be adapted locally, and a
 direction to review upstream terms before redistributing an updated copy.
 
 This audit adds no new generated path. The existing `LICENSES/Apache-2.0.txt` location remains the
 preserved copy of the template Apache text when the adopter supplies a different project licence.
-The CC BY-SA skill is not relicensed under Apache and does not require a second generated root
-licence path: its attribution and licence reference remain in `NOTICE.md`, alongside the bundled
-skill source. If a future audit finds that a source requires verbatim licence text or a separate
-file, that is a design change requiring reconfirmation before implementation.
+With `modern-python` removed, no bundled skill is CC BY-SA 4.0, so none requires a separate generated
+root licence path; every bundled skill's attribution and licence reference remain in `NOTICE.md`. If
+a future audit finds that a newly added source requires verbatim licence text or a separate file, that
+is a design change requiring reconfirmation before implementation.
 
 Adopter additions to `NOTICE.md` are seed-once content. Bootstrap may initialize the file and may
 verify its declared input identity during installation, but Copier and bootstrap reconciliation do
@@ -69,8 +69,9 @@ licence does not remove or relicense the bundled skills.
 ## Findings and gate decision
 
 - The proposed ownership layout is compatible with the audited licences.
-- `NOTICE.md` was incomplete because it omitted Trail of Bits and the CC BY-SA 4.0 obligation for
-  `modern-python`; this task updates it.
+- `NOTICE.md` and this audit are updated for the replacement of `modern-python` (Trail of Bits,
+  CC BY-SA 4.0) with the MIT-licensed `martinffx/python-skills` skills; no bundled skill is now
+  CC BY-SA 4.0.
 - No audited source required a verbatim notice file or a new generated path at this audit point.
 - Licence writing remains gated on this audit and the ADR being accepted. Future changes to source
   provenance, licence modes, or legal-file paths require a new audit and design reconfirmation.
