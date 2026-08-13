@@ -571,8 +571,21 @@
           "description": "Implement preparation, backup, mutation, post-state verification, gating, and the Mealy-style transaction machine through `PLANNED`, `MUTATING`, `RESTORED`, and `SEALED`. Keep effect selection in the typed state machine; the shell executes only requested effects and feeds typed observations back into the reducer. Leave rollback reducers and recovery cleanup to T11b.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-13",
+              "commits": [
+                "0c1f3ec"
+              ],
+              "evidence": [
+                "uv run pytest (654 passed, including 63 new transaction-machine tests)",
+                "uv run ruff check (clean)",
+                "uv run ruff format --check (clean)",
+                "uv run basedpyright (clean)",
+                "coverage: scripts/bootstrap/transaction.py 96%; remaining gaps are defensive contract guards",
+                "python3 scripts/validate_repository.py (expected template-source findings; template contract passed)"
+              ]
+            }
           },
           "files": {
             "create": [
