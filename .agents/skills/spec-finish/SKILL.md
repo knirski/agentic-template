@@ -36,6 +36,11 @@ machinery that replaces sufficient platform behavior.
 If the implementation faithfully follows an unnecessarily large design, stop and return to
 `spec-plan`. Get approval for the smaller plan before continuing.
 
+Removals are safe only when they bring the implementation back to the approved behavior and
+scope. If a removal would change approved behavior or scope, stop before editing the
+implementation and return to `spec-plan` for a smaller approved plan; surface the conflict
+instead of choosing silently, and preserve user changes.
+
 Update the finished SDD to describe the smaller result. Replace rejected architecture in the
 normative design and plan instead of preserving it as precedent; mention it only as a rejected
 alternative when that history remains useful.
