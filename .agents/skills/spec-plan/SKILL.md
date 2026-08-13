@@ -3,7 +3,8 @@ name: spec-plan
 description: >
   Write approved implementation plans in one of two modes. Explicit Inline mode creates a
   conversational plan for bounded work. Spec-backed Plan converts an approved design.md into
-  plan.json and optional tracked tasks. Trigger after atelier-orchestrator selects a mode, when
+  plan.json. Both modes stop after producing their plan output. Trigger after
+  atelier-orchestrator selects a mode, when
   the user asks to plan work, or after spec-brainstorm completes. Direct invocation without a
   selected mode uses Spec-backed Plan. Do NOT use for research or execution.
 user-invocable: true
@@ -13,12 +14,41 @@ user-invocable: true
 
 Write a proportional plan so clear that any engineer can follow it. The selected planning
 mode determines whether the plan stays in the conversation or becomes a persisted structured
-artifact. This skill does not write code.
+artifact. This skill does not write code or start implementation.
 
 `atelier-orchestrator` owns automatic classification and the human may override it. When this
 skill is directly invoked without a selected mode, use Spec-backed Plan. If Inline planning
 reveals substantial design or coordination needs, ask the human whether to switch to a
 Spec-backed Plan before presenting the plan.
+
+## Terminal boundary
+
+This skill produces exactly one plan output and then stops:
+
+- Inline mode presents the plan in conversation and changes no repository files.
+- Spec-backed mode creates or updates only `plan.json` from an approved `design.md`.
+
+Planning drafts and annotation cycles stay in conversation. Do not modify `design.md`, persist
+a Markdown plan draft, create tracker entries, invoke another workflow skill, or edit
+implementation files. These rules still apply when the human asks to plan and implement in one
+request. Implementation requires a later, explicit request after this skill has finished.
+
+## Planning Rules
+
+- Organize tasks around required behavior, not one task per layer.
+- Record a short list of behavior the change must preserve.
+- For each task, identify existing code to reuse, modify, or delete.
+- Map every new abstraction to a present requirement and its current consumers.
+- Introduce shared infrastructure only when at least two current consumers demonstrate the
+  same need.
+- Group tests by changed contract and active boundary. Do not repeat the CRUD matrix across
+  layers.
+
+### Proportionality Gate
+
+Before presenting any plan, compare its size and concepts with the requested behavior. If a
+bounded migration or refactor introduces shared infrastructure, unrelated behavior, or a plan
+substantially larger than the behavior being changed, stop and simplify it.
 
 ## Outputs
 
@@ -33,7 +63,8 @@ structure. Omit optional subsections rather than rendering empty headings.
 Read enough of the codebase to identify the current behavior, boundaries, affected files,
 and concrete validation. Keep the plan proportional to implementation risk. Fill the
 template with confirmed, file-and-symbol-level details, including cross-file wiring or
-ordering constraints where they matter.
+ordering constraints where they matter. Apply the Planning Rules and Proportionality Gate
+before presenting it.
 
 Do not manufacture phases, task IDs, dependency graphs, acceptance matrices, `design.md`,
 `plan.json`, tracker entries, or harness todos. The conversation is the plan artifact.
@@ -52,11 +83,11 @@ Every revision invalidates prior approval. End each revised plan with "Inline Pl
 for review." and stop until the human explicitly approves that complete version. Do not
 implement until the current plan is approved.
 
-Approval authorizes implementation. Implement the approved conversational plan directly using
-the Inline execution safeguards in `atelier-orchestrator`. Do not invoke `spec-implement`,
-`spec-finish`, `code-subagents`, or task tracking.
-
-Do not create planning artifacts or tracker entries during this handoff.
+When the human approves the Inline Plan, acknowledge that the plan is approved and stop. Do not
+implement it in the same invocation. A later explicit implementation request may execute the
+approved conversational plan directly using the Inline execution safeguards in
+`atelier-orchestrator`; it does not use `spec-implement`, `spec-finish`, `code-subagents`, or
+task tracking.
 
 ## Spec-backed Plan Artifacts
 
@@ -66,8 +97,8 @@ docs/specs/YYYY-MM-DD-<feature-name>/
 └── plan.json  ← This skill's output
 ```
 
-The plan starts as a markdown draft for human annotation, then gets converted to
-structured plan.json when approved.
+The plan starts as a conversational draft for human annotation, then gets converted to
+structured `plan.json` when approved.
 
 ### plan.json Schema
 
@@ -76,14 +107,17 @@ structured plan.json when approved.
   "feature": "user-authentication",
   "spec": "docs/specs/2026-03-08-user-auth/design.md",
   "goal": "Add email/password authentication with session management",
+  "preserved_behavior": [
+    "Existing sessions remain valid"
+  ],
   "phases": [
     {
       "id": "P1",
-      "name": "Domain Model",
+      "name": "Authenticate with email and password",
       "tasks": [
         {
           "id": "T1",
-          "name": "Implement UserEntity with validation",
+          "name": "Accept valid credentials and reject invalid credentials",
           "depends_on": [],
           "inputs": [
             "User schema from design.md",
@@ -96,9 +130,18 @@ structured plan.json when approved.
             "completion": null
           },
           "files": {
+            "reuse": ["src/auth/password.ts"],
             "create": ["src/entities/user.ts", "tests/entities/user.test.ts"],
-            "modify": []
+            "modify": [],
+            "delete": []
           },
+          "new_abstractions": [
+            {
+              "name": "UserEntity",
+              "requirement": "Validate email/password credentials",
+              "consumers": ["POST /sessions"]
+            }
+          ],
           "validation": {
             "tests": [
               "rejects empty email",
@@ -126,6 +169,7 @@ structured plan.json when approved.
 | feature | string | Kebab-case feature name |
 | spec | string | Path to the approved design.md |
 | goal | string | One-sentence goal |
+| preserved_behavior | string[] | Short list of existing behavior that must remain unchanged |
 | phases | Phase[] | Implementation phases in dependency order |
 
 #### Phase fields
@@ -146,7 +190,8 @@ structured plan.json when approved.
 | inputs | string[] | What you need to know before starting |
 | description | string | What to build, key decisions, constraints |
 | execution | Execution | Task execution state and linked GitHub pull requests |
-| files | {create, modify} | Files to create and modify |
+| files | {reuse, create, modify, delete} | Existing code to reuse, modify, or delete, plus files to create |
+| new_abstractions | {name, requirement, consumers}[] | New abstractions mapped to a present requirement and current consumers |
 | validation | {tests, acceptance} | How to verify the task is done |
 
 Each task carries its own `execution` discriminated union:
@@ -162,15 +207,15 @@ Each task carries its own `execution` discriminated union:
   implementation work.
 
 Keep task keys in this order: `id`, `name`, `depends_on`, `inputs`, `description`, `execution`,
-`files`, `validation`. Do not include `github_prs` on pending tasks. Do not mix modes within a
-task or infer completion from file presence or commit messages alone.
+`files`, `new_abstractions`, `validation`. Do not include `github_prs` on pending tasks. Do not
+mix modes within a task or infer completion from file presence or commit messages alone.
 
 ---
 
 ## Spec-backed Step 1: Write the Plan Draft
 
-Read the approved design.md, then write a plan as a markdown section in the same
-document or as a separate draft.
+Read the approved `design.md`, then present the plan draft in conversation. Do not write the
+draft into `design.md` or create a separate draft file.
 
 ### Plan quality
 
@@ -186,19 +231,18 @@ Each task should be self-contained and include:
 
 - **Inputs**: What you need to know or have before starting (from spec, existing code)
 - **Description**: What to build, key design decisions, constraints
-- **Files**: Exact paths to create and modify
-- **Validation**: Tests that must pass and acceptance criteria
+- **Files**: Exact existing code to reuse, modify, or delete, and files to create
+- **New abstractions**: Present requirement and current consumers for each; use an empty list
+  when the task adds none
+- **Validation**: Tests grouped by changed contract and active boundary, plus acceptance criteria
 
 No exact code snippets. No implementation details. The task says WHAT and HOW TO VERIFY,
 not HOW to write the code.
 
 ### Task ordering
 
-Follow bottom-up dependency ordering:
-
-```
-Entity → Repository → Service → Router/Consumer
-```
+Order tasks by required behavior and real dependencies. Keep changes across layers in one task
+when they implement and verify one contract; do not create one task per layer.
 
 ### Task size
 
@@ -247,25 +291,12 @@ explicitly approves it.
 When the human approves — "looks good", "approved", "create tasks" — convert the plan
 into plan.json.
 
-### Task Tracking
-
-Read `docs/agents/issue-tracker.md` when it exists. Create tracker entries only when that
-document configures a tracker, mirroring is enabled, and tracking adds execution value. Do not
-choose or configure a tracker here. Do not duplicate a simple plan.json into a tracker merely to
-satisfy the workflow.
-
 ### What to do
 
 1. Convert the annotated plan draft into structured plan.json
 2. Each task maps to a unit with inputs, description, files, and validation
 3. Dependencies between tasks are captured in `depends_on` fields
-4. When execution benefits from configured task tracking, create entries according to
-   `docs/agents/issue-tracker.md`:
-   - Create any configured feature container
-   - Add tasks with clear descriptions
-   - Mirror dependencies when the configured tracker supports them
-5. The plan.json is the source of truth for task details; the task tracker
-tracks execution state
+4. Do not create tracker entries or modify any file other than `plan.json`
 
 ### Verification
 
@@ -276,25 +307,27 @@ After creating plan.json, verify:
 - Every task has execution metadata in the selected mode, with complete inline state or a tracker
   reference
 - Every non-pending task has a `github_prs` list, and pending tasks omit it
+- Preserved behavior is short and explicit
+- Every task identifies code to reuse, modify, or delete
+- Every new abstraction names its present requirement and current consumers
+- Shared infrastructure has at least two current consumers with the same demonstrated need
 - File paths are complete and specific
-- Validation criteria are concrete and testable
+- Validation criteria are concrete, testable, and grouped by changed contract and active boundary
+- The plan passes the Proportionality Gate
 
 ---
 
 ## Handoff
 
-When plan.json is created, and any useful configured tracker entries have been created, the next
-step is **spec-implement** in Spec-backed mode.
+When `plan.json` is created, report its path and stop.
 
 Tell the human:
 
-> "Spec-backed Plan is approved. Ready to start implementation?"
->
-> **Autonomous** — I'll work through all tasks, only stopping if blocked.
->
-> **Batched** — I'll do 3-5 tasks at a time, then report and wait for feedback.
+> "Planning complete. Plan written to `docs/specs/<path>/plan.json`. A separate
+> `spec-implement` invocation can execute it."
 
-Do not start implementing. That's spec-implement's job.
+Do not invoke `spec-implement`, offer execution modes, or start implementing. The human must
+start implementation with a separate request.
 
 Minor implementation deviations may be recorded inline and reflected in plan.json when they do
 not change approved behavior, scope, architecture, public contracts, or major dependencies.
@@ -309,7 +342,7 @@ spec-brainstorm. See **atelier-orchestrator** for iteration patterns.
 |----------------------------|--------|
 | Inline / "write a plan" | Present the complete Inline Plan from the template, stop |
 | Inline / "I added notes" | Apply the changes, re-present the entire updated Inline Plan, and stop for renewed approval |
-| Inline / "approved" | Implement the approved conversational plan directly; create no artifacts |
+| Inline / "approved" | Acknowledge approval and stop; create no artifacts and do not implement |
 | Spec-backed / "write a plan" | Write the plan draft from design.md, stop |
 | Spec-backed / "I added notes" | Re-read, address all notes, do NOT implement |
-| Spec-backed / "approved" / "create tasks" | Create plan.json and useful task tracking |
+| Spec-backed / "approved" / "create tasks" | Create only plan.json, report its path, and stop |

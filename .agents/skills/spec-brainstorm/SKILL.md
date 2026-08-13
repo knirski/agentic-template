@@ -3,8 +3,8 @@ name: spec-brainstorm
 description: >
   Conversational design workshop for substantial work. Interviews the human one question
   at a time, explores 2-3 approaches with trade-offs, and presents the design
-  section by section for approval before writing the spec. Combines requirements
-  discovery with codebase research and architecture design.
+  section by section for approval before writing only design.md, then stops. Combines
+  requirements discovery with codebase research and architecture design.
   Use when the user explicitly requests a spec or when atelier-orchestrator selects a
   Spec-backed Plan. Ambiguous design or discovery requests route through atelier-orchestrator.
 user-invocable: true
@@ -31,6 +31,14 @@ docs/specs/YYYY-MM-DD-<feature>/
 
 Requirements are inline — no separate requirements.json needed.
 
+### Exclusive output contract
+
+This skill may create or update only the `design.md` shown above. It may inspect the
+repository and discuss drafts in conversation, but it must not modify any other file, create
+`plan.json`, create tracker entries, invoke another workflow skill, or write implementation
+code. This boundary still applies when the human asks to brainstorm, plan, and implement in
+one request. Finish `design.md`, report it, and stop.
+
 ---
 
 ## Lessons
@@ -53,7 +61,8 @@ explain a unit's job in one sentence, it's doing too much.
 
 Explore the current structure first. Follow existing patterns. Targeted improvements only.
 No unrelated refactoring. Understand why things are the way they are before proposing
-changes.
+changes. Treat loaded skills as relevant guidance, not as a requirement to apply every pattern
+they contain.
 
 ### Decomposition
 
@@ -62,11 +71,17 @@ into sub-projects before diving into details. Each substantial sub-project gets 
 and plan; bounded sub-projects can use Inline Plans. A spec that tries to cover three
 subsystems helps no one.
 
+Keep migrations separate from authorization, product behavior, infrastructure, schema, and
+test-platform projects. Do not use a migration as permission to redesign adjacent systems.
+
 ### YAGNI ruthlessly
 
 Remove unnecessary features from all designs. If a capability isn't needed for the first
 user story, it doesn't go in the spec. Every feature is a cost — to build, to test,
 to maintain, to understand later. Push back on scope creep during discovery.
+
+Future consumers do not justify shared infrastructure. A "reusable foundation" may describe
+an architectural quality, but it is not a user story or a current requirement.
 
 ---
 
@@ -157,6 +172,16 @@ behaviour.
 Collect research findings for the spec as the foundation. Do not write `design.md` until the
 approved design sections are assembled in Step 4c.
 
+The research section must map each relevant concern to the code that already handles it and
+the current requirement that drives the decision:
+
+| Concern | Existing solution | Decision | Current requirement |
+|---------|-------------------|----------|---------------------|
+| IDs | Shared parser and ID type | reuse | Parse route parameters |
+
+Use only `reuse`, `modify`, `delete`, or `new` in the Decision column. Every `new` concept must
+map to a present requirement; a future or hypothetical consumer does not qualify.
+
 **Tell the human:** "I've written the research section of the spec. Ready for you to
 review before I continue with the design."
 
@@ -173,6 +198,9 @@ then write the spec file.
 
 Before settling on a design, present **2-3 approaches** with trade-offs.
 
+The first approach must keep the existing architecture and make the smallest correct change.
+Present broader approaches only when a current requirement makes their extra cost relevant.
+
 For each approach, address:
 
 1. **What it looks like** — Brief architecture sketch
@@ -181,6 +209,9 @@ For each approach, address:
 4. **Complexity estimate** — Rough sense of implementation effort
 
 Lead with your recommended option and explain why it wins.
+
+Before asking the human to approve an approach or design batch, remove anything justified only
+by completeness, consistency, or hypothetical reuse.
 
 **Example:**
 
@@ -242,9 +273,9 @@ If you loop twice on the same batch, stop and ask:
 
 > "We've looped on [batch] twice. Should we reconsider the approach?"
 
-**Terminology discipline:** while drafting batches, challenge terms against
-`CONTEXT.md` and update it inline as terms resolve, using the **oracle-domain-modelling**
-skill. If domain confusion runs deep, suggest pausing for **oracle-grill-me** before continuing.
+**Terminology discipline:** while drafting batches, challenge terms against `CONTEXT.md` and
+record resolved terminology in `design.md`. Do not update `CONTEXT.md` from this skill. If
+domain confusion runs deep, suggest pausing for **oracle-grill-me** before continuing.
 
 ### 4c. Write the spec
 
@@ -324,6 +355,8 @@ After writing the file, check it with fresh eyes:
    decomposed in Step 2. If it's still too broad, flag it now.
 4. **Ambiguity check** — Could any requirement be interpreted two ways? If so,
    pick one interpretation, state it explicitly, and let the human correct you.
+5. **Necessity check** — Delete concepts justified only by completeness, consistency, or
+   hypothetical reuse. Confirm every remaining new concept maps to a current requirement.
 
 **Substance rule:** if a fix changes the substance of an approved section,
 re-present that section for approval. Wording and consistency fixes go inline —
@@ -335,16 +368,17 @@ note them at handoff.
 
 **Tell the human:**
 
-> "Spec written to `docs/specs/<path>`. Please confirm this assembled document before we move to
-> the Spec-backed Plan."
+> "Brainstorm complete. Design written to `docs/specs/<path>/design.md`. A separate
+> `spec-plan` invocation can create `plan.json` after you approve this document."
 
 If the human requests changes — in conversation or by annotating the file — address every note,
 update the spec, and re-run the self-review. If a change alters the substance of an approved
 section, re-present that section for approval before continuing. Resolve questions that affect
 scope, architecture, contracts, data, security, or task ordering before handoff.
 
-The next step is **spec-plan** in Spec-backed mode. Do not start planning without the
-human's go-ahead. Do not write code.
+Stop after reporting the completed `design.md`. Do not invoke `spec-plan`, offer to continue
+automatically, create `plan.json`, or write code. The human must start the next phase with a
+separate request.
 
 If planning reveals design flaws, loop back to research. See **atelier-orchestrator**
 for iteration patterns.
