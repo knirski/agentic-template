@@ -3180,6 +3180,12 @@ class TestPlanDigest:
                 id="observed mode out of domain",
             ),
             pytest.param(
+                lambda receipt: receipt["operations"][0]["expected_old"].__setitem__(
+                    "mode", True
+                ),
+                id="observed mode boolean",
+            ),
+            pytest.param(
                 _set_delete_planned_new,
                 id="delete with planned new",
             ),
