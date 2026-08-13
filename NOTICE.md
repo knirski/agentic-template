@@ -17,7 +17,10 @@ This template vendors reusable agent skills so generated projects are self-conta
   [`martinffx/python-skills`](https://github.com/martinffx/python-skills) and are distributed under
   MIT terms. `python-architecture` and `python-testing` are vendored manually because their upstream
   frontmatter is malformed and the `skills` CLI skips them; the only local change is quoting the
-  `description` value so the YAML is valid. Reinstall those two through the CLI once the upstream
+  `description` value so the YAML is valid. `python-modern-python` carries one local correction: its
+  pattern-matching example used `case (x, x)`, which is a Python `SyntaxError` (a name bound twice in
+  one pattern), replaced with the guarded `case (x, y) if x == y`. Both patches should be reported
+  upstream to `martinffx/python-skills`. Reinstall those two through the CLI once the upstream
   frontmatter is fixed, then let `skills-lock.json` manage them.
 
 All bundled skill sources above are distributed under MIT terms. Their copyright and licence notices

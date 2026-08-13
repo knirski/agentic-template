@@ -11,7 +11,7 @@ def classify(point: object) -> str:
             return "x > y"
         case (x, y) if y > x:
             return "y > x"
-        case (x, x):
+        case (x, y) if x == y:
             return "diagonal"
         case _:
             raise ValueError("expected a two-value point")
