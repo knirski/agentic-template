@@ -491,12 +491,17 @@ def _decode_operation(value: object) -> Result[None, ReceiptError]:
             case Ok(_):
                 pass
         expected_old = value.get("expected_old")
+        if not isinstance(expected_old, dict):
+            return Err(_receipt_error("operation.expected_old"))
+        # Bind once so basedpyright narrows across the boolean chain; repeated
+        # `expected_old.get(...)` calls would each reintroduce `object | None`.
+        mode = expected_old.get("mode")
+        digest = expected_old.get("raw_tree_sha256")
         if (
-            not isinstance(expected_old, dict)
-            or set(expected_old) != {"mode", "raw_tree_sha256"}
-            or not isinstance(expected_old.get("mode"), int)
-            or not 0 <= expected_old.get("mode") <= 0o7777
-            or not _is_digest(expected_old.get("raw_tree_sha256"))
+            set(expected_old) != {"mode", "raw_tree_sha256"}
+            or not isinstance(mode, int)
+            or not 0 <= mode <= 0o7777
+            or not _is_digest(digest)
             or value.get("planned_new") is not None
         ):
             return Err(_receipt_error("operation.expected_old"))

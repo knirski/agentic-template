@@ -44,7 +44,7 @@ boundary. The template source uses the readiness and generation-path fixture sui
 ## Python implementation guidance
 
 - Use the repository's modern Python toolchain: manage dependencies with `uv`, format and lint
-  with Ruff, type-check with `ty`, and run tests through `uv run`.
+  with Ruff, type-check with basedpyright, and run tests through `uv run`.
 - Prefer current Python features supported by the repository's `requires-python` floor, explicit
   type annotations, small functions, immutable values, and transformations that are easy to test.
 - Where practical, structure Python commands as a functional core with an imperative shell: keep
@@ -55,7 +55,7 @@ boundary. The template source uses the readiness and generation-path fixture sui
   argument parsing, effect orchestration, presentation, and exit codes.
 - For closed-union dispatch, prefer structural `match`/`case` patterns over repetitive type checks;
   narrow helpers to the union variants they actually accept, enumerate cases explicitly, and end
-  exhaustive matches with `assert_never` so `ty` can detect missing variants.
+  exhaustive matches with `assert_never` so basedpyright can detect missing variants.
 - Apply these principles pragmatically, not religiously. Do not add wrappers, abstractions,
   functional-programming ceremony, or artificial immutability when a direct standard-library
   implementation is clearer, safer, or materially simpler. Preserve existing contracts and favor

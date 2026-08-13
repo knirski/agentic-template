@@ -112,7 +112,11 @@ def evaluate_prd(text: str, path: Path) -> tuple[Finding, ...]:
     )
     positions: list[int] = []
     for title in REQUIRED_HEADINGS:
-        matches = tuple(number for number, heading in headings if heading == title)
+        # A list (not tuple) keeps basedpyright's indexing analysis happy:
+        # `tuple(generator)` is inferred as `tuple[()]`, which basic mode flags
+        # at `matches[0]` below even though `matches` is non-empty in this
+        # `else` branch. Behaviour is identical (only len()/index/[] are used).
+        matches = [number for number, heading in headings if heading == title]
         if not matches:
             findings.append(
                 Finding(
