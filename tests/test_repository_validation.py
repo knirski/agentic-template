@@ -30,13 +30,16 @@ AGGREGATE = ROOT / "scripts/validate_repository.py"
 
 
 class AggregateFixtures(unittest.TestCase):
+    tmp: tempfile.TemporaryDirectory[str]  # pyright: ignore[reportUninitializedInstanceVariable]  initialized in unittest setUp lifecycle
+    root: Path  # pyright: ignore[reportUninitializedInstanceVariable]  initialized in unittest setUp lifecycle
+
     @override
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         (self.root / "scripts").mkdir()
-        shutil.copy2(AGGREGATE, self.root / "scripts/validate_repository.py")
-        shutil.copytree(ROOT / "scripts/bootstrap", self.root / "scripts/bootstrap")
+        _ = shutil.copy2(AGGREGATE, self.root / "scripts/validate_repository.py")
+        _ = shutil.copytree(ROOT / "scripts/bootstrap", self.root / "scripts/bootstrap")
 
     @override
     def tearDown(self) -> None:
@@ -44,7 +47,7 @@ class AggregateFixtures(unittest.TestCase):
 
     def write_stage(self, name: str, status: int, marker: str) -> None:
         path = self.root / "scripts" / name
-        path.write_text(
+        _ = path.write_text(
             f"#!{sys.executable}\nfrom pathlib import Path\nPath({str(self.root / marker)!r}).write_text('ran')\nraise SystemExit({status})\n",
             encoding="utf-8",
         )
@@ -89,10 +92,19 @@ class AggregateFixtures(unittest.TestCase):
         self.assertEqual(self.run_command("unexpected").returncode, 2)
 
     def test_adapter_uses_shared_typed_validation_program(self) -> None:
-        self.assertIs(validate_repository.ValidationProgram, CoreValidationProgram)
-        self.assertIs(validate_repository.StagePassed, CoreStagePassed)
-        self.assertIs(validate_repository.StageFailed, CoreStageFailed)
+        self.assertIs(
+            validate_repository.ValidationProgram,  # pyright: ignore[reportPrivateLocalImportUsage]  deliberate adapter re-export identity check
+            CoreValidationProgram,
+        )
+        self.assertIs(
+            validate_repository.StagePassed,  # pyright: ignore[reportPrivateLocalImportUsage]  deliberate adapter re-export identity check
+            CoreStagePassed,
+        )
+        self.assertIs(
+            validate_repository.StageFailed,  # pyright: ignore[reportPrivateLocalImportUsage]  deliberate adapter re-export identity check
+            CoreStageFailed,
+        )
 
 
 if __name__ == "__main__":
-    unittest.main()
+    _ = unittest.main()

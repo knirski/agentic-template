@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, ClassVar, Literal
 
 from pydantic import (
     BaseModel,
@@ -15,7 +15,7 @@ from pydantic import (
 )
 
 from scripts.bootstrap.paths import parse_path
-from scripts.bootstrap.result import Ok
+from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.vocabulary import (
     BRANCH_NAME_PATTERN,
     IDENTIFIER_PATTERN,
@@ -66,7 +66,7 @@ type SettingValue = str | bool
 
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(
+    model_config: ClassVar[ConfigDict] = ConfigDict(
         extra="forbid",
         frozen=True,
         strict=True,
@@ -86,9 +86,11 @@ class FileContent(StrictModel):
     @field_validator("path")
     @classmethod
     def validate_path(cls, value: str) -> str:
-        parsed = parse_path(value)
-        if not isinstance(parsed, Ok):
-            raise ValueError("path must be a safe repository-relative path")
+        match parse_path(value):
+            case Ok(_):
+                pass
+            case Err(_):
+                raise ValueError("path must be a safe repository-relative path")
         return value
 
 
@@ -118,8 +120,12 @@ class LicensingInput(StrictModel):
     @field_validator("path")
     @classmethod
     def validate_path(cls, value: str | None) -> str | None:
-        if value is not None and not isinstance(parse_path(value), Ok):
-            raise ValueError("path must be a safe repository-relative path")
+        if value is not None:
+            match parse_path(value):
+                case Ok(_):
+                    pass
+                case Err(_):
+                    raise ValueError("path must be a safe repository-relative path")
         return value
 
     @model_validator(mode="after")

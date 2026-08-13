@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import unittest
+from typing import cast
 
 from scripts.bootstrap.decisions import (
     AddCapabilities,
     CompileCandidate,
     DescribeStatus,
+    DiscardPreparation,
+    DiscardStalePending,
+    FinishForward,
+    FinishRollbackCleanup,
     InitialInstall,
     NoRecoveryNeeded,
     ReconcileTemplate,
@@ -13,6 +18,7 @@ from scripts.bootstrap.decisions import (
     RefusePlan,
     RefuseRecovery,
     RestoreManaged,
+    RollBack,
     WriteBundle,
     decide_bundle,
     decide_project,
@@ -66,6 +72,7 @@ from scripts.bootstrap.state import (
     EmptyManifestFree,
     ExistingProject,
     IncompatibleExistingProject,
+    InvalidJournal,
     InvalidManifest,
     JournalAtDifferentTarget,
     JournalPending,
@@ -99,7 +106,10 @@ from scripts.bootstrap.state import (
     UnsupportedManifestFree,
     ValidatedJournal,
     WorktreeContext,
+    context_of,
+    is_protected,
 )
+from scripts.bootstrap.values import JournalPhase
 
 
 def worktree(*, protected: bool = False) -> SupportedWorktree:
@@ -294,13 +304,13 @@ class StateAndDecisionTests(unittest.TestCase):
         snapshot = TargetSnapshot(())
         recorded = RecordedProjectState(GenerationPath.GITHUB)
         with self.assertRaises(TypeError):
-            SnapshotExistingProject(
+            _ = SnapshotExistingProject(
                 recorded,
                 CopierSourceSame(ManagedVerified()),  # pyright: ignore[reportArgumentType]  intentional wrong-condition-type negative test
                 snapshot,
             )
         with self.assertRaises(TypeError):
-            CopierExistingProject(
+            _ = CopierExistingProject(
                 recorded,
                 SnapshotSourceSame(ManagedVerified()),  # pyright: ignore[reportArgumentType]  intentional wrong-condition-type negative test
                 snapshot,
@@ -308,11 +318,11 @@ class StateAndDecisionTests(unittest.TestCase):
 
     def test_unsupported_git_target_rejects_out_of_vocabulary_reasons(self) -> None:
         with self.assertRaises(TypeError):
-            UnsupportedGitTarget("bogus")  # pyright: ignore[reportArgumentType]  intentional out-of-vocabulary negative test
+            _ = UnsupportedGitTarget("bogus")  # pyright: ignore[reportArgumentType]  intentional out-of-vocabulary negative test
 
     def test_recognized_scaffold_rejects_out_of_vocabulary_generations(self) -> None:
         with self.assertRaises(TypeError):
-            RecognizedScaffold(
+            _ = RecognizedScaffold(
                 "other",  # pyright: ignore[reportArgumentType]  intentional out-of-vocabulary negative test
                 NoSnapshotCleanup(),
                 EmptyManifestFree(),
@@ -332,12 +342,12 @@ class StateAndDecisionTests(unittest.TestCase):
 
     def test_recovery_dispatches_all_journal_phases_and_blockers(self) -> None:
         phase_results = (
-            ("PLANNED", "DiscardPreparation"),
-            ("MUTATING", "RollBack"),
-            ("RESTORED", "FinishRollbackCleanup"),
-            ("SEALED", "FinishForward"),
+            (JournalPhase.PLANNED, DiscardPreparation),
+            (JournalPhase.MUTATING, RollBack),
+            (JournalPhase.RESTORED, FinishRollbackCleanup),
+            (JournalPhase.SEALED, FinishForward),
         )
-        for phase, expected_name in phase_results:
+        for phase, decision_type in phase_results:
             state = JournalPending(
                 worktree().context,
                 ValidatedJournal(
@@ -345,12 +355,14 @@ class StateAndDecisionTests(unittest.TestCase):
                 ),
             )
             decision = decide_project(Recover(RecoverOptions()), state)
-            self.assertEqual(type(decision).__name__, expected_name)
+            self.assertIsInstance(decision, decision_type)
 
         unknown_phase = JournalPending(
             worktree().context,
             ValidatedJournal(
-                "apply", TargetIdentity(b"/tmp/project", 1, 2, "target"), "UNKNOWN"
+                "apply",
+                TargetIdentity(b"/tmp/project", 1, 2, "target"),
+                cast(JournalPhase, "UNKNOWN"),  # pyright: ignore[reportInvalidCast]  intentional out-of-vocabulary phase
             ),
         )
         self.assertIsInstance(
@@ -360,7 +372,9 @@ class StateAndDecisionTests(unittest.TestCase):
         mismatch = JournalAtDifferentTarget(
             worktree().context,
             ValidatedJournal(
-                "apply", TargetIdentity(b"/tmp/other", 1, 2, "other"), "SEALED"
+                "apply",
+                TargetIdentity(b"/tmp/other", 1, 2, "other"),
+                JournalPhase.SEALED,
             ),
             TargetIdentity(b"/tmp/project", 1, 2, "target"),
         )
@@ -379,16 +393,16 @@ class StateAndDecisionTests(unittest.TestCase):
             StalePendingWrite(worktree().context, PendingIdentity("digest")),
         ):
             decision = decide_project(Recover(RecoverOptions()), state)
-            self.assertIn(
-                type(decision).__name__, {"RefuseRecovery", "DiscardStalePending"}
-            )
+            self.assertIsInstance(decision, (RefuseRecovery, DiscardStalePending))
 
         for state in (
             StalePendingWrite(worktree().context, PendingIdentity("digest")),
             JournalPending(
                 worktree().context,
                 ValidatedJournal(
-                    "apply", TargetIdentity(b"/tmp/project", 1, 2, "target"), "PLANNED"
+                    "apply",
+                    TargetIdentity(b"/tmp/project", 1, 2, "target"),
+                    JournalPhase.PLANNED,
                 ),
             ),
             mismatch,
@@ -598,6 +612,91 @@ class StateAndDecisionTests(unittest.TestCase):
             decide_project(Reconcile(ReconcileOptions()), snapshot_same), RefuseMutation
         )
 
+    def test_plan_apply_on_a_supported_scaffold_compiles(self) -> None:
+        scaffold = ProjectAvailable(
+            worktree(),
+            RecognizedScaffold(
+                GenerationPath.GITHUB, NoSnapshotCleanup(), EmptyManifestFree(), ()
+            ),
+        )
+        self.assertIsInstance(
+            decide_project(PlanApply(ApplyPlanOptions()), scaffold), CompileCandidate
+        )
+
+    def test_add_and_restore_cover_every_copier_condition_branch(self) -> None:
+        scaffold = ProjectAvailable(
+            worktree(),
+            RecognizedScaffold(
+                GenerationPath.GITHUB, NoSnapshotCleanup(), EmptyManifestFree(), ()
+            ),
+        )
+        # Non-ExistingProject observations fall through to the refusal arm.
+        self.assertIsInstance(
+            decide_project(Add(AddOptions()), scaffold), RefuseMutation
+        )
+        self.assertIsInstance(
+            decide_project(Restore(RestoreOptions()), scaffold), RefuseMutation
+        )
+        for condition in (
+            CopierSourceSame(ManagedDrift(PathDelta((RepoPath("managed.txt"),)))),
+            CopierConflicted(PathDelta((RepoPath(".rej"),))),
+            CopierSourceChanged(
+                SourceDelta((RepoPath("source.txt"),)), ManagedVerified()
+            ),
+        ):
+            state = ProjectAvailable(
+                worktree(),
+                ExistingProject(
+                    CopierExistingProject(
+                        RecordedProjectState(GenerationPath.COPIER),
+                        condition,
+                        TargetSnapshot(()),
+                    )
+                ),
+            )
+            decision = decide_project(Add(AddOptions()), state)
+            self.assertIsInstance(decision, RefuseMutation)
+            if isinstance(decision, RefuseMutation):
+                self.assertIsInstance(decision.error, TransitionError)
+                if isinstance(decision.error, TransitionError):
+                    self.assertEqual(
+                        decision.error.kind,
+                        TransitionErrorKind.OPERATION_UNAVAILABLE,
+                    )
+
+    def test_context_of_and_is_protected_cover_every_state_family(self) -> None:
+        context = worktree().context
+        scaffold = RecognizedScaffold(
+            GenerationPath.GITHUB, NoSnapshotCleanup(), EmptyManifestFree(), ()
+        )
+        journal = ValidatedJournal("apply", context.target, JournalPhase.PLANNED)
+        self.assertIsNone(
+            context_of(
+                TargetUnavailable(UnsupportedGitTarget(TargetReason.NOT_WORKTREE))
+            )
+        )
+        self.assertEqual(
+            context_of(StalePendingWrite(context, PendingIdentity("0" * 64))),
+            context,
+        )
+        self.assertEqual(context_of(JournalPending(context, journal)), context)
+        self.assertEqual(
+            context_of(JournalAtDifferentTarget(context, journal, context.target)),
+            context,
+        )
+        self.assertEqual(
+            context_of(StateRootInvalid(context, InvalidJournal("bad"))), context
+        )
+        protected = ProtectedTargetAvailable(worktree(protected=True).context, scaffold)
+        self.assertEqual(context_of(protected), worktree(protected=True).context)
+        self.assertTrue(is_protected(protected))
+        self.assertFalse(
+            is_protected(
+                TargetUnavailable(UnsupportedGitTarget(TargetReason.NOT_WORKTREE))
+            )
+        )
+        self.assertFalse(is_protected(ProjectAvailable(worktree(), scaffold)))
+
 
 class ObservationTests(unittest.TestCase):
     def test_coherent_observation_retries_and_returns_stable_second_pair(self) -> None:
@@ -662,4 +761,4 @@ class OwnershipTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    _ = unittest.main()

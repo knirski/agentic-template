@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import cast
 
 from scripts.bootstrap.result import Err, Ok, Result
 
@@ -17,6 +18,13 @@ class LimitKind(StrEnum):
     PATH_BYTES = "path_bytes"
     COMPONENT_BYTES = "component_bytes"
     COMPONENTS = "components"
+
+
+class JournalPhase(StrEnum):
+    PLANNED = "PLANNED"
+    MUTATING = "MUTATING"
+    RESTORED = "RESTORED"
+    SEALED = "SEALED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,13 +76,20 @@ def freeze(value: object) -> object:
     if value is None or isinstance(value, (str, bytes, bool, int)):
         return value
     if isinstance(value, tuple):
-        return tuple(freeze(item) for item in value)
+        items = cast(tuple[object, ...], value)
+        return tuple(freeze(item) for item in items)
     if isinstance(value, list):
-        return tuple(freeze(item) for item in value)
+        items = cast(list[object], value)
+        return tuple(freeze(item) for item in items)
     if isinstance(value, dict):
-        if not all(isinstance(key, str) for key in value):
+        mapping = cast(dict[object, object], value)
+        if not all(isinstance(key, str) for key in mapping):
             raise TypeError("frozen mappings require string keys")
-        return tuple((key, freeze(value[key])) for key in sorted(value))
+        string_mapping = cast(dict[str, object], mapping)
+        return tuple(
+            (key, freeze(string_mapping[key])) for key in sorted(string_mapping)
+        )
     if isinstance(value, (set, frozenset)):
-        return frozenset(freeze(item) for item in value)
+        items = cast(set[object] | frozenset[object], value)
+        return frozenset(freeze(item) for item in items)
     raise TypeError(f"unsupported mutable or shell value: {type(value).__name__}")

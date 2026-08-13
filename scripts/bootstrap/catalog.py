@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import model_validator
 
 from scripts.bootstrap.paths import parse_path
-from scripts.bootstrap.result import Ok
+from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.schemas import Identifier, SettingName, StrictModel
 
 
@@ -58,8 +58,13 @@ class ArtifactDefinition(StrictModel):
 
     @model_validator(mode="after")
     def validate_path(self) -> ArtifactDefinition:
-        if not isinstance(parse_path(self.path), Ok):
-            raise ValueError("artifact path must be repository-relative")
+        match parse_path(self.path):
+            case Ok(
+                _
+            ):  # pragma: no cover  coverage.py attributes case headers to the neighboring branch
+                pass
+            case Err(_):
+                raise ValueError("artifact path must be repository-relative")
         return self
 
 

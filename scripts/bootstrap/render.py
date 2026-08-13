@@ -39,7 +39,7 @@ from scripts.bootstrap.vocabulary import (
     SLOT_MODES,
 )
 
-ContextName = Literal["yaml", "markdown"]
+type ContextName = Literal["yaml", "markdown"]
 
 
 class RenderErrorKind(StrEnum):
@@ -82,11 +82,13 @@ class MaintenanceInfo:
 
 
 def _as_content_id(value: object) -> ContentId:
-    if isinstance(value, ContentId):
-        return value
-    if isinstance(value, str) and SHA256.fullmatch(value):
-        return ContentId(value)
-    raise ValueError("blob reference must be a 64-hex content address")
+    match value:
+        case ContentId():
+            return value
+        case str() if SHA256.fullmatch(value):
+            return ContentId(value)
+        case _:
+            raise ValueError("blob reference must be a 64-hex content address")
 
 
 BlobRef = Annotated[ContentId, BeforeValidator(_as_content_id)]
@@ -120,8 +122,11 @@ class SubstitutionDefinition(StrictModel):
 
 
 def _validate_repo_path(value: str) -> str:
-    if not isinstance(parse_path(value), Ok):
-        raise ValueError("path must be a safe repository-relative path")
+    match parse_path(value):
+        case Ok(_):
+            pass
+        case Err(_):
+            raise ValueError("path must be a safe repository-relative path")
     return value
 
 
@@ -287,17 +292,61 @@ def _boolean_text(value: bool) -> str:
     return "true" if value else "false"
 
 
+def _encode_yaml(value: SettingValue) -> str:
+    match value:
+        case bool():
+            return _boolean_text(value)
+        case str():
+            return yaml.safe_dump(value, default_style='"', allow_unicode=True).strip()
+
+
+def _encode_markdown(value: SettingValue) -> str:
+    match value:
+        case str():
+            return value
+        case bool():
+            return _boolean_text(value)
+
+
 def encode_scalar(value: SettingValue, context: ContextName) -> str:
     """Encode a normalized scalar value for the declared template context."""
     match context:
         case "yaml":
-            if isinstance(value, bool):
-                return _boolean_text(value)
-            return yaml.safe_dump(value, default_style='"', allow_unicode=True).strip()
+            return _encode_yaml(value)
         case "markdown":
-            return value if isinstance(value, str) else _boolean_text(value)
-        case _:  # pragma: no cover
-            return assert_never(context)  # pragma: no cover
+            return _encode_markdown(value)
+        case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
+            return assert_never(
+                context
+            )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
+
+
+def _project_source_value(
+    key: Literal["name", "default_branch"], project: ProjectInfo
+) -> Result[SettingValue, RenderError]:
+    match key:
+        case "name":
+            return Ok(project.name)
+        case "default_branch":
+            return Ok(project.default_branch)
+        case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
+            return assert_never(  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
+                key
+            )
+
+
+def _maintenance_source_value(
+    key: Literal["status", "retained_paths"], maintenance: MaintenanceInfo
+) -> Result[SettingValue, RenderError]:
+    match key:
+        case "status":
+            return Ok(maintenance.status)
+        case "retained_paths":
+            return Ok("\n".join(path.value for path in maintenance.retained_paths))
+        case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
+            return assert_never(  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
+                key
+            )
 
 
 def resolve_substitution_value(
@@ -319,25 +368,13 @@ def resolve_substitution_value(
                 )
             return Ok(values[setting_name])
         case ProjectSource(key=key):
-            match key:
-                case "name":
-                    return Ok(project.name)
-                case "default_branch":
-                    return Ok(project.default_branch)
-                case _:  # pragma: no cover
-                    return assert_never(key)  # pragma: no cover
+            return _project_source_value(key, project)
         case MaintenanceSource(key=key):
-            match key:
-                case "status":
-                    return Ok(maintenance.status)
-                case "retained_paths":
-                    return Ok(
-                        "\n".join(path.value for path in maintenance.retained_paths)
-                    )
-                case _:  # pragma: no cover
-                    return assert_never(key)  # pragma: no cover
-        case _:  # pragma: no cover
-            return assert_never(source)  # pragma: no cover
+            return _maintenance_source_value(key, maintenance)
+        case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
+            return assert_never(
+                source
+            )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
 
 
 def apply_substitutions(
@@ -394,7 +431,7 @@ class RenderInput:
     slots: Mapping[str, SlotContent]
 
     def __post_init__(self) -> None:
-        if not isinstance(self.generation_path, GenerationPath):
+        if not isinstance(self.generation_path, GenerationPath):  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
             raise ValueError("generation_path must be a GenerationPath")
         if PROJECT_NAME.fullmatch(self.project.name) is None:
             raise ValueError("project name is outside the ASCII class")
@@ -415,11 +452,17 @@ class RenderInput:
             if slot.mode not in SLOT_MODES:
                 raise ValueError("slot mode is outside the closed vocabulary")
         for path in self.maintenance.retained_paths:
-            if not isinstance(parse_path(path.value), Ok):
-                raise ValueError("retained path must be repository-relative")
+            match parse_path(path.value):
+                case Ok(_):
+                    pass
+                case Err(_):
+                    raise ValueError("retained path must be repository-relative")
         for path in self.documents:
-            if not isinstance(parse_path(path.value), Ok):
-                raise ValueError("document path must be repository-relative")
+            match parse_path(path.value):
+                case Ok(_):
+                    pass
+                case Err(_):
+                    raise ValueError("document path must be repository-relative")
         object.__setattr__(
             self, "definitions", MappingProxyType(dict(self.definitions))
         )
@@ -483,6 +526,38 @@ def _remove_marker_line(content: bytes, marker: bytes) -> bytes:
     return content[:start] + content[end:]
 
 
+def _boolean_section_value(value: SettingValue, name: str) -> Result[bool, RenderError]:
+    """Optional-section substitutions must resolve to a boolean scalar."""
+    match value:
+        case bool():
+            return Ok(value)
+        case _:  # kept for runtime defense — settings arrive unvalidated at the render boundary
+            return Err(
+                RenderError(
+                    RenderErrorKind.INVALID_TEMPLATE,
+                    "optional_section_requires_boolean",
+                    name,
+                )
+            )
+
+
+def _optional_section_keep(
+    source: SubstitutionSource,
+    render_input: RenderInput,
+    name: str,
+) -> Result[bool, RenderError]:
+    match resolve_substitution_value(
+        source,
+        render_input.settings,
+        render_input.project,
+        render_input.maintenance,
+    ):
+        case Ok(value):
+            return _boolean_section_value(value, name)
+        case Err(error):
+            return Err(error)
+
+
 def _apply_optional_sections(
     content: bytes,
     substitutions_by_name: Mapping[str, SubstitutionDefinition],
@@ -537,22 +612,11 @@ def _apply_optional_sections(
         )
     result = content
     for name, begin_marker, end_marker in sections:
-        match resolve_substitution_value(
-            substitutions_by_name[name].source,
-            render_input.settings,
-            render_input.project,
-            render_input.maintenance,
+        match _optional_section_keep(
+            substitutions_by_name[name].source, render_input, name
         ):
-            case Ok(value) if isinstance(value, bool):
-                keep = value
-            case Ok(_):
-                return Err(
-                    RenderError(
-                        RenderErrorKind.INVALID_TEMPLATE,
-                        "optional_section_requires_boolean",
-                        name,
-                    )
-                )
+            case Ok(keep):
+                pass
             case Err(error):
                 return Err(error)
         if keep:
@@ -615,9 +679,7 @@ def _apply_slot_markers(
         result.append(joined.encode("utf-8"))
         position = match.end()
     result.append(content[position:])
-    for slot_id, bodies in contributions_by_slot.items():
-        if not bodies:  # pragma: no cover
-            continue  # pragma: no cover
+    for slot_id, _bodies in contributions_by_slot.items():
         slot = slots_by_id.get(slot_id)
         if slot is None or slot.owner_artifact != artifact.id:
             continue
@@ -779,7 +841,3 @@ def render_managed(
             ManagedFile(path=path, kind="text", mode=PosixMode.FILE, content=content)
         )
     return Ok(tuple(sorted(files, key=lambda file: file.path.value.encode("utf-8"))))
-
-
-TemplateBlobMap = VerifiedBlobStore
-AdopterBlobMap = VerifiedBlobStore

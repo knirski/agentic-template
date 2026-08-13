@@ -30,8 +30,7 @@ def main() -> int:
         not in project_job
     ):
         fail(
-            "generated mode must invoke uv run --no-project --python 3.14 "
-            "scripts/validate_repository.py"
+            "generated mode must invoke uv run --no-project --python 3.14 scripts/validate_repository.py"
         )
     if (
         "uv run --no-project --python 3.14 tests/test_project_readiness.py"

@@ -13,9 +13,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Literal, assert_never
+from typing import Literal, assert_never, cast
 
-from scripts.bootstrap.canonical_json import canonical_json, decode_json
+from scripts.bootstrap.canonical_json import (
+    StrictJsonValue,
+    canonical_json,
+    decode_json,
+)
 from scripts.bootstrap.identity import InstallFileMode, PosixMode, tagged_digest
 from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.paths import RepoPath, parse_path
@@ -62,7 +66,7 @@ class ManagedInventoryEntry:
     sha256: str
 
 
-ManagedInventory = tuple[ManagedInventoryEntry, ...]
+type ManagedInventory = tuple[ManagedInventoryEntry, ...]
 
 _MAINTENANCE_STATUSES = frozenset({"clean", "retained"})
 INSTALL_MODES = InstallFileMode
@@ -203,7 +207,10 @@ def _validate_settings(
 ) -> Result[Mapping[str, Mapping[str, str | bool]], ManifestError]:
     for capability_id, values in settings.items():
         if not _is_identifier(capability_id) or any(
-            not _is_setting_name(name) or not isinstance(value, (str, bool))
+            not _is_setting_name(name)
+            or not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
+                value, (str, bool)
+            )
             for name, value in values.items()
         ):
             return Err(
@@ -227,9 +234,17 @@ def _validate_managed(
             )
         seen_paths.add(entry.path.value)
         lowered.add(entry.path.value.lower())
+        match parse_path(entry.path.value):
+            case Ok(_):
+                pass
+            case Err(_):
+                return Err(
+                    _manifest_error(
+                        ManifestErrorKind.SCHEMA_VIOLATION, entry.path.value
+                    )
+                )
         if (
-            not isinstance(parse_path(entry.path.value), Ok)
-            or entry.kind not in ("text", "binary")
+            entry.kind not in ("text", "binary")
             or entry.mode not in INSTALL_MODES
             or SHA256.fullmatch(entry.sha256) is None
         ):
@@ -308,9 +323,17 @@ def _validate_provenance(
             _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "maintenance.status")
         )
     retained = provenance.maintenance.retained_paths
-    if _sorted_unique_paths(retained) != retained or any(
-        not isinstance(parse_path(path.value), Ok) for path in retained
-    ):
+    for path in retained:
+        match parse_path(path.value):
+            case Ok(_):
+                pass
+            case Err(_):
+                return Err(
+                    _manifest_error(
+                        ManifestErrorKind.SCHEMA_VIOLATION, "maintenance.retained_paths"
+                    )
+                )
+    if _sorted_unique_paths(retained) != retained:
         return Err(
             _manifest_error(
                 ManifestErrorKind.SCHEMA_VIOLATION, "maintenance.retained_paths"
@@ -335,8 +358,8 @@ def _validate_provenance(
                         ManifestErrorKind.SCHEMA_VIOLATION, "source_baseline"
                     )
                 )
-        case _:  # pragma: no cover
-            return Err(  # pragma: no cover
+        case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
+            return Err(  # pragma: no cover  # pyright: ignore[reportUnreachable] — unreachable only because recommended mode proves the match exhaustive
                 _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "source_baseline")
             )
     if SHA256.fullmatch(baseline.fingerprint) is None:
@@ -352,9 +375,17 @@ def _validate_provenance(
                 )
             )
         seen_paths.add(entry.path.value)
+        match parse_path(entry.path.value):
+            case Ok(_):
+                pass
+            case Err(_):
+                return Err(
+                    _manifest_error(
+                        ManifestErrorKind.SCHEMA_VIOLATION, "source_baseline.entries"
+                    )
+                )
         if (
-            not isinstance(parse_path(entry.path.value), Ok)
-            or entry.kind not in ("file", "directory")
+            entry.kind not in ("file", "directory")
             or entry.mode not in INSTALL_MODES
             or (entry.kind == "directory" and entry.mode != PosixMode.DIRECTORY)
             or SHA256.fullmatch(entry.sha256) is None
@@ -436,8 +467,10 @@ def baseline_document(baseline: SourceBaseline) -> dict[str, object]:
                 "fingerprint": baseline.fingerprint,
                 "entries": entries,
             }
-        case _:  # pragma: no cover
-            return assert_never(baseline)  # pragma: no cover
+        case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
+            return assert_never(
+                baseline
+            )  # pragma: no cover  # pyright: ignore[reportUnreachable] — unreachable only because recommended mode proves the match exhaustive
 
 
 def manifest_document(manifest: CandidateManifest) -> dict[str, object]:
@@ -584,37 +617,37 @@ def decode_manifest(data: bytes) -> Result[CandidateManifest, ManifestError]:
 
 
 def _expect_mapping(
-    value: object, subject: str
-) -> Result[dict[str, object], ManifestError]:
+    value: StrictJsonValue, subject: str
+) -> Result[dict[str, StrictJsonValue], ManifestError]:
     if not isinstance(value, Mapping):
         return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
     return Ok(dict(value))
 
 
 def _expect_closed_mapping(
-    value: object, subject: str, allowed: frozenset[str]
-) -> Result[dict[str, object], ManifestError]:
+    value: StrictJsonValue, subject: str, allowed: frozenset[str]
+) -> Result[dict[str, StrictJsonValue], ManifestError]:
     """Require an exact key set so decode accepts only documents the builder emits."""
     match _expect_mapping(value, subject):
         case Err(error):
             return Err(error)
         case Ok(mapping):
             pass
-    if set(mapping) != allowed:
+    if set(mapping) != set(allowed):
         return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
     return Ok(mapping)
 
 
 def _decode_string_list(
-    value: object, subject: str
+    value: StrictJsonValue, subject: str
 ) -> Result[tuple[str, ...], ManifestError]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
-    return Ok(tuple(value))
+    return Ok(cast(tuple[str, ...], tuple(value)))
 
 
 def _decode_settings(
-    value: object, subject: str
+    value: StrictJsonValue, subject: str
 ) -> Result[Mapping[str, Mapping[str, str | bool]], ManifestError]:
     match _expect_mapping(value, subject):
         case Err(error):
@@ -639,7 +672,9 @@ def _decode_settings(
     return Ok(MappingProxyType(settings))
 
 
-def _decode_slot(value: object, slot_id: str) -> Result[SlotContent, ManifestError]:
+def _decode_slot(
+    value: StrictJsonValue, slot_id: str
+) -> Result[SlotContent, ManifestError]:
     match _expect_closed_mapping(
         value, f"answers.slots.{slot_id}", frozenset({"mode", "content_sha256"})
     ):
@@ -667,7 +702,7 @@ def _decode_slot(value: object, slot_id: str) -> Result[SlotContent, ManifestErr
     )
 
 
-def _decode_answers(value: object) -> Result[ManifestAnswers, ManifestError]:
+def _decode_answers(value: StrictJsonValue) -> Result[ManifestAnswers, ManifestError]:
     match _expect_closed_mapping(
         value,
         "answers",
@@ -768,7 +803,9 @@ def _decode_answers(value: object) -> Result[ManifestAnswers, ManifestError]:
     )
 
 
-def _decode_additions(value: object) -> Result[ManifestAdditions, ManifestError]:
+def _decode_additions(
+    value: StrictJsonValue,
+) -> Result[ManifestAdditions, ManifestError]:
     match _expect_closed_mapping(
         value, "additions", frozenset({"requested", "settings"})
     ):
@@ -790,7 +827,7 @@ def _decode_additions(value: object) -> Result[ManifestAdditions, ManifestError]
 
 
 def _decode_retained_paths(
-    value: object,
+    value: StrictJsonValue,
 ) -> Result[tuple[RepoPath, ...], ManifestError]:
     match _decode_string_list(value, "provenance.maintenance.retained_paths"):
         case Err(error):
@@ -821,7 +858,7 @@ def _decode_retained_paths(
 
 
 def _decode_source_entries(
-    value: object, subject: str
+    value: StrictJsonValue, subject: str
 ) -> Result[tuple[LifecycleSourceEntry, ...], ManifestError]:
     if not isinstance(value, list):
         return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
@@ -870,7 +907,9 @@ def _decode_source_entries(
     return Ok(tuple(entries))
 
 
-def _decode_provenance(value: object) -> Result[ProvenanceRecord, ManifestError]:
+def _decode_provenance(
+    value: StrictJsonValue,
+) -> Result[ProvenanceRecord, ManifestError]:
     match _expect_closed_mapping(
         value,
         "provenance",
@@ -901,14 +940,17 @@ def _decode_provenance(value: object) -> Result[ProvenanceRecord, ManifestError]
         case Ok(maintenance):
             pass
     status_value = maintenance.get("status")
-    if status_value == "clean":
-        status: Literal["clean", "retained"] = "clean"
-    elif status_value == "retained":
-        status = "retained"
-    else:
-        return Err(
-            _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "maintenance.status")
-        )
+    match status_value:
+        case "clean":
+            status: Literal["clean", "retained"] = "clean"
+        case "retained":
+            status = "retained"
+        case _:
+            return Err(
+                _manifest_error(
+                    ManifestErrorKind.SCHEMA_VIOLATION, "maintenance.status"
+                )
+            )
     match _decode_retained_paths(maintenance.get("retained_paths")):
         case Err(error):
             return Err(error)
@@ -921,7 +963,6 @@ def _decode_provenance(value: object) -> Result[ProvenanceRecord, ManifestError]
             return Err(error)
         case Ok(baseline):
             pass
-    kind = baseline.get("kind")
     raw_fingerprint = baseline.get("fingerprint")
     if (
         not isinstance(raw_fingerprint, str)
@@ -939,45 +980,46 @@ def _decode_provenance(value: object) -> Result[ProvenanceRecord, ManifestError]
             return Err(error)
         case Ok(entries):
             pass
-    if kind == "github":
-        snapshot_commit = baseline.get("snapshot_commit")
-        if (
-            not isinstance(snapshot_commit, str)
-            or COMMIT_SHA.fullmatch(snapshot_commit) is None
-        ):
+    match baseline.get("kind"):
+        case "github":
+            snapshot_commit = baseline.get("snapshot_commit")
+            if (
+                not isinstance(snapshot_commit, str)
+                or COMMIT_SHA.fullmatch(snapshot_commit) is None
+            ):
+                return Err(
+                    _manifest_error(
+                        ManifestErrorKind.SCHEMA_VIOLATION, "provenance.source_baseline"
+                    )
+                )
+            source_baseline: SourceBaseline = GitHubSourceBaseline(
+                kind="github",
+                fingerprint=raw_fingerprint,
+                entries=entries,
+                snapshot_commit=snapshot_commit,
+            )
+        case "copier":
+            if "snapshot_commit" in baseline:
+                return Err(
+                    _manifest_error(
+                        ManifestErrorKind.SCHEMA_VIOLATION, "provenance.source_baseline"
+                    )
+                )
+            source_baseline = CopierSourceBaseline(
+                kind="copier", fingerprint=raw_fingerprint, entries=entries
+            )
+        case _:
             return Err(
                 _manifest_error(
                     ManifestErrorKind.SCHEMA_VIOLATION, "provenance.source_baseline"
                 )
             )
-        source_baseline: SourceBaseline = GitHubSourceBaseline(
-            kind="github",
-            fingerprint=raw_fingerprint,
-            entries=entries,
-            snapshot_commit=snapshot_commit,
-        )
-    elif kind == "copier":
-        if "snapshot_commit" in baseline:
-            return Err(
-                _manifest_error(
-                    ManifestErrorKind.SCHEMA_VIOLATION, "provenance.source_baseline"
-                )
-            )
-        source_baseline = CopierSourceBaseline(
-            kind="copier", fingerprint=raw_fingerprint, entries=entries
-        )
-    else:
-        return Err(
-            _manifest_error(
-                ManifestErrorKind.SCHEMA_VIOLATION, "provenance.source_baseline"
-            )
-        )
     baseline_keys = (
         frozenset({"kind", "fingerprint", "entries", "snapshot_commit"})
-        if kind == "github"
+        if baseline.get("kind") == "github"
         else frozenset({"kind", "fingerprint", "entries"})
     )
-    if set(baseline) != baseline_keys:
+    if set(baseline) != set(baseline_keys):
         return Err(
             _manifest_error(
                 ManifestErrorKind.SCHEMA_VIOLATION, "provenance.source_baseline"
@@ -992,7 +1034,7 @@ def _decode_provenance(value: object) -> Result[ProvenanceRecord, ManifestError]
     )
 
 
-def _decode_managed(value: object) -> Result[ManagedInventory, ManifestError]:
+def _decode_managed(value: StrictJsonValue) -> Result[ManagedInventory, ManifestError]:
     if not isinstance(value, list):
         return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "managed"))
     entries: list[ManagedInventoryEntry] = []

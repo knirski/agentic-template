@@ -18,7 +18,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal
 
-from scripts.bootstrap.canonical_json import canonical_json, decode_json
+from scripts.bootstrap.canonical_json import (
+    StrictJsonValue,
+    canonical_json,
+    decode_json,
+)
 from scripts.bootstrap.errors import (
     InternalFailure,
     ObservationError,
@@ -57,20 +61,13 @@ from scripts.bootstrap.state import (
     StaleJournalWrite,
     ValidatedJournal,
 )
-from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
+from scripts.bootstrap.values import DEFAULT_LIMITS, JournalPhase, ResourceLimits
 
 JOURNAL_SCHEMA_VERSION = 1
 _TRANSACTION_HEX = re.compile(r"[0-9a-f]{64}\Z")
 _ROOT_HEX = re.compile(r"(?:[0-9a-f]{2})+\Z")
 _O_PENDING = os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW | os.O_CLOEXEC
 _O_READ = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
-
-
-class JournalPhase(StrEnum):
-    PLANNED = "PLANNED"
-    MUTATING = "MUTATING"
-    RESTORED = "RESTORED"
-    SEALED = "SEALED"
 
 
 class PreparationRole(StrEnum):
@@ -93,7 +90,9 @@ class JournalTarget:
     digest: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.root_hex, str) or not _ROOT_HEX.fullmatch(self.root_hex):
+        if not isinstance(self.root_hex, str) or not _ROOT_HEX.fullmatch(  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
+            self.root_hex
+        ):
             raise TypeError("journal target root must be lowercase hex")
         root = bytes.fromhex(self.root_hex)
         if type(self.device) is not int or type(self.inode) is not int:
@@ -140,7 +139,7 @@ class PreparationIdentity:
             raise TypeError("preparation transaction id must be 256-bit lowercase hex")
         if type(self.operation_index) is not int or self.operation_index < 0:
             raise TypeError("preparation operation index must be non-negative")
-        if not isinstance(self.role, PreparationRole):
+        if not isinstance(self.role, PreparationRole):  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
             raise TypeError("preparation requires a closed role")
         if not _hex64(self.ownership_token_sha256):
             raise TypeError("preparation token hash must be 256-bit lowercase hex")
@@ -151,7 +150,7 @@ class PreparationIdentity:
                 raise TypeError("file preparation requires a raw digest")
         elif self.expected_raw_sha256 is not None:
             raise TypeError("directory preparation cannot carry a raw digest")
-        if not isinstance(self.expected_mode, PosixMode):
+        if not isinstance(self.expected_mode, PosixMode):  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
             raise TypeError("preparation requires an exact expected mode")
 
 
@@ -172,16 +171,25 @@ class JournalEnvelope:
             or self.schema_version != JOURNAL_SCHEMA_VERSION
         ):
             raise TypeError("journal requires the current schema version")
-        if not isinstance(self.operation, str) or not self.operation:
+        if (
+            not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
+                self.operation, str
+            )
+            or not self.operation
+        ):
             raise TypeError("journal requires a non-empty operation")
-        if not isinstance(self.target, JournalTarget):
+        if not isinstance(self.target, JournalTarget):  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
             raise TypeError("journal requires a target binding")
-        if not isinstance(self.phase, JournalPhase):
+        if not isinstance(self.phase, JournalPhase):  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
             raise TypeError("journal requires a closed phase")
         if not _hex64(self.transaction_id):
             raise TypeError("journal requires a 256-bit lowercase transaction id")
-        if not isinstance(self.preparations, tuple) or any(
-            not isinstance(preparation, PreparationIdentity)
+        if not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
+            self.preparations, tuple
+        ) or any(
+            not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
+                preparation, PreparationIdentity
+            )
             for preparation in self.preparations
         ):
             raise TypeError("journal preparations must be preparation identities")
@@ -268,7 +276,7 @@ def _invalid[ValueT](reason: str) -> Result[ValueT, InvalidJournal]:
     return Err(InvalidJournal(reason))
 
 
-def _decode_target(value: object) -> Result[JournalTarget, InvalidJournal]:
+def _decode_target(value: StrictJsonValue) -> Result[JournalTarget, InvalidJournal]:
     if not isinstance(value, dict):
         return _invalid("journal target must be an object")
     root = value.get("root")
@@ -292,7 +300,7 @@ def _decode_target(value: object) -> Result[JournalTarget, InvalidJournal]:
 
 
 def _decode_preparation(
-    value: object, transaction_id: str
+    value: StrictJsonValue, transaction_id: str
 ) -> Result[PreparationIdentity, InvalidJournal]:
     if not isinstance(value, dict):
         return _invalid("journal preparation must be an object")
@@ -309,15 +317,24 @@ def _decode_preparation(
     token_hash = value.get("ownership_token_sha256")
     if not isinstance(token_hash, str) or not _hex64(token_hash):
         return _invalid("journal preparation token hash must be 256-bit lowercase hex")
+    operation_index = value.get("operation_index")
+    if type(operation_index) is not int or operation_index < 0:
+        return _invalid("journal preparation requires a non-negative integer index")
     expected_kind = value.get("expected_kind")
-    if expected_kind not in ("file", "directory"):
-        return _invalid("journal preparation requires a closed expected kind")
     expected_raw_sha256 = value.get("expected_raw_sha256")
-    if expected_kind == "file":
-        if not isinstance(expected_raw_sha256, str) or not _hex64(expected_raw_sha256):
-            return _invalid("file preparation requires a raw digest")
-    elif expected_raw_sha256 is not None:
-        return _invalid("directory preparation cannot carry a raw digest")
+    match expected_kind:
+        case "file":
+            if not isinstance(expected_raw_sha256, str) or not _hex64(
+                expected_raw_sha256
+            ):
+                return _invalid("file preparation requires a raw digest")
+            raw_digest: str | None = expected_raw_sha256
+        case "directory":
+            if expected_raw_sha256 is not None:
+                return _invalid("directory preparation cannot carry a raw digest")
+            raw_digest = None
+        case _:
+            return _invalid("journal preparation requires a closed expected kind")
     expected_mode = value.get("expected_mode")
     if type(expected_mode) is not int:
         return _invalid("journal preparation requires an integer mode")
@@ -329,15 +346,15 @@ def _decode_preparation(
         return Ok(
             PreparationIdentity(
                 transaction_id=transaction_id,
-                operation_index=value["operation_index"],
+                operation_index=operation_index,
                 role=role,
                 ownership_token_sha256=token_hash,
                 expected_kind=expected_kind,
-                expected_raw_sha256=expected_raw_sha256,
+                expected_raw_sha256=raw_digest,
                 expected_mode=mode,
             )
         )
-    except (KeyError, TypeError) as error:
+    except TypeError as error:  # pragma: no cover  defensive — every preparation field is validated above, so the frozen constructor cannot fail
         return _invalid(f"journal preparation is invalid: {error}")
 
 

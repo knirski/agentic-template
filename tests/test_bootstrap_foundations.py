@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import unittest
+from typing import cast
 
 from hypothesis import given
 from hypothesis import strategies as st
@@ -35,6 +36,8 @@ from scripts.bootstrap.errors import (
     InternalFailure,
     ObservationError,
     ObservationErrorKind,
+    ProcessError,
+    ProcessErrorKind,
     SignalNumber,
     TransactionError,
     TransactionErrorKind,
@@ -44,8 +47,9 @@ from scripts.bootstrap.errors import (
     UsageError,
     UsageErrorKind,
     sanitize_errno,
+    sanitize_process_error,
 )
-from scripts.bootstrap.result import Err, Ok, accumulate
+from scripts.bootstrap.result import Err, Ok, Result, accumulate
 from scripts.bootstrap.values import (
     DEFAULT_LIMITS,
     LimitKind,
@@ -60,6 +64,11 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(Ok(2).map(lambda value: value + 1), Ok(3))
         self.assertEqual(Ok(2).bind(lambda value: Ok(value * 2)), Ok(4))
         self.assertEqual(Err("bad").map(lambda value: value), Err("bad"))
+        self.assertEqual(Err("bad").bind(lambda value: Ok(str(value))), Err("bad"))
+
+    def test_map_error_transforms_only_the_error_variant(self) -> None:
+        self.assertEqual(Ok(2).map_error(lambda error: cast(str, error).upper()), Ok(2))
+        self.assertEqual(Err("bad").map_error(lambda error: error.upper()), Err("BAD"))
 
     def test_accumulate_preserves_all_independent_errors(self) -> None:
         result = accumulate((Err("first"), Ok(2), Err("last")))
@@ -69,7 +78,10 @@ class ResultTests(unittest.TestCase):
     def test_accumulate_preserves_arbitrary_success_order(
         self, values: list[int]
     ) -> None:
-        result = accumulate(tuple(Ok(value) for value in values))
+        result = cast(
+            Result[tuple[int, ...], tuple[str, ...]],
+            accumulate(tuple(Ok(value) for value in values)),
+        )
         self.assertEqual(result, Ok(tuple(values)))
 
     @given(
@@ -106,6 +118,33 @@ class ValuesTests(unittest.TestCase):
         self.assertIsInstance(frozen, tuple)
         with self.assertRaises(TypeError):
             frozen[0] = ("changed", ())  # pyright: ignore[reportIndexIssue]  frozen tuple rejects __setitem__ at runtime
+
+    def test_freeze_handles_tuples_and_sets(self) -> None:
+        self.assertEqual(freeze((1, [2, 3])), (1, (2, 3)))
+        self.assertEqual(freeze({1, 2}), frozenset({1, 2}))
+        self.assertEqual(freeze(frozenset({"a"})), frozenset({"a"}))
+        with self.assertRaises(TypeError):
+            _ = freeze({1: "int key"})
+        with self.assertRaises(TypeError):
+            _ = freeze(object())
+
+    def test_sanitize_process_error_maps_launch_failures(self) -> None:
+        self.assertEqual(
+            sanitize_process_error(FileNotFoundError()),
+            ProcessError(ProcessErrorKind.EXECUTABLE_NOT_FOUND),
+        )
+        self.assertEqual(
+            sanitize_process_error(PermissionError()),
+            ProcessError(ProcessErrorKind.EXECUTE_PERMISSION_DENIED),
+        )
+        self.assertEqual(
+            sanitize_process_error(ValueError("unsupported")),
+            ProcessError(ProcessErrorKind.UNSUPPORTED_PROCESS_OPERATION),
+        )
+        self.assertEqual(
+            sanitize_process_error(RuntimeError("other")),
+            ProcessError(ProcessErrorKind.OTHER_SANITIZED_LAUNCH_ERROR),
+        )
 
     def test_limits_are_frozen_and_have_the_v1_values(self) -> None:
         self.assertTrue(dataclasses.is_dataclass(DEFAULT_LIMITS))
@@ -264,4 +303,4 @@ class DiagnosticTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    _ = unittest.main()

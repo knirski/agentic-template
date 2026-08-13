@@ -25,6 +25,7 @@ class Ok[ValueT]:
         return function(self.value)
 
     def map_error(self, function: Callable[[ErrorT], MappedErrorT]) -> Ok[ValueT]:
+        del function
         return self
 
 
@@ -33,11 +34,13 @@ class Err[ErrorT]:
     error: ErrorT
 
     def map(self, function: Callable[[ValueT], MappedT]) -> Err[ErrorT]:
+        del function
         return self
 
     def bind(
         self, function: Callable[[ValueT], Result[MappedT, ErrorT]]
     ) -> Err[ErrorT]:
+        del function
         return self
 
     def map_error(
@@ -57,10 +60,11 @@ def accumulate[ValueT, ErrorT](
     values: list[ValueT] = []
     errors: list[ErrorT] = []
     for result in results:
-        if isinstance(result, Ok):
-            values.append(result.value)
-        else:
-            errors.append(result.error)
+        match result:
+            case Ok():
+                values.append(result.value)
+            case Err():
+                errors.append(result.error)
     if errors:
         return Err(tuple(errors))
     return Ok(tuple(values))

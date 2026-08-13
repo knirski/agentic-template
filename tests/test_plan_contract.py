@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import unittest
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parent.parent
 PLAN = ROOT / "docs/specs/2026-08-05-deterministic-project-bootstrap/plan.json"
@@ -80,6 +81,7 @@ def execution_invariant_failures(task: dict[str, object]) -> tuple[str, ...]:
     execution = task["execution"]
     if not isinstance(execution, dict):
         return (f"{task_id}: execution is not an object",)
+    execution = cast(dict[str, object], execution)
 
     mode = execution.get("mode")
     status = execution.get("status")
@@ -125,6 +127,7 @@ def execution_invariant_failures(task: dict[str, object]) -> tuple[str, ...]:
                         f"{task_id}: completed inline task needs a completion object"
                     )
                 else:
+                    completion = cast(dict[str, object], completion)
                     if "completed_at" not in completion:
                         failures.append(f"{task_id}: completion missing completed_at")
                     evidence = completion.get("evidence")
@@ -164,7 +167,7 @@ class PlanContractTests(unittest.TestCase):
         # the documented contract, so assert the positional contract instead:
         # the canonical keys in order, with an optional `new_abstractions`
         # between `files` and `validation` when present.
-        plan = json.loads(PLAN.read_text(encoding="utf-8"))
+        plan = cast(dict[str, object], json.loads(PLAN.read_text(encoding="utf-8")))
         canonical_order = [
             "id",
             "name",
@@ -176,8 +179,14 @@ class PlanContractTests(unittest.TestCase):
             "validation",
         ]
 
-        for phase in plan["phases"]:
-            for task in phase["tasks"]:
+        phases = plan["phases"]
+        assert isinstance(phases, list)
+        phases = cast(list[dict[str, object]], phases)
+        for phase in phases:
+            tasks = phase["tasks"]
+            assert isinstance(tasks, list)
+            tasks = cast(list[dict[str, object]], tasks)
+            for task in tasks:
                 keys = list(task)
                 expected = canonical_order
                 if "new_abstractions" in keys:
@@ -188,6 +197,7 @@ class PlanContractTests(unittest.TestCase):
                     ]
                 self.assertEqual(keys, expected, task["id"])
                 execution = task["execution"]
+                execution = cast(dict[str, object], execution)
                 if execution["status"] == "pending":
                     self.assertNotIn("github_prs", execution, task["id"])
                 else:
@@ -211,9 +221,15 @@ class PlanContractTests(unittest.TestCase):
         # completed completion shape; non-empty evidence on completed tasks)
         # against the actual repository plan, so the contract's deepest rules
         # are validated against ground truth rather than synthetic data.
-        plan = json.loads(PLAN.read_text(encoding="utf-8"))
-        for phase in plan["phases"]:
-            for task in phase["tasks"]:
+        plan = cast(dict[str, object], json.loads(PLAN.read_text(encoding="utf-8")))
+        phases = plan["phases"]
+        assert isinstance(phases, list)
+        phases = cast(list[dict[str, object]], phases)
+        for phase in phases:
+            tasks = phase["tasks"]
+            assert isinstance(tasks, list)
+            tasks = cast(list[dict[str, object]], tasks)
+            for task in tasks:
                 failures = execution_invariant_failures(task)
                 self.assertEqual(failures, (), f"{task['id']}: {failures}")
 
@@ -228,8 +244,7 @@ class PlanContractTests(unittest.TestCase):
             "Each task carries its own `execution` discriminated union", guidance
         )
         self.assertIn(
-            "Keep task keys in this order: `id`, `name`, `depends_on`, `inputs`, "
-            "`description`, `execution`",
+            "Keep task keys in this order: `id`, `name`, `depends_on`, `inputs`, `description`, `execution`",
             guidance,
         )
         self.assertIn('"mode": "inline", "status": "pending"', guidance)
@@ -250,8 +265,7 @@ class PlanContractTests(unittest.TestCase):
         # pin makes a silent regression of spec-implement fail immediately.
         skill = SPEC_IMPLEMENT.read_text(encoding="utf-8")
         self.assertIn(
-            "When a task's `execution.mode` is `inline`, before starting it set "
-            "its `execution.status` to",
+            "When a task's `execution.mode` is `inline`, before starting it set its `execution.status` to",
             skill,
         )
         self.assertIn("set it to `completed` and record completion date", skill)
@@ -468,4 +482,4 @@ class ExecutionInvariantSyntheticTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    _ = unittest.main()

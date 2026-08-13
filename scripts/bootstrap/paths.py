@@ -14,7 +14,7 @@ class RepoPath:
 
 
 def parse_path(value: str) -> Result[RepoPath, InputError]:
-    if not isinstance(value, str) or not value or value.startswith("/"):
+    if not isinstance(value, str) or not value or value.startswith("/"):  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
         return Err(InputError(InputErrorKind.UNSAFE_RELATIVE_PATH, str(value)))
     if "\\" in value or any(
         ord(char) < 0x20 or 0xD800 <= ord(char) <= 0xDFFF for char in value

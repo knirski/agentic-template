@@ -86,17 +86,3 @@ def required_contract_failures(
         if not valid_skill_frontmatter(text)
     )
     return tuple(failures)
-
-
-def contract_findings(
-    missing_files: tuple[str, ...],
-    missing_skills: tuple[str, ...],
-    invalid_skills: tuple[str, ...],
-) -> tuple[str, ...]:
-    return tuple(
-        [
-            *(f"missing required file: {item}" for item in missing_files),
-            *(f"missing required skill: {item}" for item in missing_skills),
-            *(f"invalid skill frontmatter: {item}" for item in invalid_skills),
-        ]
-    )

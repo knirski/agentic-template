@@ -4,19 +4,37 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from typing import Any
+from typing import cast
 
 MAX_SAFE_INTEGER = 2**53
 MAX_NESTING_DEPTH = 128
 
 
+type StrictJsonValue = (
+    dict[str, StrictJsonValue] | list[StrictJsonValue] | str | int | bool | None
+)
+
+
 class _ObjectPairs:
-    def __init__(self, pairs: list[tuple[str, Any]]) -> None:
+    pairs: list[tuple[str, object]]
+
+    def __init__(self, pairs: list[tuple[str, object]]) -> None:
         self.pairs = pairs
 
 
 def _reject_constant(value: str) -> None:
     raise ValueError(f"non-finite JSON number: {value}")
+
+
+def _loads(data: str) -> object:
+    return cast(
+        object,
+        json.loads(
+            data,
+            object_pairs_hook=_ObjectPairs,
+            parse_constant=_reject_constant,
+        ),
+    )
 
 
 def _validate(value: object, depth: int = 0) -> None:
@@ -35,13 +53,15 @@ def _validate(value: object, depth: int = 0) -> None:
     if isinstance(value, float):
         raise ValueError("floats are not part of the bootstrap JSON domain")
     if isinstance(value, (list, tuple)):
-        for item in value:
+        items = cast(list[object] | tuple[object, ...], value)
+        for item in items:
             _validate(item, depth + 1)
         return
     if isinstance(value, Mapping):
-        if any(not isinstance(key, str) for key in value):
+        mapping = cast(Mapping[object, object], value)
+        if any(not isinstance(key, str) for key in mapping):
             raise ValueError("JSON object keys must be strings")
-        for key, item in value.items():
+        for key, item in mapping.items():
             _validate(key, depth + 1)
             _validate(item, depth + 1)
         return
@@ -59,24 +79,21 @@ def _materialize(value: object, depth: int = 0) -> object:
             result[key] = _materialize(item, depth + 1)
         return result
     if isinstance(value, list):
-        return [_materialize(item, depth + 1) for item in value]
+        items = cast(list[object], value)
+        return [_materialize(item, depth + 1) for item in items]
     return value
 
 
-def decode_json(data: bytes) -> object:
+def decode_json(data: bytes) -> StrictJsonValue:
     """Decode a UTF-8 JSON document into the strict bootstrap value domain."""
 
     try:
-        decoded = json.loads(
-            data.decode("utf-8"),
-            object_pairs_hook=_ObjectPairs,
-            parse_constant=_reject_constant,
-        )
+        decoded = _loads(data.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
         raise ValueError("invalid strict JSON") from error
     value = _materialize(decoded)
     _validate(value)
-    return value
+    return cast(StrictJsonValue, value)
 
 
 def canonical_json(value: object) -> bytes:

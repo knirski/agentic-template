@@ -46,6 +46,9 @@ Run `python3 scripts/validate_repository.py`.
 
 
 class GitHubSnapshot(unittest.TestCase):
+    tmp: tempfile.TemporaryDirectory[str]  # pyright: ignore[reportUninitializedInstanceVariable]  initialized in unittest setUp lifecycle
+    project: Path  # pyright: ignore[reportUninitializedInstanceVariable]  initialized in unittest setUp lifecycle
+
     @override
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -67,9 +70,9 @@ class GitHubSnapshot(unittest.TestCase):
                 target = self.project / relative
                 if source.is_file():
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(source, target)
+                    _ = shutil.copy2(source, target)
         else:
-            shutil.copytree(
+            _ = shutil.copytree(
                 ROOT,
                 self.project,
                 ignore=shutil.ignore_patterns(
@@ -119,14 +122,14 @@ class GitHubSnapshot(unittest.TestCase):
         self.assertEqual(untouched.returncode, 1)
         self.assertIn("READINESS_PRD_MARKER", untouched.stderr)
         self.assertIn("READINESS_README_BOILERPLATE", untouched.stderr)
-        (self.project / "docs/prd.md").write_text(PRD, encoding="utf-8")
-        (self.project / "README.md").write_text(README, encoding="utf-8")
+        _ = (self.project / "docs/prd.md").write_text(PRD, encoding="utf-8")
+        _ = (self.project / "README.md").write_text(README, encoding="utf-8")
         hook = self.project / "scripts/validate_project.py"
-        hook.write_text(f"#!{sys.executable}\nprint('ok')\n", encoding="utf-8")
+        _ = hook.write_text(f"#!{sys.executable}\nprint('ok')\n", encoding="utf-8")
         hook.chmod(hook.stat().st_mode | 0o100)
         configured = self.run_validator()
         self.assertEqual(configured.returncode, 0, configured.stderr)
 
 
 if __name__ == "__main__":
-    unittest.main()
+    _ = unittest.main()

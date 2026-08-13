@@ -32,12 +32,7 @@ include = ["scripts/**/*.py", "tests/**/*.py", "pyproject.toml"]
 pythonVersion = "3.14"
 include = ["scripts", "tests"]
 exclude = [".venv", ".pytest_cache", ".ruff_cache"]
-# `basic` is the proportionate mode for this codebase. `recommended` and
-# `strict` enable the reportUnknown* and reportUnusedCallResult families,
-# which surface ~957 warnings the sources were never written to satisfy (they
-# were tuned for `ty`, which lacks that taxonomy). Graduate to `recommended`
-# once those warning families are systematically addressed.
-typeCheckingMode = "basic"
+typeCheckingMode = "recommended"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

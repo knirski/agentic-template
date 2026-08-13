@@ -45,8 +45,11 @@ def _validate_entries(
         if entry.path.value in seen_paths:
             return Err(_source_error(entry.path.value))
         seen_paths.add(entry.path.value)
-        if not isinstance(parse_path(entry.path.value), Ok):
-            return Err(_source_error(entry.path.value))
+        match parse_path(entry.path.value):
+            case Ok(_):
+                pass
+            case Err(_):
+                return Err(_source_error(entry.path.value))
         if entry.kind not in ("file", "directory"):
             return Err(_source_error(entry.path.value))
         match entry.kind:
@@ -56,8 +59,10 @@ def _validate_entries(
             case "directory":
                 if entry.mode != PosixMode.DIRECTORY:
                     return Err(_source_error(entry.path.value))
-            case _:  # pragma: no cover
-                return assert_never(entry.kind)  # pragma: no cover
+            case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
+                return assert_never(
+                    entry.kind
+                )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
         if SHA256.fullmatch(entry.sha256) is None:
             return Err(_source_error(entry.path.value))
     return Ok(_sorted_entries(entries))
@@ -134,5 +139,7 @@ def derive_source_baseline(
                     entries=sorted_entries,
                 )
             )
-        case _:  # pragma: no cover
-            return assert_never(generation)  # pragma: no cover
+        case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
+            return assert_never(
+                generation
+            )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
