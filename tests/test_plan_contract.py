@@ -181,11 +181,11 @@ class PlanContractTests(unittest.TestCase):
                 keys = list(task)
                 expected = canonical_order
                 if "new_abstractions" in keys:
-                    expected = (
-                        canonical_order[:6]
-                        + ["new_abstractions"]
-                        + canonical_order[6:]
-                    )
+                    expected = [
+                        *canonical_order[:6],
+                        "new_abstractions",
+                        *canonical_order[6:],
+                    ]
                 self.assertEqual(keys, expected, task["id"])
                 execution = task["execution"]
                 if execution["status"] == "pending":
