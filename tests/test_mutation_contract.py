@@ -5,13 +5,17 @@ from __future__ import annotations
 import tomllib
 import unittest
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 class MutationTestingContractTests(unittest.TestCase):
     def test_mutation_scope_targets_deterministic_source_and_direct_tests(self) -> None:
-        project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        project = cast(
+            dict[str, dict[str, dict[str, list[str]]]],
+            tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8")),
+        )
         config = project["tool"]["mutmut"]
 
         self.assertEqual(
@@ -46,4 +50,4 @@ class MutationTestingContractTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    _ = unittest.main()

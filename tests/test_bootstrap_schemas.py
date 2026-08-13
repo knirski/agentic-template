@@ -32,16 +32,16 @@ def test_bundle_is_strict_and_closed() -> None:
     assert bundle.project.name == "example"
 
     with pytest.raises(ValidationError):
-        BootstrapBundle.model_validate({**bundle_data(), "unknown": True})
+        _ = BootstrapBundle.model_validate({**bundle_data(), "unknown": True})
     with pytest.raises(ValidationError):
-        BootstrapBundle.model_validate({**bundle_data(), "schema_version": True})
+        _ = BootstrapBundle.model_validate({**bundle_data(), "schema_version": True})
     with pytest.raises(ValidationError):
-        BootstrapBundle.model_validate({**bundle_data(), "schema_version": 2})
+        _ = BootstrapBundle.model_validate({**bundle_data(), "schema_version": 2})
 
 
 def test_bundle_requires_legal_path_for_private_license() -> None:
     with pytest.raises(ValidationError):
-        BootstrapBundle.model_validate(
+        _ = BootstrapBundle.model_validate(
             {**bundle_data(), "licensing": {"mode": "private"}}
         )
 
@@ -56,14 +56,14 @@ def test_bundle_requires_legal_path_for_private_license() -> None:
 )
 def test_profile_capability_shape_is_closed(profile: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
-        BootstrapBundle.model_validate(
+        _ = BootstrapBundle.model_validate(
             {**bundle_data(profile=profile), "capability_settings": {}}
         )
 
 
 def test_file_content_rejects_unsafe_paths() -> None:
     with pytest.raises(ValidationError):
-        BootstrapBundle.model_validate(
+        _ = BootstrapBundle.model_validate(
             bundle_data(
                 content={
                     "prd": {"mode": "file", "path": "../prd.md"},
@@ -78,13 +78,13 @@ def test_file_content_rejects_unsafe_paths() -> None:
 
 def test_additions_schema_rejects_invalid_values() -> None:
     with pytest.raises(ValidationError):
-        AdditionsInput.model_validate({"schema_version": 2})
+        _ = AdditionsInput.model_validate({"schema_version": 2})
     with pytest.raises(ValidationError):
-        AdditionsInput.model_validate(
+        _ = AdditionsInput.model_validate(
             {"schema_version": 1, "add_capabilities": ["nix", "nix"]}
         )
     with pytest.raises(ValidationError):
-        AdditionsInput.model_validate(
+        _ = AdditionsInput.model_validate(
             {
                 "schema_version": 1,
                 "capability_settings": {"nix": {"api_key": "secret"}},
@@ -106,11 +106,11 @@ def test_json_capability_arrays_are_normalized_to_tuples() -> None:
 
 def test_decode_bundle_rejects_secrets_and_bad_paths() -> None:
     with pytest.raises(ValidationError):
-        decode_bundle(
+        _ = decode_bundle(
             {**bundle_data(), "capability_settings": {"x": {"token": "secret"}}}
         )
     with pytest.raises(ValidationError):
-        decode_bundle(
+        _ = decode_bundle(
             {
                 **bundle_data(),
                 "licensing": {"mode": "provided-project-license", "path": "../license"},

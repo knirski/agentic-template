@@ -36,7 +36,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="agentic-template-copier.") as raw:
         workspace = Path(raw)
         source, project = workspace / "source", workspace / "project"
-        shutil.copytree(
+        _ = shutil.copytree(
             ROOT,
             source,
             ignore=shutil.ignore_patterns(".git", "__pycache__", ".direnv", "result"),
@@ -97,11 +97,11 @@ def main() -> int:
             ("add", "."),
             ("commit", "-m", "generated project"),
         ):
-            run(project_git + list(args))
-        (project / "docs/prd.md").write_text(VALID_PRD, encoding="utf-8")
-        (project / "README.md").write_text(VALID_README, encoding="utf-8")
+            _ = run(project_git + list(args))
+        _ = (project / "docs/prd.md").write_text(VALID_PRD, encoding="utf-8")
+        _ = (project / "README.md").write_text(VALID_README, encoding="utf-8")
         project_hook = project / "scripts/validate_project.py"
-        project_hook.write_text(
+        _ = project_hook.write_text(
             "#!/usr/bin/env python3\nprint('ok')\n", encoding="utf-8"
         )
         project_hook.chmod(project_hook.stat().st_mode | 0o100)
@@ -113,19 +113,19 @@ def main() -> int:
             return configured.returncode
         shutil.rmtree(project / "scripts/__pycache__", ignore_errors=True)
         with (source / "NOTICE.md").open("a", encoding="utf-8") as handle:
-            handle.write("\nCopier smoke-test marker.\n")
+            _ = handle.write("\nCopier smoke-test marker.\n")
         source_hook = source / "scripts/validate_project.py"
         with source_hook.open("a", encoding="utf-8") as handle:
-            handle.write("\n# template hook update\n")
-        run([*git, "add", "NOTICE.md", "scripts/validate_project.py"])
-        run([*git, "commit", "-m", "template v0.2.0"])
-        run([*git, "tag", "v0.2.0"])
+            _ = handle.write("\n# template hook update\n")
+        _ = run([*git, "add", "NOTICE.md", "scripts/validate_project.py"])
+        _ = run([*git, "commit", "-m", "template v0.2.0"])
+        _ = run([*git, "tag", "v0.2.0"])
         with (project / "README.md").open("a", encoding="utf-8") as handle:
-            handle.write("\nLocal project customization.\n")
+            _ = handle.write("\nLocal project customization.\n")
         with project_hook.open("a", encoding="utf-8") as handle:
-            handle.write("\n# local hook customization\n")
+            _ = handle.write("\n# local hook customization\n")
         expected_hook_text = project_hook.read_text(encoding="utf-8")
-        run(
+        _ = run(
             [
                 *project_git,
                 "add",
@@ -134,7 +134,7 @@ def main() -> int:
                 "scripts/validate_project.py",
             ]
         )
-        run([*project_git, "commit", "-m", "project customization"])
+        _ = run([*project_git, "commit", "-m", "project customization"])
         result = run(
             [*command, "update", "--vcs-ref", "v0.2.0", "--defaults"], cwd=project
         )

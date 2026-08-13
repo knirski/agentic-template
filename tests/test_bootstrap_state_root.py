@@ -19,7 +19,7 @@ import sys
 import tempfile
 import time
 import unittest
-from typing import Literal, cast
+from typing import Literal, TextIO, cast
 
 from hypothesis import given
 from hypothesis import strategies as st
@@ -31,6 +31,7 @@ from scripts.bootstrap.errors import (
     ObservationError,
     ObservationErrorKind,
     SignalNumber,
+    TransactionError,
     TransactionErrorKind,
     TransactionPrimitive,
     TransitionError,
@@ -52,14 +53,13 @@ from scripts.bootstrap.fs_effects import (
 from scripts.bootstrap.git_state import (
     GitCommandResult,
     ResolvedGitWorktree,
-    _stat_error,
+    _stat_error,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     resolve_git_worktree,
     run_git,
 )
 from scripts.bootstrap.identity import PosixMode, TargetIdentity, target_identity
 from scripts.bootstrap.journal import (
     JournalEnvelope,
-    JournalPhase,
     JournalTarget,
     PreparationIdentity,
     PreparationRole,
@@ -89,7 +89,7 @@ from scripts.bootstrap.state import (
     UnsupportedGitTarget,
     ValidatedJournal,
 )
-from scripts.bootstrap.values import ResourceLimits
+from scripts.bootstrap.values import JournalPhase, ResourceLimits
 
 O_DIRECTORY = os.O_DIRECTORY | os.O_RDONLY | os.O_CLOEXEC
 
@@ -116,7 +116,7 @@ def _open_dir(path: str) -> int:
 
 def _write(path: str, data: bytes) -> None:
     with open(path, "wb") as handle:
-        handle.write(data)
+        _ = handle.write(data)
 
 
 def _read(path: str) -> bytes:
@@ -131,20 +131,25 @@ class FsEffectsTests(unittest.TestCase):
             fd = _ok(walk_no_follow(_open_dir(tmp), (b"a", b"b", b"c")))
             assert fd is not None
             _write(os.path.join(tmp, "a", "b", "c", "f"), b"x")
-            os.lseek(fd, 0, os.SEEK_SET)
+            _ = os.lseek(fd, 0, os.SEEK_SET)
             self.assertEqual(os.listdir(fd), ["f"])
 
     def test_walk_rejects_missing_intermediate_component(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            error = _err(walk_no_follow(_open_dir(tmp), (b"a", b"b")))
-            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(walk_no_follow(_open_dir(tmp), (b"a", b"b")))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
 
     def test_walk_rejects_symlink_component(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             os.makedirs(os.path.join(tmp, "real"))
             os.symlink(os.path.join(tmp, "real"), os.path.join(tmp, "link"))
-            error = _err(walk_no_follow(_open_dir(tmp), (b"link", b"child")))
-            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError,
+                _err(walk_no_follow(_open_dir(tmp), (b"link", b"child"))),
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)
 
     def test_observation_error_without_errno_is_internal_failure(self) -> None:
         # An OSError raised from a bare message carries errno=None; the closed
@@ -163,8 +168,10 @@ class FsEffectsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             os.makedirs(os.path.join(tmp, "real"))
             os.symlink(os.path.join(tmp, "real"), os.path.join(tmp, "link"))
-            error = _err(walk_no_follow(_open_dir(tmp), (b"link",)))
-            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(walk_no_follow(_open_dir(tmp), (b"link",)))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)
 
     def test_walk_allows_absent_final_component(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -196,26 +203,35 @@ class FsEffectsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             _write(os.path.join(tmp, "f"), b"x")
             os.symlink(os.path.join(tmp, "f"), os.path.join(tmp, "l"))
-            error = _err(open_regular_no_follow(_open_dir(tmp), b"l"))
-            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(open_regular_no_follow(_open_dir(tmp), b"l"))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)
 
     def test_open_regular_rejects_hardlink(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             _write(os.path.join(tmp, "f"), b"x")
             os.link(os.path.join(tmp, "f"), os.path.join(tmp, "h"))
-            error = _err(open_regular_no_follow(_open_dir(tmp), b"h"))
-            self.assertEqual(error.kind, ObservationErrorKind.HARDLINK_ENCOUNTERED)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(open_regular_no_follow(_open_dir(tmp), b"h"))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.HARDLINK_ENCOUNTERED)
 
     def test_open_regular_rejects_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             os.mkdir(os.path.join(tmp, "d"))
-            error = _err(open_regular_no_follow(_open_dir(tmp), b"d"))
-            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(open_regular_no_follow(_open_dir(tmp), b"d"))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
 
     def test_open_regular_missing_is_path_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            error = _err(open_regular_no_follow(_open_dir(tmp), b"absent"))
-            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError,
+                _err(open_regular_no_follow(_open_dir(tmp), b"absent")),
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
 
     def test_read_file_bounded_returns_exact_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -231,10 +247,9 @@ class FsEffectsTests(unittest.TestCase):
             _write(os.path.join(tmp, "f"), b"abc")
             fd = os.open(os.path.join(tmp, "f"), os.O_RDONLY)
             try:
-                error = _err(read_file_bounded(fd, 2))
+                error = cast(ObservationError, _err(read_file_bounded(fd, 2)))
                 self.assertEqual(
-                    error.kind,  # pyright: ignore[reportAttributeAccessIssue]
-                    ObservationErrorKind.OBSERVATION_LIMIT_EXCEEDED,
+                    error.kind, ObservationErrorKind.OBSERVATION_LIMIT_EXCEEDED
                 )
             finally:
                 os.close(fd)
@@ -252,8 +267,10 @@ class FsEffectsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             _write(os.path.join(tmp, "f"), b"x")
             os.chmod(os.path.join(tmp, "f"), 0o000)
-            error = _err(open_regular_no_follow(_open_dir(tmp), b"f"))
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(open_regular_no_follow(_open_dir(tmp), b"f"))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
 
     def test_ensure_state_root_rejects_unwritable_parent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -267,8 +284,8 @@ class FsEffectsTests(unittest.TestCase):
             os.makedirs(os.path.join(tmp, "d"))
             fd = _open_dir(os.path.join(tmp, "d"))
             os.chmod(os.path.join(tmp, "d"), 0o400)
-            error = _err(classify_child(fd, b"x"))
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(ObservationError, _err(classify_child(fd, b"x")))
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
 
     def test_fsync_file_and_directory_succeed_on_real_tree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -316,9 +333,11 @@ class FsEffectsTests(unittest.TestCase):
     def test_open_regular_rejects_fifo(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             os.mkfifo(os.path.join(tmp, "p"))
-            error = _err(open_regular_no_follow(_open_dir(tmp), b"p"))
-            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)  # pyright: ignore[reportAttributeAccessIssue]
-            self.assertIn("not a regular file", error.subject)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(open_regular_no_follow(_open_dir(tmp), b"p"))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
+            self.assertIn("not a regular file", error.subject)
 
     def test_open_regular_propagates_classify_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -331,8 +350,11 @@ class FsEffectsTests(unittest.TestCase):
     def test_walk_regular_file_intermediate_is_path_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             _write(os.path.join(tmp, "file"), b"x")
-            error = _err(walk_no_follow(_open_dir(tmp), (b"file", b"child")))
-            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError,
+                _err(walk_no_follow(_open_dir(tmp), (b"file", b"child"))),
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
 
     def test_walk_oversized_component_is_internal_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -423,7 +445,10 @@ class LockingTests(unittest.TestCase):
             state = self._state_root(tmp)
             guard = _ok(acquire_lock(state, operation="apply", target_digest="ab" * 32))
             try:
-                content = json.loads(_read(os.path.join(tmp, "state-root", "lock")))
+                content = cast(
+                    dict[str, object],
+                    json.loads(_read(os.path.join(tmp, "state-root", "lock"))),
+                )
             finally:
                 release_lock(guard)
             self.assertEqual(content["operation"], "apply")
@@ -448,6 +473,7 @@ class LockingTests(unittest.TestCase):
             )
             stdout = child.stdout
             assert stdout is not None
+            stdout = cast(TextIO, stdout)
             try:
                 self.assertEqual(stdout.readline().strip(), "READY")
                 deadline = time.monotonic() + 5
@@ -467,7 +493,7 @@ class LockingTests(unittest.TestCase):
                 assert held is not None
                 self.assertEqual(held.kind, TransitionErrorKind.LOCK_HELD)
             finally:
-                child.wait(timeout=10)
+                _ = child.wait(timeout=10)
             reacquired = _ok(
                 acquire_lock(state, operation="apply", target_digest="d" * 64)
             )
@@ -495,10 +521,13 @@ class LockingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             state = self._state_root(tmp)
             os.close(state)
-            error = _err(acquire_lock(state, operation="apply", target_digest="d" * 64))
+            error = cast(
+                TransactionError,
+                _err(acquire_lock(state, operation="apply", target_digest="d" * 64)),
+            )
             self.assertEqual(error.kind, TransactionErrorKind.PRIMITIVE_FAILED)
-            self.assertEqual(error.primitive, TransactionPrimitive.WRITE_FILE)  # pyright: ignore[reportAttributeAccessIssue]
-            self.assertEqual(error.errno_class, ErrnoClass.OTHER_SANITIZED_ERRNO)  # pyright: ignore[reportAttributeAccessIssue]
+            self.assertEqual(error.primitive, TransactionPrimitive.WRITE_FILE)
+            self.assertEqual(error.errno_class, ErrnoClass.OTHER_SANITIZED_ERRNO)
 
     def test_failed_acquisitions_do_not_leak_descriptors(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -530,17 +559,17 @@ class GitStateTests(unittest.TestCase):
 
     def _init_repo(self, path: str) -> None:
         os.makedirs(path, exist_ok=True)
-        self._git("init", "-q", path)
-        self._git("config", "user.email", "test@example.com", cwd=path)
-        self._git("config", "user.name", "Test", cwd=path)
+        _ = self._git("init", "-q", path)
+        _ = self._git("config", "user.email", "test@example.com", cwd=path)
+        _ = self._git("config", "user.name", "Test", cwd=path)
 
     def test_resolves_state_root_of_real_worktree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = os.path.join(tmp, "repo")
             self._init_repo(repo)
             _write(os.path.join(repo, "f"), b"x")
-            self._git("add", "f", cwd=repo)
-            self._git("commit", "-qm", "init", cwd=repo)
+            _ = self._git("add", "f", cwd=repo)
+            _ = self._git("commit", "-qm", "init", cwd=repo)
             root = os.fsencode(repo)
             result = resolve_git_worktree(root)
             assert isinstance(result, Ok)
@@ -561,8 +590,8 @@ class GitStateTests(unittest.TestCase):
             repo = os.path.join(tmp, "repo")
             self._init_repo(repo)
             _write(os.path.join(repo, "f"), b"x")
-            self._git("add", "f", cwd=repo)
-            self._git("commit", "-qm", "init", cwd=repo)
+            _ = self._git("add", "f", cwd=repo)
+            _ = self._git("commit", "-qm", "init", cwd=repo)
             resolved = _ok(resolve_git_worktree(os.fsencode(repo)))
             assert isinstance(resolved, ResolvedGitWorktree)
             self.assertFalse(os.path.exists(resolved.state_root_abs))
@@ -572,10 +601,10 @@ class GitStateTests(unittest.TestCase):
             repo = os.path.join(tmp, "repo")
             self._init_repo(repo)
             _write(os.path.join(repo, "f"), b"x")
-            self._git("add", "f", cwd=repo)
-            self._git("commit", "-qm", "init", cwd=repo)
+            _ = self._git("add", "f", cwd=repo)
+            _ = self._git("commit", "-qm", "init", cwd=repo)
             other = os.path.join(tmp, "other")
-            self._git("worktree", "add", "-q", other, cwd=repo)
+            _ = self._git("worktree", "add", "-q", other, cwd=repo)
             first = _ok(resolve_git_worktree(os.fsencode(repo)))
             second = _ok(resolve_git_worktree(os.fsencode(other)))
             assert isinstance(first, ResolvedGitWorktree)
@@ -589,14 +618,14 @@ class GitStateTests(unittest.TestCase):
             sub = os.path.join(tmp, "sub")
             self._init_repo(sub)
             _write(os.path.join(sub, "f"), b"x")
-            self._git("add", "f", cwd=sub)
-            self._git("commit", "-qm", "init", cwd=sub)
+            _ = self._git("add", "f", cwd=sub)
+            _ = self._git("commit", "-qm", "init", cwd=sub)
             main = os.path.join(tmp, "main")
             self._init_repo(main)
             _write(os.path.join(main, "f"), b"x")
-            self._git("add", "f", cwd=main)
-            self._git("commit", "-qm", "init", cwd=main)
-            self._git(
+            _ = self._git("add", "f", cwd=main)
+            _ = self._git("commit", "-qm", "init", cwd=main)
+            _ = self._git(
                 "-c",
                 "protocol.file.allow=always",
                 "submodule",
@@ -615,7 +644,7 @@ class GitStateTests(unittest.TestCase):
     def test_bare_repository_is_unsupported(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             bare = os.path.join(tmp, "bare.git")
-            self._git("init", "-q", "--bare", bare)
+            _ = self._git("init", "-q", "--bare", bare)
             result = resolve_git_worktree(os.fsencode(bare))
             self.assertEqual(
                 result, Ok(UnsupportedGitTarget(TargetReason.BARE_REPOSITORY))
@@ -740,8 +769,10 @@ class GitStateTests(unittest.TestCase):
                     )
                 raise AssertionError(f"unexpected git call: {args}")
 
-            error = _err(resolve_git_worktree(root, runner=runner))
-            self.assertEqual(error.kind, ObservationErrorKind.GIT_COMMAND_FAILED)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(resolve_git_worktree(root, runner=runner))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.GIT_COMMAND_FAILED)
 
     def test_bare_probe_failure_is_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -887,8 +918,10 @@ class GitStateTests(unittest.TestCase):
                     )
                 raise AssertionError(f"unexpected git call: {args}")
 
-            error = _err(resolve_git_worktree(root, runner=runner))
-            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(resolve_git_worktree(root, runner=runner))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
 
     def test_path_format_probe_failure_is_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1005,8 +1038,10 @@ class GitStateTests(unittest.TestCase):
                     )
                 raise AssertionError(f"unexpected git call: {args}")
 
-            error = _err(resolve_git_worktree(root, runner=runner))
-            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(resolve_git_worktree(root, runner=runner))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.PATH_MISSING)
 
     def test_unsearchable_root_is_permission_denied(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1039,20 +1074,24 @@ class GitStateTests(unittest.TestCase):
                     )
                 raise AssertionError(f"unexpected git call: {args}")
 
-            error = _err(resolve_git_worktree(root, runner=runner))
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(resolve_git_worktree(root, runner=runner))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
 
     def test_symlinked_root_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = os.path.join(tmp, "repo")
             self._init_repo(repo)
             _write(os.path.join(repo, "f"), b"x")
-            self._git("add", "f", cwd=repo)
-            self._git("commit", "-qm", "init", cwd=repo)
+            _ = self._git("add", "f", cwd=repo)
+            _ = self._git("commit", "-qm", "init", cwd=repo)
             link = os.path.join(tmp, "link")
             os.symlink(repo, link)
-            error = _err(resolve_git_worktree(os.fsencode(link)))
-            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(resolve_git_worktree(os.fsencode(link)))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)
 
     def test_run_git_reports_nonzero_exit_as_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1128,16 +1167,18 @@ class GitStateTests(unittest.TestCase):
                     return Ok(GitCommandResult(0, b"/somewhere/.git\n", b""))
                 raise AssertionError(f"unexpected git call: {args}")
 
-            error = _err(resolve_git_worktree(root, runner=runner))
-            self.assertEqual(error.kind, ObservationErrorKind.GIT_COMMAND_FAILED)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(resolve_git_worktree(root, runner=runner))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.GIT_COMMAND_FAILED)
 
     def test_state_root_symlink_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = os.path.join(tmp, "repo")
             self._init_repo(repo)
             _write(os.path.join(repo, "f"), b"x")
-            self._git("add", "f", cwd=repo)
-            self._git("commit", "-qm", "init", cwd=repo)
+            _ = self._git("add", "f", cwd=repo)
+            _ = self._git("commit", "-qm", "init", cwd=repo)
             os.makedirs(os.path.join(tmp, "elsewhere"), exist_ok=True)
             os.symlink(
                 os.path.join(tmp, "elsewhere"),
@@ -1145,8 +1186,10 @@ class GitStateTests(unittest.TestCase):
             )
             # git canonicalizes the symlink away, so the resolved state root no
             # longer equals the git-dir child and the equality check fails closed.
-            error = _err(resolve_git_worktree(os.fsencode(repo)))
-            self.assertEqual(error.kind, ObservationErrorKind.GIT_COMMAND_FAILED)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(resolve_git_worktree(os.fsencode(repo)))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.GIT_COMMAND_FAILED)
 
 
 _HEX64 = st.text(alphabet="0123456789abcdef", min_size=64, max_size=64)
@@ -1257,16 +1300,13 @@ class JournalTests(unittest.TestCase):
 
     def test_encode_is_stable_canonical_json(self) -> None:
         expected = (
-            b'{"operation":"apply","phase":"PLANNED","preparations":[{"expected_kind":'
-            b'"file","expected_mode":420,"expected_raw_sha256":"'
-            + b"b"
-            * 64
-            + b'","operation_index":0,"ownership_token_sha256":"8408c6d2a7b286b16d526315e5e8216cf36a7148cdbbd6e064762cd75ec5ae66",'
-            b'"role":"backup","transaction_id":"'
-            + b"a"
-            * 64
-            + b'"}],"schema_version":1,"target":{"device":1,"digest":"9a085b29788a7164b212a458bb4f97c779b1cefad3d86f17179e6d7bc2450a86",'
-            b'"inode":2,"root":"2f73616d706c65"},"transaction_id":"' + b"a" * 64 + b'"}'
+            b'{"operation":"apply","phase":"PLANNED","preparations":[{"expected_kind":"file","expected_mode":420,"expected_raw_sha256":"'
+            + b"b" * 64
+            + b'","operation_index":0,"ownership_token_sha256":"8408c6d2a7b286b16d526315e5e8216cf36a7148cdbbd6e064762cd75ec5ae66","role":"backup","transaction_id":"'
+            + b"a" * 64
+            + b'"}],"schema_version":1,"target":{"device":1,"digest":"9a085b29788a7164b212a458bb4f97c779b1cefad3d86f17179e6d7bc2450a86","inode":2,"root":"2f73616d706c65"},"transaction_id":"'
+            + b"a" * 64
+            + b'"}'
         )
         self.assertEqual(encode_journal(_sample_envelope()), expected)
 
@@ -1288,7 +1328,7 @@ class JournalTests(unittest.TestCase):
 
     def test_decode_rejects_unknown_schema_version(self) -> None:
         envelope = _sample_envelope()
-        data = json.loads(encode_journal(envelope))
+        data = cast(dict[str, object], json.loads(encode_journal(envelope)))
         data["schema_version"] = 2
         self.assertIsInstance(
             _err(decode_journal(json.dumps(data).encode())), InvalidJournal
@@ -1296,7 +1336,7 @@ class JournalTests(unittest.TestCase):
 
     def test_decode_rejects_unknown_phase(self) -> None:
         envelope = _sample_envelope()
-        data = json.loads(encode_journal(envelope))
+        data = cast(dict[str, object], json.loads(encode_journal(envelope)))
         data["phase"] = "EXPLODING"
         self.assertIsInstance(
             _err(decode_journal(json.dumps(data).encode())), InvalidJournal
@@ -1304,25 +1344,28 @@ class JournalTests(unittest.TestCase):
 
     def test_decode_rejects_tampered_target_digest(self) -> None:
         envelope = _sample_envelope()
-        data = json.loads(encode_journal(envelope))
-        data["target"]["digest"] = "f" * 64
+        data = cast(dict[str, object], json.loads(encode_journal(envelope)))
+        target = cast(dict[str, object], data["target"])
+        target["digest"] = "f" * 64
         self.assertIsInstance(
             _err(decode_journal(json.dumps(data).encode())), InvalidJournal
         )
 
     def test_decode_rejects_foreign_preparation_transaction(self) -> None:
         envelope = _sample_envelope()
-        data = json.loads(encode_journal(envelope))
-        data["preparations"][0]["transaction_id"] = "c" * 64
+        data = cast(dict[str, object], json.loads(encode_journal(envelope)))
+        preparations = cast(list[dict[str, object]], data["preparations"])
+        preparations[0]["transaction_id"] = "c" * 64
         self.assertIsInstance(
             _err(decode_journal(json.dumps(data).encode())), InvalidJournal
         )
 
     def test_decode_rejects_directory_with_raw_hash(self) -> None:
         envelope = _sample_envelope()
-        data = json.loads(encode_journal(envelope))
-        data["preparations"][0]["expected_kind"] = "directory"
-        data["preparations"][0]["expected_raw_sha256"] = "b" * 64
+        data = cast(dict[str, object], json.loads(encode_journal(envelope)))
+        preparations = cast(list[dict[str, object]], data["preparations"])
+        preparations[0]["expected_kind"] = "directory"
+        preparations[0]["expected_raw_sha256"] = "b" * 64
         self.assertIsInstance(
             _err(decode_journal(json.dumps(data).encode())), InvalidJournal
         )
@@ -1330,12 +1373,12 @@ class JournalTests(unittest.TestCase):
     def test_decode_rejects_non_object_and_non_list_shapes(self) -> None:
         self.assertIsInstance(_err(decode_journal(b"[1, 2]")), InvalidJournal)
         envelope = _sample_envelope()
-        data = json.loads(encode_journal(envelope))
+        data = cast(dict[str, object], json.loads(encode_journal(envelope)))
         data["preparations"] = {}
         self.assertIsInstance(
             _err(decode_journal(json.dumps(data).encode())), InvalidJournal
         )
-        data = json.loads(encode_journal(envelope))
+        data = cast(dict[str, object], json.loads(encode_journal(envelope)))
         data["preparations"] = [5]
         self.assertIsInstance(
             _err(decode_journal(json.dumps(data).encode())), InvalidJournal
@@ -1350,7 +1393,7 @@ class JournalTests(unittest.TestCase):
             ("transaction_id", "A" * 64),
             ("phase", 5),
         ):
-            data = json.loads(encode_journal(envelope))
+            data = cast(dict[str, object], json.loads(encode_journal(envelope)))
             data[field] = value
             self.assertIsInstance(
                 _err(decode_journal(json.dumps(data).encode())),
@@ -1365,10 +1408,11 @@ class JournalTests(unittest.TestCase):
             ("device", True),
             ("digest", "zz" * 32),
         ):
-            data = json.loads(encode_journal(envelope))
+            data = cast(dict[str, object], json.loads(encode_journal(envelope)))
             data["target"] = 5 if field == "target" else data["target"]
             if field != "target":
-                data["target"][field] = value
+                target = cast(dict[str, object], data["target"])
+                target[field] = value
             self.assertIsInstance(
                 _err(decode_journal(json.dumps(data).encode())),
                 InvalidJournal,
@@ -1384,8 +1428,9 @@ class JournalTests(unittest.TestCase):
             ("ownership_token_sha256", "zz" * 32),
             ("expected_raw_sha256", "zz" * 32),
         ):
-            data = json.loads(encode_journal(envelope))
-            data["preparations"][0][field] = value
+            data = cast(dict[str, object], json.loads(encode_journal(envelope)))
+            preparations = cast(list[dict[str, object]], data["preparations"])
+            preparations[0][field] = value
             self.assertIsInstance(
                 _err(decode_journal(json.dumps(data).encode())),
                 InvalidJournal,
@@ -1396,38 +1441,40 @@ class JournalTests(unittest.TestCase):
         identity = target_identity(b"/sample", device=1, inode=2)
         base = _sample_envelope()
         with self.assertRaises(TypeError):
-            JournalTarget(root_hex="", device=1, inode=2, digest=identity.digest)
+            _ = JournalTarget(root_hex="", device=1, inode=2, digest=identity.digest)
         with self.assertRaises(TypeError):
-            JournalTarget(
+            _ = JournalTarget(
                 root_hex="2F73616D706C65", device=1, inode=2, digest=identity.digest
             )
         with self.assertRaises(TypeError):
-            JournalTarget(
+            _ = JournalTarget(
                 root_hex="2f 73 61", device=1, inode=2, digest=identity.digest
             )
         with self.assertRaises(TypeError):
-            JournalTarget(
+            _ = JournalTarget(
                 root_hex="2f73616d706c65",
-                device=cast(int, "x"),
+                device=cast(int, "x"),  # pyright: ignore[reportInvalidCast]  intentional invalid-value negative test
                 inode=2,
                 digest=identity.digest,
             )
         with self.assertRaises(TypeError):
-            JournalTarget(
+            _ = JournalTarget(
                 root_hex="2f73616d706c65", device=-1, inode=2, digest=identity.digest
             )
         with self.assertRaises(TypeError):
-            JournalTarget(
+            _ = JournalTarget(
                 root_hex="2f73616d706c65", device=2**53, inode=2, digest=identity.digest
             )
         with self.assertRaises(TypeError):
-            JournalTarget(
+            _ = JournalTarget(
                 root_hex="2f73616d706c65", device=1, inode=2, digest="zz" * 32
             )
         with self.assertRaises(TypeError):
-            JournalTarget(root_hex="2f73616d706c65", device=1, inode=2, digest="f" * 64)
+            _ = JournalTarget(
+                root_hex="2f73616d706c65", device=1, inode=2, digest="f" * 64
+            )
         with self.assertRaises(TypeError):
-            PreparationIdentity(
+            _ = PreparationIdentity(
                 transaction_id="z" * 64,
                 operation_index=0,
                 role=PreparationRole.BACKUP,
@@ -1437,7 +1484,7 @@ class JournalTests(unittest.TestCase):
                 expected_mode=PosixMode(0o644),
             )
         with self.assertRaises(TypeError):
-            PreparationIdentity(
+            _ = PreparationIdentity(
                 transaction_id="a" * 64,
                 operation_index=-1,
                 role=PreparationRole.BACKUP,
@@ -1447,17 +1494,17 @@ class JournalTests(unittest.TestCase):
                 expected_mode=PosixMode(0o644),
             )
         with self.assertRaises(TypeError):
-            PreparationIdentity(
+            _ = PreparationIdentity(
                 transaction_id="a" * 64,
                 operation_index=0,
-                role=cast(PreparationRole, "backup"),
+                role=cast(PreparationRole, "backup"),  # pyright: ignore[reportInvalidCast]  intentional invalid-value negative test
                 ownership_token_sha256="a" * 64,
                 expected_kind="file",
                 expected_raw_sha256="b" * 64,
                 expected_mode=PosixMode(0o644),
             )
         with self.assertRaises(TypeError):
-            PreparationIdentity(
+            _ = PreparationIdentity(
                 transaction_id="a" * 64,
                 operation_index=0,
                 role=PreparationRole.BACKUP,
@@ -1467,17 +1514,17 @@ class JournalTests(unittest.TestCase):
                 expected_mode=PosixMode(0o644),
             )
         with self.assertRaises(TypeError):
-            PreparationIdentity(
+            _ = PreparationIdentity(
                 transaction_id="a" * 64,
                 operation_index=0,
                 role=PreparationRole.BACKUP,
                 ownership_token_sha256="a" * 64,
-                expected_kind=cast(Literal["file", "directory"], "weird"),
+                expected_kind=cast(Literal["file", "directory"], "weird"),  # pyright: ignore[reportInvalidCast]  intentional invalid-value negative test
                 expected_raw_sha256="b" * 64,
                 expected_mode=PosixMode(0o644),
             )
         with self.assertRaises(TypeError):
-            PreparationIdentity(
+            _ = PreparationIdentity(
                 transaction_id="a" * 64,
                 operation_index=0,
                 role=PreparationRole.BACKUP,
@@ -1487,7 +1534,7 @@ class JournalTests(unittest.TestCase):
                 expected_mode=PosixMode(0o644),
             )
         with self.assertRaises(TypeError):
-            PreparationIdentity(
+            _ = PreparationIdentity(
                 transaction_id="a" * 64,
                 operation_index=0,
                 role=PreparationRole.BACKUP,
@@ -1497,17 +1544,17 @@ class JournalTests(unittest.TestCase):
                 expected_mode=PosixMode(0o644),
             )
         with self.assertRaises(TypeError):
-            PreparationIdentity(
+            _ = PreparationIdentity(
                 transaction_id="a" * 64,
                 operation_index=0,
                 role=PreparationRole.BACKUP,
                 ownership_token_sha256="a" * 64,
                 expected_kind="file",
                 expected_raw_sha256="b" * 64,
-                expected_mode=cast(PosixMode, 0o644),
+                expected_mode=cast(PosixMode, 0o644),  # pyright: ignore[reportInvalidCast]  intentional invalid-value negative test
             )
         with self.assertRaises(TypeError):
-            JournalEnvelope(
+            _ = JournalEnvelope(
                 operation="apply",
                 target=base.target,
                 phase=JournalPhase.PLANNED,
@@ -1515,35 +1562,35 @@ class JournalTests(unittest.TestCase):
                 schema_version=2,
             )
         with self.assertRaises(TypeError):
-            JournalEnvelope(
+            _ = JournalEnvelope(
                 operation="apply",
                 target=cast(JournalTarget, object()),
                 phase=JournalPhase.PLANNED,
                 transaction_id="a" * 64,
             )
         with self.assertRaises(TypeError):
-            JournalEnvelope(
+            _ = JournalEnvelope(
                 operation="apply",
                 target=base.target,
-                phase=cast(JournalPhase, "PLANNED"),
+                phase=cast(JournalPhase, "PLANNED"),  # pyright: ignore[reportInvalidCast]  intentional invalid-value negative test
                 transaction_id="a" * 64,
             )
         with self.assertRaises(TypeError):
-            JournalEnvelope(
+            _ = JournalEnvelope(
                 operation="",
                 target=base.target,
                 phase=JournalPhase.PLANNED,
                 transaction_id="a" * 64,
             )
         with self.assertRaises(TypeError):
-            JournalEnvelope(
+            _ = JournalEnvelope(
                 operation="apply",
                 target=base.target,
                 phase=JournalPhase.PLANNED,
                 transaction_id="A" * 64,
             )
         with self.assertRaises(TypeError):
-            JournalEnvelope(
+            _ = JournalEnvelope(
                 operation="apply",
                 target=base.target,
                 phase=JournalPhase.PLANNED,
@@ -1552,7 +1599,7 @@ class JournalTests(unittest.TestCase):
             )
         foreign = dataclasses.replace(base.preparations[0], transaction_id="c" * 64)
         with self.assertRaises(TypeError):
-            JournalEnvelope(
+            _ = JournalEnvelope(
                 operation="apply",
                 target=base.target,
                 phase=JournalPhase.PLANNED,
@@ -1748,8 +1795,10 @@ class JournalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             state = self._state_root(tmp)
             os.chmod(os.path.join(tmp, "state-root"), 0o400)
-            error = _err(capture_state_root(state, self._target()))
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(capture_state_root(state, self._target()))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
 
     def test_capture_rejects_unreadable_journal(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1757,8 +1806,10 @@ class JournalTests(unittest.TestCase):
             journal = os.path.join(tmp, "state-root", "journal.json")
             _write(journal, b"{}")
             os.chmod(journal, 0o000)
-            error = _err(capture_state_root(state, self._target()))
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(capture_state_root(state, self._target()))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
 
     def test_capture_rejects_unreadable_pending(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1766,8 +1817,10 @@ class JournalTests(unittest.TestCase):
             pending = os.path.join(tmp, "state-root", "journal.pending")
             _write(pending, b"x")
             os.chmod(pending, 0o000)
-            error = _err(capture_state_root(state, self._target()))
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError, _err(capture_state_root(state, self._target()))
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
 
     def test_observe_transactions_without_journal_is_orphan_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1807,10 +1860,12 @@ class JournalTests(unittest.TestCase):
             state = self._state_root(tmp)
             _write(os.path.join(tmp, "state-root", "journal.json"), b"x" * 64)
             limits = ResourceLimits(max_file_bytes=32)
-            error = _err(capture_state_root(state, self._target(), limits=limits))
+            error = cast(
+                ObservationError,
+                _err(capture_state_root(state, self._target(), limits=limits)),
+            )
             self.assertEqual(
-                error.kind,  # pyright: ignore[reportAttributeAccessIssue]
-                ObservationErrorKind.OBSERVATION_LIMIT_EXCEEDED,
+                error.kind, ObservationErrorKind.OBSERVATION_LIMIT_EXCEEDED
             )
 
     def test_collect_returns_stable_observation(self) -> None:
@@ -1830,6 +1885,7 @@ class JournalTests(unittest.TestCase):
             def alternating(
                 state_fd: int, current: TargetIdentity
             ) -> Result[StateRootSnapshot, ObservationError | InternalFailure]:
+                del state_fd, current
                 calls["count"] += 1
                 return Ok(
                     StateRootSnapshot(
@@ -1842,10 +1898,13 @@ class JournalTests(unittest.TestCase):
                     )
                 )
 
-            error = _err(
-                collect_state_root_observation(state, target, capture=alternating)
+            error = cast(
+                ObservationError,
+                _err(
+                    collect_state_root_observation(state, target, capture=alternating)
+                ),
             )
-            self.assertEqual(error.kind, ObservationErrorKind.CONCURRENT_TARGET_CHANGE)  # pyright: ignore[reportAttributeAccessIssue]
+            self.assertEqual(error.kind, ObservationErrorKind.CONCURRENT_TARGET_CHANGE)
 
     def test_collect_propagates_capture_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1855,14 +1914,18 @@ class JournalTests(unittest.TestCase):
             def failing(
                 state_fd: int, current: TargetIdentity
             ) -> Result[StateRootSnapshot, ObservationError | InternalFailure]:
+                del state_fd, current
                 return Err(
                     ObservationError(
                         ObservationErrorKind.PERMISSION_DENIED, "state-root"
                     )
                 )
 
-            error = _err(collect_state_root_observation(state, target, capture=failing))
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
+            error = cast(
+                ObservationError,
+                _err(collect_state_root_observation(state, target, capture=failing)),
+            )
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
 
     def test_collect_propagates_second_pass_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1881,6 +1944,7 @@ class JournalTests(unittest.TestCase):
             def failing_second(
                 state_fd: int, current: TargetIdentity
             ) -> Result[StateRootSnapshot, ObservationError | InternalFailure]:
+                del state_fd, current
                 calls["count"] += 1
                 if calls["count"] == 1:
                     return Ok(snapshot)
@@ -1890,17 +1954,24 @@ class JournalTests(unittest.TestCase):
                     )
                 )
 
-            error = _err(
-                collect_state_root_observation(state, target, capture=failing_second)
+            error = cast(
+                ObservationError,
+                _err(
+                    collect_state_root_observation(
+                        state, target, capture=failing_second
+                    )
+                ),
             )
-            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)  # pyright: ignore[reportAttributeAccessIssue]
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
 
     def test_collect_rejects_non_positive_attempts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             state = self._state_root(tmp)
             with self.assertRaises(ValueError):
-                collect_state_root_observation(state, self._target(), max_attempts=0)
+                _ = collect_state_root_observation(
+                    state, self._target(), max_attempts=0
+                )
 
 
 if __name__ == "__main__":
-    unittest.main()
+    _ = unittest.main()

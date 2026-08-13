@@ -8,6 +8,7 @@ normative slot order. Every referenced blob must be present before any body is r
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 from scripts.bootstrap.blobs import VerifiedBlobStore
 from scripts.bootstrap.paths import RepoPath
@@ -21,12 +22,24 @@ from scripts.bootstrap.render import (
     RenderError,
     RenderErrorKind,
     ResolvedContribution,
-    SettingValue,
     apply_substitutions,
 )
 from scripts.bootstrap.result import Err, Ok, Result
+from scripts.bootstrap.schemas import SettingValue
 
 CORE_OWNER = "core"
+
+
+@dataclass(frozen=True, slots=True)
+class _RenderedFragment:
+    """One rendered document-fragment body with its normative ordering keys."""
+
+    order: int
+    owner_order: int
+    owner: str
+    fragment_id: str
+    document: str
+    text: str
 
 
 def _identity(owner: str, contribution_id: str) -> str:
@@ -253,7 +266,7 @@ def compose_document_bodies(
                     )
                 )
             identities.add(identity)
-    rendered: list[tuple[int, int, str, str, str, str]] = []
+    rendered: list[_RenderedFragment] = []
     for owner, owner_order, fragments in fragment_pairs:
         for fragment in fragments:
             body = blobs.get(fragment.body_blob)
@@ -289,22 +302,27 @@ def compose_document_bodies(
                             )
                         )
                     rendered.append(
-                        (
-                            fragment.order,
-                            owner_order,
-                            owner,
-                            fragment.id,
-                            fragment.document,
-                            text,
+                        _RenderedFragment(
+                            order=fragment.order,
+                            owner_order=owner_order,
+                            owner=owner,
+                            fragment_id=fragment.id,
+                            document=fragment.document,
+                            text=text,
                         )
                     )
     ordered = sorted(
         rendered,
-        key=lambda item: (item[0], item[1], item[2], item[3]),
+        key=lambda fragment: (
+            fragment.order,
+            fragment.owner_order,
+            fragment.owner,
+            fragment.fragment_id,
+        ),
     )
     bodies_by_document: dict[str, list[str]] = {}
-    for _order, _owner_order, _owner, _fragment_id, document, text in ordered:
-        bodies_by_document.setdefault(document, []).append(text)
+    for fragment in ordered:
+        bodies_by_document.setdefault(fragment.document, []).append(fragment.text)
     result = tuple(
         (
             RepoPath(document),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import unittest
+from typing import cast
 
 from hypothesis import given
 from hypothesis import strategies as st
@@ -45,7 +46,7 @@ from scripts.bootstrap.errors import (
     UsageErrorKind,
     sanitize_errno,
 )
-from scripts.bootstrap.result import Err, Ok, accumulate
+from scripts.bootstrap.result import Err, Ok, Result, accumulate
 from scripts.bootstrap.values import (
     DEFAULT_LIMITS,
     LimitKind,
@@ -69,7 +70,10 @@ class ResultTests(unittest.TestCase):
     def test_accumulate_preserves_arbitrary_success_order(
         self, values: list[int]
     ) -> None:
-        result = accumulate(tuple(Ok(value) for value in values))
+        result = cast(
+            Result[tuple[int, ...], tuple[str, ...]],
+            accumulate(tuple(Ok(value) for value in values)),
+        )
         self.assertEqual(result, Ok(tuple(values)))
 
     @given(
@@ -264,4 +268,4 @@ class DiagnosticTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    _ = unittest.main()

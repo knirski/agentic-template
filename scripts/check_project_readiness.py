@@ -37,6 +37,13 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT))
 
 from scripts.bootstrap.presentation import render_text  # noqa: E402
+from scripts.bootstrap.readiness import (  # noqa: E402
+    Finding as CoreFinding,
+)
+from scripts.bootstrap.readiness import (  # noqa: E402
+    MechanicalReadinessResult,
+    SubjectPath,
+)
 
 PRD = ROOT / "docs" / "prd.md"
 README = ROOT / "README.md"
@@ -403,14 +410,6 @@ def mechanical_readiness(
     findings: tuple[Finding, ...],
 ) -> MechanicalReadinessResult:
     """Return the shared structured result used by bootstrap gating."""
-    from scripts.bootstrap.readiness import (
-        Finding as CoreFinding,
-    )
-    from scripts.bootstrap.readiness import (
-        MechanicalReadinessResult,
-        SubjectPath,
-    )
-
     return MechanicalReadinessResult(
         1,
         tuple(

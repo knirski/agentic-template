@@ -205,7 +205,7 @@ class PlannedFileEntry:
     content_id: ContentId
 
 
-PlannedTreeEntry = PlannedDirectoryEntry | PlannedFileEntry
+type PlannedTreeEntry = PlannedDirectoryEntry | PlannedFileEntry
 
 
 @dataclass(frozen=True, slots=True)
@@ -444,10 +444,13 @@ def _validate_snapshot(snapshot: TargetSnapshot) -> Result[None, CompileError]:
     seen: set[str] = set()
     lowered: set[str] = set()
     for entry in (*snapshot.files, *snapshot.directories):
-        if not isinstance(parse_path(entry.path.value), Ok):
-            return Err(
-                _compile_error(CompileErrorKind.INVALID_TARGET, entry.path.value)
-            )
+        match parse_path(entry.path.value):
+            case Ok(_):
+                pass
+            case Err(_):
+                return Err(
+                    _compile_error(CompileErrorKind.INVALID_TARGET, entry.path.value)
+                )
         if entry.path.value in seen or entry.path.value.lower() in lowered:
             return Err(
                 _compile_error(CompileErrorKind.INVALID_TARGET, entry.path.value)
@@ -485,18 +488,21 @@ def _validate_seed_inputs(
             return Err(_compile_error(CompileErrorKind.INVALID_TARGET, seed.path.value))
         seen.add(seed.path.value)
         lowered.add(seed.path.value.lower())
-        if (
-            seed.kind not in ("text", "binary")
-            or seed.mode not in InstallFileMode
-            or not isinstance(parse_path(seed.path.value), Ok)
-        ):
+        match parse_path(seed.path.value):
+            case Ok(_):
+                pass
+            case Err(_):
+                return Err(
+                    _compile_error(CompileErrorKind.INVALID_TARGET, seed.path.value)
+                )
+        if seed.kind not in ("text", "binary") or seed.mode not in InstallFileMode:
             return Err(_compile_error(CompileErrorKind.INVALID_TARGET, seed.path.value))
         content = blobs.get(seed.content_id)
         if content is None:
             return Err(_compile_error(CompileErrorKind.MISSING_BLOB, seed.path.value))
         if seed.kind == "text":
             try:
-                content.decode("utf-8")
+                _ = content.decode("utf-8")
             except UnicodeDecodeError:
                 return Err(
                     _compile_error(CompileErrorKind.INVALID_TARGET, seed.path.value)
@@ -519,15 +525,18 @@ def _validate_managed(
             return Err(_compile_error(CompileErrorKind.INVALID_TARGET, file.path.value))
         seen.add(file.path.value)
         lowered.add(file.path.value.lower())
-        if (
-            file.kind not in ("text", "binary")
-            or file.mode not in InstallFileMode
-            or not isinstance(parse_path(file.path.value), Ok)
-        ):
+        match parse_path(file.path.value):
+            case Ok(_):
+                pass
+            case Err(_):
+                return Err(
+                    _compile_error(CompileErrorKind.INVALID_TARGET, file.path.value)
+                )
+        if file.kind not in ("text", "binary") or file.mode not in InstallFileMode:
             return Err(_compile_error(CompileErrorKind.INVALID_TARGET, file.path.value))
         if file.kind == "text":
             try:
-                file.content.decode("utf-8")
+                _ = file.content.decode("utf-8")
             except UnicodeDecodeError:
                 return Err(
                     _compile_error(CompileErrorKind.INVALID_TARGET, file.path.value)
@@ -615,7 +624,9 @@ def _maintenance_record(
                     )
                 )
             return Ok(MaintenanceRecord(status="retained", retained_paths=declared))
-    return assert_never(maintenance)  # pragma: no cover
+    return assert_never(
+        maintenance
+    )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
 
 
 def _build_tree(
@@ -656,15 +667,16 @@ def _build_tree(
     )
     byte_entries: list[FileEntry | DirectoryEntry] = []
     for entry in sorted_entries:
-        if isinstance(entry, PlannedDirectoryEntry):
-            byte_entries.append(DirectoryEntry(entry.path, entry.mode))
-        else:
-            content = blobs.get(entry.content_id)
-            if content is None:
-                return Err(
-                    _compile_error(CompileErrorKind.MISSING_BLOB, entry.path.value)
-                )
-            byte_entries.append(FileEntry(entry.path, content, entry.mode))
+        match entry:
+            case PlannedDirectoryEntry():
+                byte_entries.append(DirectoryEntry(entry.path, entry.mode))
+            case PlannedFileEntry():
+                content = blobs.get(entry.content_id)
+                if content is None:
+                    return Err(
+                        _compile_error(CompileErrorKind.MISSING_BLOB, entry.path.value)
+                    )
+                byte_entries.append(FileEntry(entry.path, content, entry.mode))
     raw_tree_sha256 = directory_tree_hash(
         b"plan/tree", DirectoryState(PosixMode.DIRECTORY, tuple(byte_entries))
     )
@@ -833,27 +845,33 @@ def _cleanup_operations(
             )
         )
         for entry in descendants:
-            if entry.path.value.startswith(prefix) and isinstance(
-                entry, ObservedFileEntry
-            ):
-                file_deletes.append(
-                    DeleteFileOperation(
-                        path=entry.path,
-                        expected_old=entry.state,
-                        planned_new=FileAbsent(),
+            if not entry.path.value.startswith(prefix):
+                continue
+            match entry:
+                case ObservedFileEntry():
+                    file_deletes.append(
+                        DeleteFileOperation(
+                            path=entry.path,
+                            expected_old=entry.state,
+                            planned_new=FileAbsent(),
+                        )
                     )
-                )
+                case ObservedDirectoryEntry():
+                    pass
         for entry in descendants:
-            if entry.path.value.startswith(prefix) and isinstance(
-                entry, ObservedDirectoryEntry
-            ):
-                dir_removes.append(
-                    RemoveEmptyDirectoryOperation(
-                        path=entry.path,
-                        expected_old=DirectoryState(entry.state.root_mode, ()),
-                        planned_new=DirectoryAbsent(),
+            if not entry.path.value.startswith(prefix):
+                continue
+            match entry:
+                case ObservedDirectoryEntry():
+                    dir_removes.append(
+                        RemoveEmptyDirectoryOperation(
+                            path=entry.path,
+                            expected_old=DirectoryState(entry.state.root_mode, ()),
+                            planned_new=DirectoryAbsent(),
+                        )
                     )
-                )
+                case ObservedFileEntry():
+                    pass
         dir_removes.append(
             RemoveEmptyDirectoryOperation(
                 path=path,
@@ -1103,8 +1121,10 @@ def compile_initial_plan(
                         inventory_ops = (operation,)
         case RetainMaintenance():
             pass
-        case _:
-            return assert_never(maintenance)  # pragma: no cover
+        case _:  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
+            return assert_never(
+                maintenance
+            )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
 
     cleanup_dirs_ordered = tuple(
         sorted(
@@ -1126,11 +1146,19 @@ def compile_initial_plan(
     )
     planned_paths: set[RepoPath] = set()
     for operation in ordered_operations:
-        if isinstance(operation, CreateTreeOperation):
-            planned_paths.add(operation.root)
-            planned_paths.update(entry.path for entry in operation.planned_new.entries)
-        else:
-            planned_paths.add(operation.path)
+        match operation:
+            case CreateTreeOperation():
+                planned_paths.add(operation.root)
+                planned_paths.update(
+                    entry.path for entry in operation.planned_new.entries
+                )
+            case (
+                CreateFileOperation()
+                | ReplaceFileOperation()
+                | DeleteFileOperation()
+                | RemoveEmptyDirectoryOperation()
+            ):
+                planned_paths.add(operation.path)
     match check_limit(LimitKind.PATHS, len(planned_paths), limits):
         case Err(violation):
             return Err(
@@ -1179,8 +1207,10 @@ def _expected_kind(identity: FileContentIdentity) -> Literal["text", "binary"]:
             return "text"
         case "binary":
             return "binary"
-        case _:
-            return assert_never(identity.kind)  # pragma: no cover
+        case _:  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
+            return assert_never(
+                identity.kind
+            )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
 
 
 def _apply_file_write(
@@ -1216,6 +1246,49 @@ def _apply_file_write(
         content=content,
     )
     written.add(operation.path.value)
+    return Ok(None)
+
+
+def _apply_tree_entries(
+    tree: CreateTreeOperation,
+    files: dict[str, ExpectedFile],
+    directories: dict[str, DirectoryEntry],
+    blobs: VerifiedBlobStore,
+) -> Result[None, PlanInvariantError]:
+    """Overlay the planned tree entries, rejecting duplicates and missing blobs."""
+    for entry in tree.planned_new.entries:
+        match entry:
+            case PlannedDirectoryEntry():
+                if entry.path.value in directories or entry.path.value in files:
+                    return Err(
+                        _invariant_error(
+                            PlanInvariantErrorKind.DUPLICATE_PATH,
+                            entry.path.value,
+                        )
+                    )
+                directories[entry.path.value] = DirectoryEntry(entry.path, entry.mode)
+            case PlannedFileEntry():
+                if entry.path.value in files or entry.path.value in directories:
+                    return Err(
+                        _invariant_error(
+                            PlanInvariantErrorKind.DUPLICATE_PATH,
+                            entry.path.value,
+                        )
+                    )
+                content = blobs.get(entry.content_id)
+                if content is None:
+                    return Err(
+                        _invariant_error(
+                            PlanInvariantErrorKind.MISSING_BLOB,
+                            entry.path.value,
+                        )
+                    )
+                files[entry.path.value] = ExpectedFile(
+                    path=entry.path,
+                    kind=_expected_kind(entry.identity),
+                    mode=entry.mode,
+                    content=content,
+                )
     return Ok(None)
 
 
@@ -1287,7 +1360,7 @@ def apply_plan(
                             delete.path.value,
                         )
                     )
-                files.pop(delete.path.value)
+                _ = files.pop(delete.path.value)
                 written.add(delete.path.value)
             case CreateTreeOperation() as tree:
                 if (
@@ -1306,40 +1379,11 @@ def apply_plan(
                 directories[tree.root.value] = DirectoryEntry(
                     tree.root, tree.planned_new.root_mode
                 )
-                for entry in tree.planned_new.entries:
-                    if isinstance(entry, PlannedDirectoryEntry):
-                        if entry.path.value in directories or entry.path.value in files:
-                            return Err(
-                                _invariant_error(
-                                    PlanInvariantErrorKind.DUPLICATE_PATH,
-                                    entry.path.value,
-                                )
-                            )
-                        directories[entry.path.value] = DirectoryEntry(
-                            entry.path, entry.mode
-                        )
-                    else:
-                        if entry.path.value in files or entry.path.value in directories:
-                            return Err(
-                                _invariant_error(
-                                    PlanInvariantErrorKind.DUPLICATE_PATH,
-                                    entry.path.value,
-                                )
-                            )
-                        content = plan.blob_store.get(entry.content_id)
-                        if content is None:
-                            return Err(
-                                _invariant_error(
-                                    PlanInvariantErrorKind.MISSING_BLOB,
-                                    entry.path.value,
-                                )
-                            )
-                        files[entry.path.value] = ExpectedFile(
-                            path=entry.path,
-                            kind=_expected_kind(entry.identity),
-                            mode=entry.mode,
-                            content=content,
-                        )
+                match _apply_tree_entries(tree, files, directories, plan.blob_store):
+                    case Err(error):
+                        return Err(error)
+                    case Ok(_):
+                        pass
                 written.add(tree.root.value)
                 written.update(entry.path.value for entry in tree.planned_new.entries)
             case RemoveEmptyDirectoryOperation() as remove:
@@ -1358,7 +1402,7 @@ def apply_plan(
                             remove.path.value,
                         )
                     )
-                directories.pop(remove.path.value)
+                _ = directories.pop(remove.path.value)
                 written.add(remove.path.value)
     return Ok(
         ExpectedTarget(

@@ -18,7 +18,7 @@ from scripts.bootstrap.resolver import (
     ResolutionErrorKind,
     ResolutionFailure,
     ResolvedBundle,
-    _setting_value,
+    _setting_value,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     resolve_additions,
     resolve_bundle,
 )
@@ -130,7 +130,7 @@ def test_resolution_does_not_read_process_state(
 ) -> None:
     monkeypatch.setenv("CACHIX_AUTH_TOKEN", "must-not-be-read")
     before = dict(os.environ)
-    _ok(resolve_bundle(decode_bundle(bundle_data())))
+    _ = _ok(resolve_bundle(decode_bundle(bundle_data())))
     assert dict(os.environ) == before
 
 
@@ -157,22 +157,24 @@ def test_catalog_uses_declarative_definitions() -> None:
 )
 def test_setting_definition_rejects_invalid_shapes(data: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
-        SettingDefinition.model_validate(data)
+        _ = SettingDefinition.model_validate(data)
 
 
 def test_catalog_definitions_reject_unsafe_or_duplicate_members() -> None:
     with pytest.raises(ValidationError):
-        ArtifactDefinition(id="artifact", path="../unsafe", kind="text", mode=0o644)
+        _ = ArtifactDefinition(id="artifact", path="../unsafe", kind="text", mode=0o644)
     duplicate = SettingDefinition(name="name", type="string")
     with pytest.raises(ValidationError):
-        CapabilityDefinition(
+        _ = CapabilityDefinition(
             id="example", description="x", settings=(duplicate, duplicate)
         )
     with pytest.raises(ValidationError):
-        CapabilityDefinition(id="example", description="x", dependencies=("example",))
+        _ = CapabilityDefinition(
+            id="example", description="x", dependencies=("example",)
+        )
     contribution = ContributionDefinition(id="slot", slot="slot", order=0, kind="yaml")
     with pytest.raises(ValidationError):
-        CapabilityDefinition(
+        _ = CapabilityDefinition(
             id="example",
             description="x",
             contributions=(contribution, contribution),

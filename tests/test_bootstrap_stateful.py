@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import unittest
+from typing import cast
+
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
@@ -9,7 +12,8 @@ from scripts.bootstrap.values import ResourceLimits
 
 
 class BlobStoreStateMachine(RuleBasedStateMachine):
-    limits = ResourceLimits(max_file_bytes=4, max_unique_bytes=8)
+    limits: ResourceLimits = ResourceLimits(max_file_bytes=4, max_unique_bytes=8)
+    store: VerifiedBlobStore
 
     def __init__(self) -> None:
         super().__init__()
@@ -74,4 +78,6 @@ class BlobStoreStateMachine(RuleBasedStateMachine):
             assert unique_bytes == sum(len(record.content) for record in records)
 
 
-TestBlobStoreStateMachine = BlobStoreStateMachine.TestCase
+TestBlobStoreStateMachine = cast(
+    type[unittest.TestCase], BlobStoreStateMachine.TestCase
+)

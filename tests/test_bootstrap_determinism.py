@@ -33,22 +33,22 @@ class CanonicalJsonTests(unittest.TestCase):
         self.assertEqual(canonical_json(None), b"null")
         for value in (1.5, float("nan"), 2**53 + 1, "\ud800"):
             with self.assertRaises(ValueError):
-                canonical_json(value)
+                _ = canonical_json(value)
 
     def test_rejects_duplicate_keys_and_non_utf8(self) -> None:
         for payload in (b'{"a":1,"a":2}', b"\xff"):
             with self.assertRaises(ValueError):
-                decode_json(payload)
+                _ = decode_json(payload)
 
     def test_rejects_documents_beyond_the_maximum_nesting_depth(self) -> None:
         deep = b"[" * 200 + b"0" + b"]" * 200
         with self.assertRaises(ValueError):
-            decode_json(deep)
+            _ = decode_json(deep)
         nested: object = 0
         for _ in range(200):
             nested = [nested]
         with self.assertRaises(ValueError):
-            canonical_json(nested)
+            _ = canonical_json(nested)
 
 
 class PathTests(unittest.TestCase):
@@ -72,7 +72,7 @@ class PathTests(unittest.TestCase):
     def test_normalizes_mixed_line_endings_to_one_trailing_lf(self) -> None:
         self.assertEqual(normalize_text(b"a\r\nb\rc\n\n"), b"a\nb\nc\n")
         with self.assertRaises(ValueError):
-            normalize_text(b"\xff")
+            _ = normalize_text(b"\xff")
 
 
 class IdentityTests(unittest.TestCase):
@@ -115,7 +115,7 @@ class IdentityTests(unittest.TestCase):
 
     def test_tree_hash_rejects_duplicate_paths(self) -> None:
         with self.assertRaises(ValueError):
-            tree_hash(
+            _ = tree_hash(
                 b"tree",
                 (
                     (RepoPath("a"), b"1", PosixMode.FILE),
@@ -190,7 +190,7 @@ class IdentityTests(unittest.TestCase):
             file_state_hash(b"file", absent), file_state_hash(b"file", empty)
         )
         with self.assertRaises(ValueError):
-            file_state_identity(None, text=True, mode=PosixMode.FILE)
+            _ = file_state_identity(None, text=True, mode=PosixMode.FILE)
 
     def test_target_source_and_manifest_identities_are_tagged_and_immutable(
         self,
@@ -213,8 +213,8 @@ class IdentityTests(unittest.TestCase):
         self.assertIsInstance(manifest, ManifestIdentity)
         self.assertEqual(manifest.digest, tagged_digest(b"manifest", manifest.payload))
         with self.assertRaises(ValueError):
-            target_identity(b"/workspace/project", device=-1, inode=42)
+            _ = target_identity(b"/workspace/project", device=-1, inode=42)
 
 
 if __name__ == "__main__":
-    unittest.main()
+    _ = unittest.main()

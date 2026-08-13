@@ -8,10 +8,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import assert_never
 
 from scripts.bootstrap.identity import TargetIdentity
 from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.paths import RepoPath
+from scripts.bootstrap.values import JournalPhase
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,7 +41,7 @@ class UnsupportedGitTarget:
     reason: TargetReason
 
     def __post_init__(self) -> None:
-        if not isinstance(self.reason, TargetReason):
+        if not isinstance(self.reason, TargetReason):  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
             raise TypeError("git targets require a closed target reason")
 
 
@@ -85,7 +87,7 @@ class PendingIdentity:
 class ValidatedJournal:
     operation: str
     target: TargetIdentity
-    phase: str
+    phase: JournalPhase
 
 
 @dataclass(frozen=True, slots=True)
@@ -268,7 +270,7 @@ class SnapshotExistingProject:
 
     def __post_init__(self) -> None:
         if not isinstance(
-            self.condition,
+            self.condition,  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
             (SnapshotSourceSame, SnapshotSourceChanged, SnapshotSourceUnrecoverable),
         ):
             raise TypeError("snapshot projects require a snapshot condition")
@@ -281,7 +283,7 @@ class CopierExistingProject:
     snapshot: TargetSnapshot
 
     def __post_init__(self) -> None:
-        if not isinstance(
+        if not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
             self.condition, (CopierConflicted, CopierSourceSame, CopierSourceChanged)
         ):
             raise TypeError("Copier projects require a Copier condition")
@@ -316,7 +318,7 @@ class RecognizedScaffold:
     snapshot: tuple[RepoPath, ...]
 
     def __post_init__(self) -> None:
-        if not isinstance(self.generation, GenerationPath):
+        if not isinstance(self.generation, GenerationPath):  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
             raise TypeError("recognized scaffolds require a generation path")
 
 
@@ -395,29 +397,51 @@ type SystemState = (
 )
 
 
+def _worktree_context(
+    worktree: WorktreeContext | SupportedWorktree,
+) -> WorktreeContext:
+    match worktree:
+        case SupportedWorktree():
+            return worktree.context
+        case WorktreeContext():
+            return worktree
+    return assert_never(  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
+        worktree
+    )
+
+
 def context_of(state: SystemState) -> WorktreeContext | None:
-    if isinstance(state, TargetUnavailable):
-        return None
-    if isinstance(
-        state,
-        (StalePendingWrite, JournalPending, JournalAtDifferentTarget, StateRootInvalid),
-    ):
-        return state.worktree
-    if isinstance(state, (ProtectedTargetAvailable, ProjectAvailable)):
-        return (
-            state.worktree.context
-            if isinstance(state.worktree, SupportedWorktree)
-            else state.worktree
-        )
-    return None
+    match state:
+        case TargetUnavailable():
+            return None
+        case StalePendingWrite() | JournalPending():
+            return state.worktree
+        case JournalAtDifferentTarget() | StateRootInvalid():
+            return state.worktree
+        case ProtectedTargetAvailable() | ProjectAvailable():
+            return _worktree_context(state.worktree)
+    return assert_never(
+        state
+    )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
+
+
+def _is_template_protected(context: WorktreeContext | None) -> bool:
+    match context:
+        case WorktreeContext(protection=CanonicalTemplateSource()):
+            return True
+        case WorktreeContext() | None:
+            return False
+    return assert_never(  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
+        context
+    )
 
 
 def is_protected(state: SystemState) -> bool:
-    if isinstance(state, ProtectedTargetAvailable):
-        return True
-    if isinstance(state, ProjectAvailable):
-        context = context_of(state)
-        return context is not None and isinstance(
-            context.protection, CanonicalTemplateSource
-        )
-    return False
+    match state:
+        case ProtectedTargetAvailable():
+            return True
+        case ProjectAvailable():
+            return _is_template_protected(context_of(state))
+        case _:
+            # The remaining states carry no project protection.
+            return False

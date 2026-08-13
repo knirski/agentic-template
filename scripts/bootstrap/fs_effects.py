@@ -205,7 +205,7 @@ def list_directory_entries(
     """
 
     try:
-        os.lseek(dir_fd, 0, os.SEEK_SET)
+        _ = os.lseek(dir_fd, 0, os.SEEK_SET)
     except OSError as error:
         return Err(map_observation_error(error, "directory listing"))
     try:

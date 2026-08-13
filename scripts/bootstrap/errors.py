@@ -210,14 +210,15 @@ type CommandError = (
 def sanitize_process_error(error: BaseException) -> ProcessError:
     """Map process-launch exceptions to the finite process error vocabulary."""
 
-    if isinstance(error, FileNotFoundError):
-        kind = ProcessErrorKind.EXECUTABLE_NOT_FOUND
-    elif isinstance(error, PermissionError):
-        kind = ProcessErrorKind.EXECUTE_PERMISSION_DENIED
-    elif isinstance(error, (NotImplementedError, ValueError)):
-        kind = ProcessErrorKind.UNSUPPORTED_PROCESS_OPERATION
-    else:
-        kind = ProcessErrorKind.OTHER_SANITIZED_LAUNCH_ERROR
+    match error:
+        case FileNotFoundError():
+            kind = ProcessErrorKind.EXECUTABLE_NOT_FOUND
+        case PermissionError():
+            kind = ProcessErrorKind.EXECUTE_PERMISSION_DENIED
+        case NotImplementedError() | ValueError():
+            kind = ProcessErrorKind.UNSUPPORTED_PROCESS_OPERATION
+        case _:
+            kind = ProcessErrorKind.OTHER_SANITIZED_LAUNCH_ERROR
     return ProcessError(kind)
 
 

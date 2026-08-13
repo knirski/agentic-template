@@ -40,7 +40,7 @@ from scripts.bootstrap.render import (
     SettingSource,
     SlotDefinition,
     SubstitutionDefinition,
-    _remove_marker_line,
+    _remove_marker_line,  # pyright: ignore[reportPrivateUsage]  deliberate unit test of private render helper
     apply_substitutions,
     derive_managed_inventory,
     encode_scalar,
@@ -59,7 +59,7 @@ PROJECT = ProjectInfo(name="example", default_branch="main")
 LICENSING = LicensingInfo(mode="retain-apache-2.0", content_sha256=None)
 PROFILE = ProfileInfo(id="portable", frozen=())
 MAINTENANCE = MaintenanceInfo(status="clean", retained_paths=())
-SLOTS = MappingProxyType({})
+SLOTS: Mapping[str, SlotContent] = MappingProxyType({})
 
 
 def intern_all(
@@ -383,7 +383,7 @@ def test_rendering_is_byte_identical_across_input_insertion_orders() -> None:
 def test_renderer_purity_under_blocked_ambient_access(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fail(*args: object, **kwargs: object) -> object:
+    def fail(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("ambient access attempted")
 
     class RaisingMapping(Mapping[str, str]):
@@ -725,7 +725,7 @@ def test_invalid_default_branch_is_rejected() -> None:
     store, content_ids = fixture_blobs()
     render_input = make_render_input(store, content_ids)
     with pytest.raises(ValueError, match="default_branch"):
-        replace(
+        _ = replace(
             render_input,
             project=ProjectInfo(name="example", default_branch="bad branch"),
         )
@@ -735,7 +735,7 @@ def test_invalid_retained_path_is_rejected() -> None:
     store, content_ids = fixture_blobs()
     render_input = make_render_input(store, content_ids)
     with pytest.raises(ValueError, match="retained"):
-        replace(
+        _ = replace(
             render_input,
             maintenance=MaintenanceInfo(
                 status="retained", retained_paths=(RepoPath("a/../b"),)
@@ -747,7 +747,7 @@ def test_invalid_licensing_digest_is_rejected() -> None:
     store, content_ids = fixture_blobs()
     render_input = make_render_input(store, content_ids)
     with pytest.raises(ValueError, match="sha256"):
-        replace(
+        _ = replace(
             render_input,
             licensing=LicensingInfo(
                 mode="provided-project-license", content_sha256="not-a-digest"
@@ -1019,11 +1019,7 @@ def test_nested_optional_section_is_rejected() -> None:
     store, content_ids = fixture_blobs()
     store, nested_id = intern(
         store,
-        b"agentic-template:if:strict:begin\n"
-        b"agentic-template:if:strict:begin\n"
-        b"x\n"
-        b"agentic-template:if:strict:end\n"
-        b"agentic-template:if:strict:end\n",
+        b"agentic-template:if:strict:begin\nagentic-template:if:strict:begin\nx\nagentic-template:if:strict:end\nagentic-template:if:strict:end\n",
     )
     render_input = make_render_input(store, content_ids)
     core = render_input.core.model_copy(
@@ -1119,19 +1115,19 @@ def test_core_definition_rejects_invalid_shapes() -> None:
     _store, content_ids = fixture_blobs()
     core = fixture_core(content_ids)
     with pytest.raises(ValidationError):
-        CoreDefinition(
+        _ = CoreDefinition(
             artifacts=core.artifacts,
             slots=(core.slots[0].model_copy(update={"owner_artifact": "missing"}),),
             contributions=core.contributions,
         )
     with pytest.raises(ValidationError):
-        CoreDefinition(
+        _ = CoreDefinition(
             artifacts=(core.artifacts[0], core.artifacts[0]),
             slots=core.slots,
             contributions=core.contributions,
         )
     with pytest.raises(ValidationError):
-        ArtifactDefinition(
+        _ = ArtifactDefinition(
             id="contextless",
             path="x.txt",
             kind="text",
@@ -1144,12 +1140,12 @@ def test_core_definition_rejects_invalid_shapes() -> None:
             ),
         )
     with pytest.raises(ValidationError):
-        ArtifactDefinition(
+        _ = ArtifactDefinition(
             id="bad-blob",
             path="x.txt",
             kind="text",
             install_mode=0o644,
-            template_blob=cast(ContentId, "not-a-digest"),
+            template_blob=cast(ContentId, "not-a-digest"),  # pyright: ignore[reportInvalidCast]  intentional invalid-value negative test
         )
 
 
@@ -1238,6 +1234,8 @@ def test_github_baseline_requires_snapshot_commit() -> None:
             raise AssertionError("expected a GitHub source baseline")
         case Err(error):
             raise AssertionError(f"unexpected source baseline failure: {error}")
+        case Ok(_):
+            raise AssertionError("unexpected source baseline variant")
     for invalid in (None, "", "   ", "not-a-commit", "ABC" * 20):
         match derive_source_baseline(
             GenerationPath.GITHUB, entries, snapshot_commit=invalid
@@ -1261,6 +1259,8 @@ def test_copier_baseline_rejects_snapshot_commit() -> None:
             raise AssertionError("expected a Copier source baseline")
         case Err(error):
             raise AssertionError(f"unexpected source baseline failure: {error}")
+        case Ok(_):
+            raise AssertionError("unexpected source baseline variant")
     match derive_source_baseline(GenerationPath.COPIER, entries, snapshot_commit="abc"):
         case Err(error):
             assert error.kind is ContractErrorKind.SOURCE_CONTRACT_INVALID
@@ -1338,7 +1338,7 @@ def test_source_baseline_rejects_invalid_kind_and_file_modes() -> None:
         (
             LifecycleSourceEntry(
                 path=RepoPath("a.txt"),
-                kind=cast(Literal["file", "directory"], "weird"),
+                kind=cast(Literal["file", "directory"], "weird"),  # pyright: ignore[reportInvalidCast]  intentional invalid-value negative test
                 mode=PosixMode.FILE,
                 sha256="a" * 64,
             ),
@@ -1373,30 +1373,30 @@ def test_content_id_accepts_plain_hex_string() -> None:
         path="x.txt",
         kind="text",
         install_mode=0o644,
-        template_blob=cast(ContentId, "0" * 64),
+        template_blob=cast(ContentId, "0" * 64),  # pyright: ignore[reportInvalidCast]  intentional raw-hex-string input
     )
     assert artifact.template_blob == ContentId("0" * 64)
 
 
 def test_artifact_definition_rejects_unsafe_path_and_duplicate_substitutions() -> None:
     with pytest.raises(ValidationError):
-        ArtifactDefinition(
+        _ = ArtifactDefinition(
             id="unsafe",
             path="../unsafe",
             kind="text",
             install_mode=0o644,
-            template_blob=cast(ContentId, "a" * 64),
+            template_blob=cast(ContentId, "a" * 64),  # pyright: ignore[reportInvalidCast]  intentional raw-hex-string input
         )
     substitution = SubstitutionDefinition(
         name="value", source=ProjectSource(kind="project", key="name")
     )
     with pytest.raises(ValidationError):
-        ArtifactDefinition(
+        _ = ArtifactDefinition(
             id="dups",
             path="x.txt",
             kind="text",
             install_mode=0o644,
-            template_blob=cast(ContentId, "a" * 64),
+            template_blob=cast(ContentId, "a" * 64),  # pyright: ignore[reportInvalidCast]  intentional raw-hex-string input
             substitutions=(substitution, substitution),
         )
 
@@ -1405,7 +1405,7 @@ def test_core_and_capability_definitions_reject_missing_and_duplicate_members() 
     _store, content_ids = fixture_blobs()
     core = fixture_core(content_ids)
     with pytest.raises(ValidationError):
-        CoreDefinition(
+        _ = CoreDefinition(
             artifacts=core.artifacts,
             slots=core.slots,
             contributions=(
@@ -1419,7 +1419,7 @@ def test_core_and_capability_definitions_reject_missing_and_duplicate_members() 
             ),
         )
     with pytest.raises(ValidationError):
-        CapabilityDefinition(
+        _ = CapabilityDefinition(
             id="dups",
             artifacts=(core.artifacts[0], core.artifacts[0]),
         )
@@ -1428,16 +1428,16 @@ def test_core_and_capability_definitions_reject_missing_and_duplicate_members() 
         path=core.artifacts[0].path,
         kind="text",
         install_mode=0o644,
-        template_blob=cast(ContentId, "a" * 64),
+        template_blob=cast(ContentId, "a" * 64),  # pyright: ignore[reportInvalidCast]  intentional raw-hex-string input
     )
     with pytest.raises(ValidationError):
-        CoreDefinition(
+        _ = CoreDefinition(
             artifacts=(core.artifacts[0], duplicate_path),
             slots=core.slots,
             contributions=core.contributions,
         )
     with pytest.raises(ValidationError):
-        CapabilityDefinition(
+        _ = CapabilityDefinition(
             id="dup-paths",
             artifacts=(core.artifacts[0], duplicate_path),
         )
@@ -1624,26 +1624,29 @@ def test_render_input_rejects_invalid_shapes() -> None:
     store, content_ids = fixture_blobs()
     render_input = make_render_input(store, content_ids)
     with pytest.raises(ValueError, match="generation_path"):
-        replace(render_input, generation_path=cast(GenerationPath, "github"))
+        _ = replace(
+            render_input,
+            generation_path=cast(GenerationPath, "github"),  # pyright: ignore[reportInvalidCast]  intentional invalid-value negative test
+        )
     with pytest.raises(ValueError, match="project name"):
-        replace(
+        _ = replace(
             render_input, project=ProjectInfo(name="bad name", default_branch="main")
         )
     with pytest.raises(ValueError, match="licensing mode"):
-        replace(
+        _ = replace(
             render_input, licensing=LicensingInfo(mode="other", content_sha256=None)
         )
     with pytest.raises(ValueError, match="capability id"):
-        replace(render_input, effective=("Bad-ID",))
+        _ = replace(render_input, effective=("Bad-ID",))
     with pytest.raises(ValueError, match="slot mode"):
-        replace(
+        _ = replace(
             render_input,
             slots=MappingProxyType(
                 {"readme": SlotContent(mode="other", content_sha256=None)}
             ),
         )
     with pytest.raises(ValueError, match="document path"):
-        replace(
+        _ = replace(
             render_input,
             documents=MappingProxyType({RepoPath("../x.md"): ("body",)}),
         )
@@ -1653,8 +1656,7 @@ def test_optional_section_markers_at_line_and_file_boundaries() -> None:
     store, content_ids = fixture_blobs()
     store, eof_id = intern(
         store,
-        b"[project]\nname = x\nagentic-template:if:strict:begin\n"
-        b"[tool.ruff]\nstrict = true\nagentic-template:if:strict:end",
+        b"[project]\nname = x\nagentic-template:if:strict:begin\n[tool.ruff]\nstrict = true\nagentic-template:if:strict:end",
     )
     render_input = make_render_input(store, content_ids)
     core = render_input.core.model_copy(
@@ -1673,8 +1675,7 @@ def test_optional_section_markers_at_line_and_file_boundaries() -> None:
     )
     store, indented_id = intern(
         store,
-        b"[project]\n  agentic-template:if:strict:begin\n[tool.ruff]\n"
-        b"strict = true\n  agentic-template:if:strict:end\n",
+        b"[project]\n  agentic-template:if:strict:begin\n[tool.ruff]\nstrict = true\n  agentic-template:if:strict:end\n",
     )
     core = render_input.core.model_copy(
         update={
@@ -1690,8 +1691,7 @@ def test_optional_section_markers_at_line_and_file_boundaries() -> None:
     assert rendered["pyproject.toml"] == b"[project]\n[tool.ruff]\nstrict = true\n"
     store, inline_id = intern(
         store,
-        b"prefix agentic-template:if:strict:begin mid "
-        b"agentic-template:if:strict:end suffix",
+        b"prefix agentic-template:if:strict:begin mid agentic-template:if:strict:end suffix",
     )
     core = render_input.core.model_copy(
         update={
@@ -1811,8 +1811,7 @@ def test_optional_section_mismatched_names_are_rejected() -> None:
 
 def test_maintenance_substitutions_render_retained_paths() -> None:
     result = apply_substitutions(
-        b"status = agentic-template:value:status\n"
-        b"retained = agentic-template:value:kept\n",
+        b"status = agentic-template:value:status\nretained = agentic-template:value:kept\n",
         (
             SubstitutionDefinition(
                 name="status",

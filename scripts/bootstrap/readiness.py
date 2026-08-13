@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-Severity = Literal["blocking", "informational"]
+type Severity = Literal["blocking", "informational"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,7 +20,7 @@ class Repository:
     """Repository-wide subject; it is deliberately not represented by an empty path."""
 
 
-SubjectAt = SubjectPath | Repository
+type SubjectAt = SubjectPath | Repository
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -59,10 +59,16 @@ class Finding:
                 raise TypeError(f"unexpected Finding fields: {tuple(kwargs)}")
             if isinstance(subject_at, Path):
                 subject_at = SubjectPath(subject_at.as_posix())
-            if not isinstance(subject_at, (SubjectPath, Repository)):
-                raise TypeError("subject_at must be SubjectPath or Repository")
+            if not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
+                subject_at, (SubjectPath, Repository)
+            ):
+                raise TypeError(  # pyright: ignore[reportUnreachable] — the 4-arg adapter contract is enforced here at runtime
+                    "subject_at must be SubjectPath or Repository"
+                )
             if severity not in ("blocking", "informational"):
-                raise TypeError("severity must be blocking or informational")
+                raise TypeError(  # pyright: ignore[reportUnreachable] — the severity contract is enforced here at runtime
+                    "severity must be blocking or informational"
+                )
         object.__setattr__(self, "code", str(code))
         object.__setattr__(self, "subject_at", subject_at)
         object.__setattr__(self, "subject", str(subject))
@@ -73,24 +79,26 @@ class Finding:
 
     @property
     def path(self) -> Path:
-        return (
-            Path(self.subject_at.value)
-            if isinstance(self.subject_at, SubjectPath)
-            else Path(".")
-        )
+        match self.subject_at:
+            case SubjectPath():
+                return Path(self.subject_at.value)
+            case Repository():
+                return Path(".")
 
     def identity(self) -> tuple[str, str, str, str]:
-        location = (
-            self.subject_at.value if isinstance(self.subject_at, SubjectPath) else ""
-        )
+        match self.subject_at:
+            case SubjectPath():
+                location = self.subject_at.value
+            case Repository():
+                location = ""
         return (self.code, location, self.subject, self.rule)
 
-    def render(self, root: Path | None = None) -> str:
-        location = (
-            self.subject_at.value
-            if isinstance(self.subject_at, SubjectPath)
-            else "repository"
-        )
+    def render(self, _root: Path | None = None) -> str:
+        match self.subject_at:
+            case SubjectPath():
+                location = self.subject_at.value
+            case Repository():
+                location = "repository"
         return f"{self.code}: {location}: {self.message}; next: {self.next_action}"
 
 

@@ -19,6 +19,7 @@ import stat
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import cast
 
 from scripts.bootstrap.errors import (
     InternalCode,
@@ -113,7 +114,8 @@ def _launch_target_reason(error: OSError, cwd: bytes) -> TargetReason:
     missing or non-executable ``git`` executable is an environment problem.
     """
 
-    if error.filename is not None and os.fsdecode(error.filename) == os.fsdecode(cwd):
+    filename = cast(str | bytes | None, error.filename)
+    if filename is not None and os.fsdecode(filename) == os.fsdecode(cwd):
         return TargetReason.NOT_WORKTREE
     return TargetReason.GIT_UNAVAILABLE
 

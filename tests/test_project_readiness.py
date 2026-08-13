@@ -50,14 +50,17 @@ print('project validation passed')
 
 
 class ReadinessFixtures(unittest.TestCase):
+    tmp: tempfile.TemporaryDirectory[str]  # pyright: ignore[reportUninitializedInstanceVariable]  initialized in unittest setUp lifecycle
+    root: Path  # pyright: ignore[reportUninitializedInstanceVariable]  initialized in unittest setUp lifecycle
+
     @override
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         (self.root / "docs").mkdir()
         (self.root / "scripts").mkdir()
-        shutil.copy2(CHECKER, self.root / "scripts/check_project_readiness.py")
-        shutil.copytree(ROOT / "scripts/bootstrap", self.root / "scripts/bootstrap")
+        _ = shutil.copy2(CHECKER, self.root / "scripts/check_project_readiness.py")
+        _ = shutil.copytree(ROOT / "scripts/bootstrap", self.root / "scripts/bootstrap")
         self.write("docs/prd.md", VALID_PRD)
         self.write("README.md", VALID_README)
         self.write("scripts/validate_project.py", VALID_HOOK, executable=True)
@@ -69,7 +72,7 @@ class ReadinessFixtures(unittest.TestCase):
     def write(self, relative: str, content: str, executable: bool = False) -> None:
         path = self.root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        _ = path.write_text(content, encoding="utf-8")
         if executable:
             path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
@@ -178,7 +181,7 @@ class ReadinessFixtures(unittest.TestCase):
 
     def test_validation_hook_symlink_is_rejected(self) -> None:
         target = self.root / "real-validation-hook"
-        target.write_text(VALID_HOOK, encoding="utf-8")
+        _ = target.write_text(VALID_HOOK, encoding="utf-8")
         target.chmod(target.stat().st_mode | stat.S_IXUSR)
         hook = self.root / "scripts/validate_project.py"
         hook.unlink()
@@ -188,7 +191,7 @@ class ReadinessFixtures(unittest.TestCase):
         self.assertIn("READINESS_HOOK_NOT_REGULAR", result.stderr)
 
     def test_internal_read_error_returns_two(self) -> None:
-        (self.root / "docs/prd.md").write_bytes(b"\xff")
+        _ = (self.root / "docs/prd.md").write_bytes(b"\xff")
         result = self.run_checker()
         self.assertEqual(result.returncode, 2)
         self.assertIn("INTERNAL_READINESS_ERROR", result.stderr)
@@ -206,7 +209,7 @@ class ReadinessFixtures(unittest.TestCase):
     def test_hook_is_inspected_without_execution_or_mutation(self) -> None:
         canary = self.root / "canary"
         hook = self.root / "scripts/validate_project.py"
-        hook.write_text(
+        _ = hook.write_text(
             f"#!/usr/bin/env python3\nfrom pathlib import Path\nPath({str(canary)!r}).write_text('executed')\n{HOOK_SENTINEL!r}\n",
             encoding="utf-8",
         )
@@ -225,4 +228,4 @@ class ReadinessFixtures(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    _ = unittest.main()

@@ -79,7 +79,9 @@ def _category(error: CommandError) -> DiagnosticCategory:
             return DiagnosticCategory.TRANSACTION
         case CoreInternalFailure():
             return DiagnosticCategory.INTERNAL
-    return assert_never(error)  # pragma: no cover
+    return assert_never(
+        error
+    )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
 
 
 def _kind_name(error: CommandError) -> str:
@@ -101,7 +103,9 @@ def _kind_name(error: CommandError) -> str:
             | TransitionError()
         ):
             return error.kind.value
-    return assert_never(error)  # pragma: no cover
+    return assert_never(
+        error
+    )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
 
 
 def command_error_diagnostic(error: CommandError) -> Diagnostic:
@@ -225,4 +229,6 @@ def outcome_for_error(error: CommandError) -> CommandOutcome:
             return InternalFailure((diagnostic,))
         case ObservationError() | TransitionError():
             return ActionRequired((diagnostic,))
-    return assert_never(error)  # pragma: no cover
+    return assert_never(
+        error
+    )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard

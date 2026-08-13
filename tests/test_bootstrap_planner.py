@@ -17,6 +17,7 @@ from scripts.bootstrap.canonical_json import canonical_json
 from scripts.bootstrap.identity import (
     DirectoryState,
     FileEntry,
+    FileState,
     PosixMode,
     file_state_identity,
     sha256_hex,
@@ -65,7 +66,6 @@ from scripts.bootstrap.planner import (
     DirectoryAbsent,
     ExpectedGatePass,
     ExpectedGateRefusal,
-    FileState,
     MaintenanceDecision,
     ObservedDirectoryEntry,
     ObservedFileEntry,
@@ -444,8 +444,10 @@ def get_plan(result: Result[OperationPlan, CompileError]) -> OperationPlan:
 def _operation_by_kind(receipt: dict[str, object], kind: str) -> dict[str, object]:
     operations = receipt["operations"]
     assert isinstance(operations, list)
+    operations = cast(list[object], operations)
     for operation in operations:
         assert isinstance(operation, dict)
+        operation = cast(dict[str, object], operation)
         if operation.get("kind") == kind:
             return operation
     raise AssertionError(f"no {kind} operation in receipt")
@@ -472,6 +474,7 @@ def _receipt_with_tree_extra_key() -> dict[str, object]:
     tree = _operation_by_kind(receipt, "create_tree")
     planned_new = tree["planned_new"]
     assert isinstance(planned_new, dict)
+    planned_new = cast(dict[str, object], planned_new)
     planned_new["extra"] = 1
     return receipt
 
@@ -501,11 +504,14 @@ def _receipt_with_tree_entry_missing_key() -> dict[str, object]:
     tree = _operation_by_kind(receipt, "create_tree")
     planned_new = tree["planned_new"]
     assert isinstance(planned_new, dict)
+    planned_new = cast(dict[str, object], planned_new)
     entries = planned_new["entries"]
     assert isinstance(entries, list) and entries
+    entries = cast(list[object], entries)
     entry = entries[0]
     assert isinstance(entry, dict)
-    entry.pop("path")
+    entry = cast(dict[str, object], entry)
+    _ = entry.pop("path")
     return receipt
 
 
@@ -514,10 +520,13 @@ def _receipt_with_tree_entry_bad_digest() -> dict[str, object]:
     tree = _operation_by_kind(receipt, "create_tree")
     planned_new = tree["planned_new"]
     assert isinstance(planned_new, dict)
+    planned_new = cast(dict[str, object], planned_new)
     entries = planned_new["entries"]
     assert isinstance(entries, list)
+    entries = cast(list[object], entries)
     for entry in entries:
         assert isinstance(entry, dict)
+        entry = cast(dict[str, object], entry)
         if entry.get("kind") == "file":
             entry["content_id"] = "zzz"
             return receipt
@@ -543,6 +552,7 @@ def _receipt_with_tree_bad_sha() -> dict[str, object]:
     tree = _operation_by_kind(receipt, "create_tree")
     planned_new = tree["planned_new"]
     assert isinstance(planned_new, dict)
+    planned_new = cast(dict[str, object], planned_new)
     planned_new["raw_tree_sha256"] = "zzz"
     return receipt
 
@@ -552,8 +562,10 @@ def _receipt_with_tree_entry_not_mapping() -> dict[str, object]:
     tree = _operation_by_kind(receipt, "create_tree")
     planned_new = tree["planned_new"]
     assert isinstance(planned_new, dict)
+    planned_new = cast(dict[str, object], planned_new)
     entries = planned_new["entries"]
     assert isinstance(entries, list) and entries
+    entries = cast(list[object], entries)
     entries[0] = "x"
     return receipt
 
@@ -587,16 +599,21 @@ def _nested_copier_receipt() -> dict[str, object]:
 def _directory_entry(receipt: dict[str, object]) -> dict[str, object]:
     operations = receipt["operations"]
     assert isinstance(operations, list)
+    operations = cast(list[object], operations)
     for tree in operations:
         assert isinstance(tree, dict)
+        tree = cast(dict[str, object], tree)
         if tree.get("kind") != "create_tree":
             continue
         planned_new = tree["planned_new"]
         assert isinstance(planned_new, dict)
+        planned_new = cast(dict[str, object], planned_new)
         entries = planned_new["entries"]
         assert isinstance(entries, list)
+        entries = cast(list[object], entries)
         for entry in entries:
             assert isinstance(entry, dict)
+            entry = cast(dict[str, object], entry)
             if entry.get("kind") == "directory":
                 return entry
     raise AssertionError("no directory entry in tree")
@@ -605,16 +622,21 @@ def _directory_entry(receipt: dict[str, object]) -> dict[str, object]:
 def _file_entry(receipt: dict[str, object]) -> dict[str, object]:
     operations = receipt["operations"]
     assert isinstance(operations, list)
+    operations = cast(list[object], operations)
     for tree in operations:
         assert isinstance(tree, dict)
+        tree = cast(dict[str, object], tree)
         if tree.get("kind") != "create_tree":
             continue
         planned_new = tree["planned_new"]
         assert isinstance(planned_new, dict)
+        planned_new = cast(dict[str, object], planned_new)
         entries = planned_new["entries"]
         assert isinstance(entries, list)
+        entries = cast(list[object], entries)
         for entry in entries:
             assert isinstance(entry, dict)
+            entry = cast(dict[str, object], entry)
             if entry.get("kind") == "file":
                 return entry
     raise AssertionError("no file entry in tree")
@@ -622,7 +644,7 @@ def _file_entry(receipt: dict[str, object]) -> dict[str, object]:
 
 def _receipt_with_tree_dir_entry_missing_mode() -> dict[str, object]:
     receipt = _nested_copier_receipt()
-    _directory_entry(receipt).pop("mode")
+    _ = _directory_entry(receipt).pop("mode")
     return receipt
 
 
@@ -634,7 +656,7 @@ def _receipt_with_tree_file_entry_bad_path() -> dict[str, object]:
 
 def _receipt_with_tree_file_entry_missing_id() -> dict[str, object]:
     receipt = _copier_receipt()
-    _file_entry(receipt).pop("content_id")
+    _ = _file_entry(receipt).pop("content_id")
     return receipt
 
 
@@ -664,6 +686,7 @@ def _receipt_with_remove_empty_old_mode_type() -> dict[str, object]:
     remove = _operation_by_kind(receipt, "remove_empty_directory")
     expected_old = remove["expected_old"]
     assert isinstance(expected_old, dict)
+    expected_old = cast(dict[str, object], expected_old)
     expected_old["mode"] = "x"
     return receipt
 
@@ -673,10 +696,13 @@ def _receipt_with_tree_entry_extra_key() -> dict[str, object]:
     tree = _operation_by_kind(receipt, "create_tree")
     planned_new = tree["planned_new"]
     assert isinstance(planned_new, dict)
+    planned_new = cast(dict[str, object], planned_new)
     entries = planned_new["entries"]
     assert isinstance(entries, list) and entries
+    entries = cast(list[object], entries)
     entry = entries[0]
     assert isinstance(entry, dict)
+    entry = cast(dict[str, object], entry)
     entry["extra"] = 1
     return receipt
 
@@ -690,6 +716,7 @@ def _set_remove_empty_bad_mode(receipt: dict[str, object]) -> None:
     remove = _operation_by_kind(receipt, "remove_empty_directory")
     expected_old = remove["expected_old"]
     assert isinstance(expected_old, dict)
+    expected_old = cast(dict[str, object], expected_old)
     expected_old["mode"] = 0o7777 + 1
 
 
@@ -700,6 +727,380 @@ def github_plan() -> OperationPlan:
 
 def github_snapshot() -> TargetSnapshot:
     return fixture_github_snapshot(licensing_mode="retain-apache-2.0")
+
+
+def _manifest_answers_missing(document: dict[str, object]) -> object:
+    return document.pop("answers")
+
+
+def _manifest_project_name(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["project"]).__setitem__("name", "bad name")
+
+
+def _manifest_default_branch(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["project"]).__setitem__(
+        "default_branch", "bad branch"
+    )
+
+
+def _manifest_profile_id(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["profile"]).__setitem__("id", "Bad")
+
+
+def _manifest_profile_requested_unsorted(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["profile"]).__setitem__(
+        "requested", ["nix", "cachix-publish"]
+    )
+
+
+def _manifest_settings_capability_id(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["settings"]).__setitem__("Bad", {})
+
+
+def _manifest_settings_name(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["settings"]).__setitem__(
+        "nix", {"bad-name": "x"}
+    )
+
+
+def _manifest_settings_value(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["settings"]).__setitem__(
+        "nix", {"cache_name": 5}
+    )
+
+
+def _manifest_licensing_mode(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["licensing"]).__setitem__("mode", "other")
+
+
+def _manifest_licensing_digest(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["licensing"]).__setitem__(
+        "content_sha256", "zzz"
+    )
+
+
+def _manifest_slot_mode(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    slots = cast(dict[str, object], answers["slots"])
+    return cast(dict[str, object], slots["readme"]).__setitem__("mode", "other")
+
+
+def _manifest_slot_digest(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    slots = cast(dict[str, object], answers["slots"])
+    return cast(dict[str, object], slots["readme"]).__setitem__("content_sha256", "zzz")
+
+
+def _manifest_unknown_slot(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["slots"]).__setitem__(
+        "unknown", {"mode": "file", "content_sha256": None}
+    )
+
+
+def _manifest_additions_unsorted(document: dict[str, object]) -> object:
+    return cast(dict[str, object], document["additions"]).__setitem__(
+        "requested", ["nix", "cachix-publish"]
+    )
+
+
+def _manifest_additions_settings(document: dict[str, object]) -> object:
+    additions = cast(dict[str, object], document["additions"])
+    return cast(dict[str, object], additions["settings"]).__setitem__("Bad", {})
+
+
+def _manifest_generation_path(document: dict[str, object]) -> object:
+    return cast(dict[str, object], document["provenance"]).__setitem__(
+        "generation_path", "other"
+    )
+
+
+def _manifest_maintenance_status(document: dict[str, object]) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    return cast(dict[str, object], provenance["maintenance"]).__setitem__(
+        "status", "other"
+    )
+
+
+def _manifest_retained_paths_unsafe(document: dict[str, object]) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    return cast(dict[str, object], provenance["maintenance"]).__setitem__(
+        "retained_paths", [".."]
+    )
+
+
+def _manifest_baseline_kind(document: dict[str, object]) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    return cast(dict[str, object], provenance["source_baseline"]).__setitem__(
+        "kind", "other"
+    )
+
+
+def _manifest_baseline_fingerprint(document: dict[str, object]) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    return cast(dict[str, object], provenance["source_baseline"]).__setitem__(
+        "fingerprint", "zzz"
+    )
+
+
+def _manifest_baseline_entries_unsafe_path(document: dict[str, object]) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    return cast(dict[str, object], provenance["source_baseline"]).__setitem__(
+        "entries",
+        [
+            {
+                "path": "..",
+                "kind": "file",
+                "mode": 420,
+                "sha256": "0" * 64,
+            }
+        ],
+    )
+
+
+def _manifest_baseline_missing_snapshot_commit(
+    document: dict[str, object],
+) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    baseline = cast(dict[str, object], provenance["source_baseline"])
+    return baseline.pop("snapshot_commit")
+
+
+def _manifest_baseline_kind_mismatch(document: dict[str, object]) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    return cast(dict[str, object], provenance["source_baseline"]).__setitem__(
+        "kind", "copier"
+    )
+
+
+def _manifest_managed_unsorted(document: dict[str, object]) -> object:
+    return document.__setitem__(
+        "managed",
+        [
+            {"path": "z.txt", "kind": "text", "mode": 420, "sha256": "0" * 64},
+            {"path": "a.txt", "kind": "text", "mode": 420, "sha256": "0" * 64},
+        ],
+    )
+
+
+def _manifest_managed_case_collision(document: dict[str, object]) -> object:
+    return document.__setitem__(
+        "managed",
+        [
+            {"path": "A.txt", "kind": "text", "mode": 420, "sha256": "0" * 64},
+            {"path": "a.txt", "kind": "text", "mode": 420, "sha256": "0" * 64},
+        ],
+    )
+
+
+def _manifest_profile_requested_not_list(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["profile"]).__setitem__("requested", "x")
+
+
+def _manifest_project_name_not_string(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["project"]).__setitem__("name", 5)
+
+
+def _manifest_profile_id_not_string(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["profile"]).__setitem__("id", 5)
+
+
+def _manifest_licensing_mode_not_string(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["licensing"]).__setitem__("mode", 5)
+
+
+def _manifest_licensing_digest_not_string(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["licensing"]).__setitem__(
+        "content_sha256", 5
+    )
+
+
+def _manifest_slot_mode_not_string(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    slots = cast(dict[str, object], answers["slots"])
+    return cast(dict[str, object], slots["readme"]).__setitem__("mode", 5)
+
+
+def _manifest_slot_digest_not_string(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    slots = cast(dict[str, object], answers["slots"])
+    return cast(dict[str, object], slots["readme"]).__setitem__("content_sha256", 5)
+
+
+def _manifest_slot_not_mapping(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["slots"]).__setitem__("readme", "x")
+
+
+def _manifest_settings_not_mapping(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return answers.__setitem__("settings", "x")
+
+
+def _manifest_settings_values_not_mapping(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["settings"]).__setitem__("nix", "x")
+
+
+def _manifest_project_not_mapping(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return answers.__setitem__("project", "x")
+
+
+def _manifest_licensing_not_mapping(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return answers.__setitem__("licensing", "x")
+
+
+def _manifest_additions_requested_not_list(document: dict[str, object]) -> object:
+    return cast(dict[str, object], document["additions"]).__setitem__("requested", "x")
+
+
+def _manifest_generation_path_not_string(document: dict[str, object]) -> object:
+    return cast(dict[str, object], document["provenance"]).__setitem__(
+        "generation_path", 5
+    )
+
+
+def _manifest_maintenance_not_mapping(document: dict[str, object]) -> object:
+    return cast(dict[str, object], document["provenance"]).__setitem__(
+        "maintenance", "x"
+    )
+
+
+def _manifest_retained_paths_not_list(document: dict[str, object]) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    return cast(dict[str, object], provenance["maintenance"]).__setitem__(
+        "retained_paths", "x"
+    )
+
+
+def _manifest_baseline_not_mapping(document: dict[str, object]) -> object:
+    return cast(dict[str, object], document["provenance"]).__setitem__(
+        "source_baseline", "x"
+    )
+
+
+def _manifest_baseline_entries_not_list(document: dict[str, object]) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    return cast(dict[str, object], provenance["source_baseline"]).__setitem__(
+        "entries", "x"
+    )
+
+
+def _manifest_managed_not_list(document: dict[str, object]) -> object:
+    return document.__setitem__("managed", "x")
+
+
+def _manifest_managed_entry_path_not_string(document: dict[str, object]) -> object:
+    return document.__setitem__(
+        "managed",
+        [
+            {"path": 5, "kind": "text", "mode": 420, "sha256": "0" * 64},
+        ],
+    )
+
+
+def _manifest_managed_duplicate_entries(document: dict[str, object]) -> object:
+    return document.__setitem__(
+        "managed",
+        [
+            {"path": "a.txt", "kind": "text", "mode": 420, "sha256": "0" * 64},
+            {"path": "a.txt", "kind": "text", "mode": 420, "sha256": "0" * 64},
+        ],
+    )
+
+
+def _manifest_answers_extra_key(document: dict[str, object]) -> object:
+    return cast(dict[str, object], document["answers"]).__setitem__("junk_key", True)
+
+
+def _manifest_project_extra_key(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["project"]).__setitem__("junk_key", True)
+
+
+def _manifest_profile_extra_key(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["profile"]).__setitem__("junk_key", True)
+
+
+def _manifest_licensing_extra_key(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    return cast(dict[str, object], answers["licensing"]).__setitem__("junk_key", True)
+
+
+def _manifest_slot_content_extra_key(document: dict[str, object]) -> object:
+    answers = cast(dict[str, object], document["answers"])
+    slots = cast(dict[str, object], answers["slots"])
+    return cast(dict[str, object], slots["readme"]).__setitem__("junk_key", True)
+
+
+def _manifest_additions_extra_key(document: dict[str, object]) -> object:
+    return cast(dict[str, object], document["additions"]).__setitem__("junk_key", True)
+
+
+def _manifest_provenance_extra_key(document: dict[str, object]) -> object:
+    return cast(dict[str, object], document["provenance"]).__setitem__("junk_key", True)
+
+
+def _manifest_maintenance_extra_key(document: dict[str, object]) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    return cast(dict[str, object], provenance["maintenance"]).__setitem__(
+        "junk_key", True
+    )
+
+
+def _manifest_baseline_extra_key(document: dict[str, object]) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    return cast(dict[str, object], provenance["source_baseline"]).__setitem__(
+        "junk_key", True
+    )
+
+
+def _manifest_managed_entry_extra_key(document: dict[str, object]) -> object:
+    return document.__setitem__(
+        "managed",
+        [
+            {
+                "path": "a.txt",
+                "kind": "text",
+                "mode": 420,
+                "sha256": "0" * 64,
+                "junk_key": True,
+            }
+        ],
+    )
+
+
+def _manifest_source_entry_extra_key(document: dict[str, object]) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    baseline = cast(dict[str, object], provenance["source_baseline"])
+    entries = cast(list[object], baseline["entries"])
+    entry = cast(dict[str, object], entries[0])
+    return entries.__setitem__(0, {**entry, "junk_key": True})
+
+
+def _manifest_directory_entry_with_file_mode(document: dict[str, object]) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    baseline = cast(dict[str, object], provenance["source_baseline"])
+    entries = cast(list[object], baseline["entries"])
+    entry = cast(dict[str, object], entries[0])
+    return entries.__setitem__(0, {**entry, "kind": "directory", "mode": 420})
 
 
 class TestManifest:
@@ -862,7 +1263,9 @@ class TestManifest:
         document = manifest_document(manifest)
         managed_entry = document["managed"]
         assert isinstance(managed_entry, list) and managed_entry
-        document["managed"] = [dict(managed_entry[0]), dict(managed_entry[0])]
+        managed_entry = cast(list[object], managed_entry)
+        duplicate = cast(dict[str, object], managed_entry[0])
+        document["managed"] = [dict(duplicate), dict(duplicate)]
         document["managed"] = [
             dict(document["managed"][0]),
             dict(document["managed"][0]),
@@ -957,7 +1360,9 @@ class TestManifest:
             pytest.param(
                 replace(
                     fixture_answers(),
-                    settings=MappingProxyType({"Bad": MappingProxyType({})}),
+                    settings=MappingProxyType(
+                        {"Bad": MappingProxyType[str, str | bool]({})}
+                    ),
                 ),
                 id="settings capability",
             ),
@@ -1035,7 +1440,10 @@ class TestManifest:
                 ProvenanceRecord(
                     generation_path=GenerationPath.GITHUB,
                     maintenance=MaintenanceRecord(
-                        status=cast(Literal["clean", "retained"], "other")
+                        status=cast(
+                            Literal["clean", "retained"],
+                            "other",  # pyright: ignore[reportInvalidCast]  intentional invalid-value negative test
+                        )
                     ),
                     source_baseline=GitHubSourceBaseline(
                         kind="github",
@@ -1235,400 +1643,106 @@ class TestManifest:
     @pytest.mark.parametrize(
         ("mutate"),
         [
+            pytest.param(_manifest_answers_missing, id="answers missing"),
+            pytest.param(_manifest_project_name, id="project name"),
+            pytest.param(_manifest_default_branch, id="default branch"),
+            pytest.param(_manifest_profile_id, id="profile id"),
             pytest.param(
-                lambda document: document.pop("answers"), id="answers missing"
-            ),
-            pytest.param(
-                lambda document: document["answers"]["project"].__setitem__(
-                    "name", "bad name"
-                ),
-                id="project name",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["project"].__setitem__(
-                    "default_branch", "bad branch"
-                ),
-                id="default branch",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["profile"].__setitem__(
-                    "id", "Bad"
-                ),
-                id="profile id",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["profile"].__setitem__(
-                    "requested", ["nix", "cachix-publish"]
-                ),
+                _manifest_profile_requested_unsorted,
                 id="profile requested unsorted",
             ),
+            pytest.param(_manifest_settings_capability_id, id="settings capability id"),
+            pytest.param(_manifest_settings_name, id="settings name"),
+            pytest.param(_manifest_settings_value, id="settings value"),
+            pytest.param(_manifest_licensing_mode, id="licensing mode"),
+            pytest.param(_manifest_licensing_digest, id="licensing digest"),
+            pytest.param(_manifest_slot_mode, id="slot mode"),
+            pytest.param(_manifest_slot_digest, id="slot digest"),
+            pytest.param(_manifest_unknown_slot, id="unknown slot"),
+            pytest.param(_manifest_additions_unsorted, id="additions unsorted"),
+            pytest.param(_manifest_additions_settings, id="additions settings"),
+            pytest.param(_manifest_generation_path, id="generation path"),
+            pytest.param(_manifest_maintenance_status, id="maintenance status"),
+            pytest.param(_manifest_retained_paths_unsafe, id="retained paths unsafe"),
+            pytest.param(_manifest_baseline_kind, id="baseline kind"),
+            pytest.param(_manifest_baseline_fingerprint, id="baseline fingerprint"),
             pytest.param(
-                lambda document: document["answers"]["settings"].__setitem__("Bad", {}),
-                id="settings capability id",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["settings"].__setitem__(
-                    "nix", {"bad-name": "x"}
-                ),
-                id="settings name",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["settings"].__setitem__(
-                    "nix", {"cache_name": 5}
-                ),
-                id="settings value",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["licensing"].__setitem__(
-                    "mode", "other"
-                ),
-                id="licensing mode",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["licensing"].__setitem__(
-                    "content_sha256", "zzz"
-                ),
-                id="licensing digest",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["slots"]["readme"].__setitem__(
-                    "mode", "other"
-                ),
-                id="slot mode",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["slots"]["readme"].__setitem__(
-                    "content_sha256", "zzz"
-                ),
-                id="slot digest",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["slots"].__setitem__(
-                    "unknown", {"mode": "file", "content_sha256": None}
-                ),
-                id="unknown slot",
-            ),
-            pytest.param(
-                lambda document: document["additions"].__setitem__(
-                    "requested", ["nix", "cachix-publish"]
-                ),
-                id="additions unsorted",
-            ),
-            pytest.param(
-                lambda document: document["additions"]["settings"].__setitem__(
-                    "Bad", {}
-                ),
-                id="additions settings",
-            ),
-            pytest.param(
-                lambda document: document["provenance"].__setitem__(
-                    "generation_path", "other"
-                ),
-                id="generation path",
-            ),
-            pytest.param(
-                lambda document: document["provenance"]["maintenance"].__setitem__(
-                    "status", "other"
-                ),
-                id="maintenance status",
-            ),
-            pytest.param(
-                lambda document: document["provenance"]["maintenance"].__setitem__(
-                    "retained_paths", [".."]
-                ),
-                id="retained paths unsafe",
-            ),
-            pytest.param(
-                lambda document: document["provenance"]["source_baseline"].__setitem__(
-                    "kind", "other"
-                ),
-                id="baseline kind",
-            ),
-            pytest.param(
-                lambda document: document["provenance"]["source_baseline"].__setitem__(
-                    "fingerprint", "zzz"
-                ),
-                id="baseline fingerprint",
-            ),
-            pytest.param(
-                lambda document: document["provenance"]["source_baseline"].__setitem__(
-                    "entries",
-                    [
-                        {
-                            "path": "..",
-                            "kind": "file",
-                            "mode": 420,
-                            "sha256": "0" * 64,
-                        }
-                    ],
-                ),
+                _manifest_baseline_entries_unsafe_path,
                 id="baseline entries unsafe path",
             ),
             pytest.param(
-                lambda document: document["provenance"]["source_baseline"].pop(
-                    "snapshot_commit"
-                ),
+                _manifest_baseline_missing_snapshot_commit,
                 id="baseline missing snapshot commit",
             ),
+            pytest.param(_manifest_baseline_kind_mismatch, id="baseline kind mismatch"),
+            pytest.param(_manifest_managed_unsorted, id="managed unsorted"),
+            pytest.param(_manifest_managed_case_collision, id="managed case collision"),
             pytest.param(
-                lambda document: document["provenance"]["source_baseline"].__setitem__(
-                    "kind", "copier"
-                ),
-                id="baseline kind mismatch",
-            ),
-            pytest.param(
-                lambda document: document.__setitem__(
-                    "managed",
-                    [
-                        {
-                            "path": "z.txt",
-                            "kind": "text",
-                            "mode": 420,
-                            "sha256": "0" * 64,
-                        },
-                        {
-                            "path": "a.txt",
-                            "kind": "text",
-                            "mode": 420,
-                            "sha256": "0" * 64,
-                        },
-                    ],
-                ),
-                id="managed unsorted",
-            ),
-            pytest.param(
-                lambda document: document.__setitem__(
-                    "managed",
-                    [
-                        {
-                            "path": "A.txt",
-                            "kind": "text",
-                            "mode": 420,
-                            "sha256": "0" * 64,
-                        },
-                        {
-                            "path": "a.txt",
-                            "kind": "text",
-                            "mode": 420,
-                            "sha256": "0" * 64,
-                        },
-                    ],
-                ),
-                id="managed case collision",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["profile"].__setitem__(
-                    "requested", "x"
-                ),
+                _manifest_profile_requested_not_list,
                 id="profile requested not list",
             ),
             pytest.param(
-                lambda document: document["answers"]["project"].__setitem__("name", 5),
-                id="project name not string",
+                _manifest_project_name_not_string, id="project name not string"
+            ),
+            pytest.param(_manifest_profile_id_not_string, id="profile id not string"),
+            pytest.param(
+                _manifest_licensing_mode_not_string, id="licensing mode not string"
             ),
             pytest.param(
-                lambda document: document["answers"]["profile"].__setitem__("id", 5),
-                id="profile id not string",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["licensing"].__setitem__(
-                    "mode", 5
-                ),
-                id="licensing mode not string",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["licensing"].__setitem__(
-                    "content_sha256", 5
-                ),
+                _manifest_licensing_digest_not_string,
                 id="licensing digest not string",
             ),
+            pytest.param(_manifest_slot_mode_not_string, id="slot mode not string"),
+            pytest.param(_manifest_slot_digest_not_string, id="slot digest not string"),
+            pytest.param(_manifest_slot_not_mapping, id="slot not mapping"),
+            pytest.param(_manifest_settings_not_mapping, id="settings not mapping"),
             pytest.param(
-                lambda document: document["answers"]["slots"]["readme"].__setitem__(
-                    "mode", 5
-                ),
-                id="slot mode not string",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["slots"]["readme"].__setitem__(
-                    "content_sha256", 5
-                ),
-                id="slot digest not string",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["slots"].__setitem__(
-                    "readme", "x"
-                ),
-                id="slot not mapping",
-            ),
-            pytest.param(
-                lambda document: document["answers"].__setitem__("settings", "x"),
-                id="settings not mapping",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["settings"].__setitem__(
-                    "nix", "x"
-                ),
+                _manifest_settings_values_not_mapping,
                 id="settings values not mapping",
             ),
+            pytest.param(_manifest_project_not_mapping, id="project not mapping"),
+            pytest.param(_manifest_licensing_not_mapping, id="licensing not mapping"),
             pytest.param(
-                lambda document: document["answers"].__setitem__("project", "x"),
-                id="project not mapping",
-            ),
-            pytest.param(
-                lambda document: document["answers"].__setitem__("licensing", "x"),
-                id="licensing not mapping",
-            ),
-            pytest.param(
-                lambda document: document["additions"].__setitem__("requested", "x"),
+                _manifest_additions_requested_not_list,
                 id="additions requested not list",
             ),
             pytest.param(
-                lambda document: document["provenance"].__setitem__(
-                    "generation_path", 5
-                ),
+                _manifest_generation_path_not_string,
                 id="generation path not string",
             ),
             pytest.param(
-                lambda document: document["provenance"].__setitem__("maintenance", "x"),
-                id="maintenance not mapping",
+                _manifest_maintenance_not_mapping, id="maintenance not mapping"
             ),
             pytest.param(
-                lambda document: document["provenance"]["maintenance"].__setitem__(
-                    "retained_paths", "x"
-                ),
-                id="retained paths not list",
+                _manifest_retained_paths_not_list, id="retained paths not list"
             ),
+            pytest.param(_manifest_baseline_not_mapping, id="baseline not mapping"),
             pytest.param(
-                lambda document: document["provenance"].__setitem__(
-                    "source_baseline", "x"
-                ),
-                id="baseline not mapping",
+                _manifest_baseline_entries_not_list, id="baseline entries not list"
             ),
+            pytest.param(_manifest_managed_not_list, id="managed not list"),
             pytest.param(
-                lambda document: document["provenance"]["source_baseline"].__setitem__(
-                    "entries", "x"
-                ),
-                id="baseline entries not list",
-            ),
-            pytest.param(
-                lambda document: document.__setitem__("managed", "x"),
-                id="managed not list",
-            ),
-            pytest.param(
-                lambda document: document.__setitem__(
-                    "managed",
-                    [
-                        {"path": 5, "kind": "text", "mode": 420, "sha256": "0" * 64},
-                    ],
-                ),
+                _manifest_managed_entry_path_not_string,
                 id="managed entry path not string",
             ),
             pytest.param(
-                lambda document: document.__setitem__(
-                    "managed",
-                    [
-                        {
-                            "path": "a.txt",
-                            "kind": "text",
-                            "mode": 420,
-                            "sha256": "0" * 64,
-                        },
-                        {
-                            "path": "a.txt",
-                            "kind": "text",
-                            "mode": 420,
-                            "sha256": "0" * 64,
-                        },
-                    ],
-                ),
-                id="managed duplicate entries",
+                _manifest_managed_duplicate_entries, id="managed duplicate entries"
             ),
+            pytest.param(_manifest_answers_extra_key, id="answers extra key"),
+            pytest.param(_manifest_project_extra_key, id="project extra key"),
+            pytest.param(_manifest_profile_extra_key, id="profile extra key"),
+            pytest.param(_manifest_licensing_extra_key, id="licensing extra key"),
+            pytest.param(_manifest_slot_content_extra_key, id="slot content extra key"),
+            pytest.param(_manifest_additions_extra_key, id="additions extra key"),
+            pytest.param(_manifest_provenance_extra_key, id="provenance extra key"),
+            pytest.param(_manifest_maintenance_extra_key, id="maintenance extra key"),
+            pytest.param(_manifest_baseline_extra_key, id="baseline extra key"),
             pytest.param(
-                lambda document: document["answers"].__setitem__("junk_key", True),
-                id="answers extra key",
+                _manifest_managed_entry_extra_key, id="managed entry extra key"
             ),
+            pytest.param(_manifest_source_entry_extra_key, id="source entry extra key"),
             pytest.param(
-                lambda document: document["answers"]["project"].__setitem__(
-                    "junk_key", True
-                ),
-                id="project extra key",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["profile"].__setitem__(
-                    "junk_key", True
-                ),
-                id="profile extra key",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["licensing"].__setitem__(
-                    "junk_key", True
-                ),
-                id="licensing extra key",
-            ),
-            pytest.param(
-                lambda document: document["answers"]["slots"]["readme"].__setitem__(
-                    "junk_key", True
-                ),
-                id="slot content extra key",
-            ),
-            pytest.param(
-                lambda document: document["additions"].__setitem__("junk_key", True),
-                id="additions extra key",
-            ),
-            pytest.param(
-                lambda document: document["provenance"].__setitem__("junk_key", True),
-                id="provenance extra key",
-            ),
-            pytest.param(
-                lambda document: document["provenance"]["maintenance"].__setitem__(
-                    "junk_key", True
-                ),
-                id="maintenance extra key",
-            ),
-            pytest.param(
-                lambda document: document["provenance"]["source_baseline"].__setitem__(
-                    "junk_key", True
-                ),
-                id="baseline extra key",
-            ),
-            pytest.param(
-                lambda document: document.__setitem__(
-                    "managed",
-                    [
-                        {
-                            "path": "a.txt",
-                            "kind": "text",
-                            "mode": 420,
-                            "sha256": "0" * 64,
-                            "junk_key": True,
-                        }
-                    ],
-                ),
-                id="managed entry extra key",
-            ),
-            pytest.param(
-                lambda document: document["provenance"]["source_baseline"][
-                    "entries"
-                ].__setitem__(
-                    0,
-                    {
-                        **document["provenance"]["source_baseline"]["entries"][0],
-                        "junk_key": True,
-                    },
-                ),
-                id="source entry extra key",
-            ),
-            pytest.param(
-                lambda document: document["provenance"]["source_baseline"][
-                    "entries"
-                ].__setitem__(
-                    0,
-                    {
-                        **document["provenance"]["source_baseline"]["entries"][0],
-                        "kind": "directory",
-                        "mode": 420,
-                    },
-                ),
+                _manifest_directory_entry_with_file_mode,
                 id="directory entry with file mode",
             ),
         ],
@@ -1637,7 +1751,7 @@ class TestManifest:
         self, mutate: Callable[[dict[str, object]], object]
     ) -> None:
         document = manifest_document(self._github_manifest_value())
-        mutate(document)
+        _ = mutate(document)
         encoded = canonical_json({**document, "checksum": manifest_checksum(document)})
         match decode_manifest(encoded):
             case Err(error):
@@ -1735,7 +1849,7 @@ class TestManifest:
             case Err(error):
                 raise AssertionError(f"manifest round trip failed: {error}")
 
-    _INJECTION_PATHS = (
+    _INJECTION_PATHS: tuple[tuple[str, ...], ...] = (
         ("answers",),
         ("answers", "project"),
         ("answers", "profile"),
@@ -1756,11 +1870,10 @@ class TestManifest:
         self, path: tuple[str, ...], key: str
     ) -> None:
         document = manifest_document(self._github_manifest_value())
-        target: object = document
+        target: dict[str, object] = document
         for segment in path:
-            assert isinstance(target, dict)
-            target = target[segment]
-        assert isinstance(target, dict)
+            assert isinstance(target[segment], dict)
+            target = cast(dict[str, object], target[segment])
         target[key] = True
         encoded = canonical_json({**document, "checksum": manifest_checksum(document)})
         match decode_manifest(encoded):
@@ -1788,7 +1901,7 @@ class TestPlanner:
                 if entry.path.value.startswith(prefix)
             )
         expected_paths.add(MAINTENANCE_INVENTORY_PATH.value)
-        op_paths = set()
+        op_paths: set[str] = set()
         for operation in plan.ordered_operations:
             op_paths.add(
                 operation.root.value
@@ -2456,7 +2569,9 @@ class TestPlanner:
                     *fixture_managed(),
                     ManagedFile(
                         path=RepoPath("docs/extra.md"),
-                        kind=cast(Literal["text", "binary"], "other"),
+                        kind=cast(  # pyright: ignore[reportInvalidCast]  intentional invalid-value negative test
+                            Literal["text", "binary"], "other"
+                        ),
                         mode=PosixMode.FILE,
                         content=b"x\n",
                     ),
@@ -2916,6 +3031,318 @@ class TestCollisionsAndCleanup:
                 raise AssertionError("cleanup listing the inventory compiled")
 
 
+def _receipt_extra_top_level_key(receipt: dict[str, object]) -> object:
+    return receipt.__setitem__("extra", 1)
+
+
+def _receipt_plan_schema(receipt: dict[str, object]) -> object:
+    return receipt.__setitem__("plan_schema", 2)
+
+
+def _receipt_operation_kind_field(receipt: dict[str, object]) -> object:
+    return receipt.__setitem__("operation_kind", "add")
+
+
+def _receipt_target_binding(receipt: dict[str, object]) -> object:
+    return receipt.__setitem__("target_binding", "zzz")
+
+
+def _receipt_generation_path(receipt: dict[str, object]) -> object:
+    return receipt.__setitem__("generation_path", "other")
+
+
+def _receipt_baseline_kind(receipt: dict[str, object]) -> object:
+    return cast(dict[str, object], receipt["source_after"]).__setitem__("kind", "other")
+
+
+def _receipt_baseline_fingerprint(receipt: dict[str, object]) -> object:
+    return cast(dict[str, object], receipt["source_after"]).__setitem__(
+        "fingerprint", "zzz"
+    )
+
+
+def _receipt_baseline_entries_unsafe_path(receipt: dict[str, object]) -> object:
+    return cast(dict[str, object], receipt["source_after"]).__setitem__(
+        "entries",
+        [
+            {
+                "path": "..",
+                "kind": "file",
+                "mode": 420,
+                "sha256": "0" * 64,
+            }
+        ],
+    )
+
+
+def _receipt_manifest_before(receipt: dict[str, object]) -> object:
+    return receipt.__setitem__("manifest_before", "zzz")
+
+
+def _receipt_manifest_after_null(receipt: dict[str, object]) -> object:
+    return receipt.__setitem__("manifest_after", None)
+
+
+def _receipt_gate_missing_key(receipt: dict[str, object]) -> object:
+    return cast(dict[str, object], receipt["gate_specification"]).pop(
+        "artifact_verification"
+    )
+
+
+def _receipt_gate_severity(receipt: dict[str, object]) -> object:
+    gate = cast(dict[str, object], receipt["gate_specification"])
+    placeholders = cast(list[object], gate["expected_placeholder"])
+    return cast(dict[str, object], placeholders[0]).__setitem__("severity", "urgent")
+
+
+def _receipt_gate_subject_path(receipt: dict[str, object]) -> object:
+    gate = cast(dict[str, object], receipt["gate_specification"])
+    placeholders = cast(list[object], gate["expected_placeholder"])
+    return cast(dict[str, object], placeholders[0]).__setitem__("subject_at", "..")
+
+
+def _receipt_operation_extra_key(receipt: dict[str, object]) -> object:
+    operations = cast(list[object], receipt["operations"])
+    return cast(dict[str, object], operations[0]).__setitem__("extra", 1)
+
+
+def _receipt_operation_kind(receipt: dict[str, object]) -> object:
+    operations = cast(list[object], receipt["operations"])
+    return cast(dict[str, object], operations[0]).__setitem__("kind", "rewind")
+
+
+def _receipt_create_missing_planned_new(receipt: dict[str, object]) -> object:
+    operations = cast(list[object], receipt["operations"])
+    return cast(dict[str, object], operations[0]).__setitem__("planned_new", None)
+
+
+def _receipt_first_operation(receipt: dict[str, object]) -> dict[str, object]:
+    operations = cast(list[object], receipt["operations"])
+    return cast(dict[str, object], operations[0])
+
+
+def _receipt_planned_content_id(receipt: dict[str, object]) -> object:
+    operation = _receipt_first_operation(receipt)
+    return cast(dict[str, object], operation["planned_new"]).__setitem__(
+        "content_id", "zzz"
+    )
+
+
+def _receipt_planned_size(receipt: dict[str, object]) -> object:
+    operation = _receipt_first_operation(receipt)
+    return cast(dict[str, object], operation["planned_new"]).__setitem__("size", -1)
+
+
+def _receipt_observed_mode_out_of_domain(receipt: dict[str, object]) -> object:
+    operation = _receipt_first_operation(receipt)
+    return cast(dict[str, object], operation["expected_old"]).__setitem__(
+        "mode", 0o7777 + 1
+    )
+
+
+def _receipt_observed_mode_boolean(receipt: dict[str, object]) -> object:
+    operation = _receipt_first_operation(receipt)
+    return cast(dict[str, object], operation["expected_old"]).__setitem__("mode", True)
+
+
+def _receipt_tree_planned_new_extra_key(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_extra_key())
+
+
+def _receipt_tree_entry_extra_key(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_entry_extra_key())
+
+
+def _receipt_expected_old_wrong_type(receipt: dict[str, object]) -> object:
+    operation = _receipt_first_operation(receipt)
+    return operation.__setitem__("expected_old", "x")
+
+
+def _receipt_planned_new_wrong_type(receipt: dict[str, object]) -> object:
+    operation = _receipt_first_operation(receipt)
+    return operation.__setitem__("planned_new", "x")
+
+
+def _receipt_path_beyond_limits(receipt: dict[str, object]) -> object:
+    operation = _receipt_first_operation(receipt)
+    return operation.__setitem__("path", "a" * 1100)
+
+
+def _receipt_tree_expected_old_not_null(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_expected_old())
+
+
+def _receipt_tree_planned_new_wrong_type(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_planned_new_type())
+
+
+def _receipt_tree_entry_directory_bad_mode(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_entry_bad_mode())
+
+
+def _receipt_tree_entry_missing_key(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_entry_missing_key())
+
+
+def _receipt_gate_operation(receipt: dict[str, object]) -> object:
+    return cast(dict[str, object], receipt["gate_specification"]).__setitem__(
+        "operation", "other"
+    )
+
+
+def _receipt_gate_placeholder_not_list(receipt: dict[str, object]) -> object:
+    return cast(dict[str, object], receipt["gate_specification"]).__setitem__(
+        "expected_placeholder", "x"
+    )
+
+
+def _receipt_source_before_wrong_type(receipt: dict[str, object]) -> object:
+    return receipt.__setitem__("source_before", "x")
+
+
+def _receipt_baseline_entries_not_list(receipt: dict[str, object]) -> object:
+    return cast(dict[str, object], receipt["source_after"]).__setitem__("entries", "x")
+
+
+def _receipt_baseline_entry_missing_key(receipt: dict[str, object]) -> object:
+    source_after = cast(dict[str, object], receipt["source_after"])
+    entries = cast(list[object], source_after["entries"])
+    return cast(dict[str, object], entries[0]).pop("sha256")
+
+
+def _receipt_baseline_entry_bad_mode(receipt: dict[str, object]) -> object:
+    source_after = cast(dict[str, object], receipt["source_after"])
+    entries = cast(list[object], source_after["entries"])
+    return cast(dict[str, object], entries[0]).__setitem__("mode", 0o7777 + 1)
+
+
+def _receipt_baseline_kind_copier_with_snapshot(receipt: dict[str, object]) -> object:
+    return cast(dict[str, object], receipt["source_after"]).__setitem__(
+        "kind", "copier"
+    )
+
+
+def _receipt_baseline_entry_not_mapping(receipt: dict[str, object]) -> object:
+    source_after = cast(dict[str, object], receipt["source_after"])
+    return cast(list[object], source_after["entries"]).__setitem__(0, "x")
+
+
+def _receipt_gate_subject_not_string(receipt: dict[str, object]) -> object:
+    gate = cast(dict[str, object], receipt["gate_specification"])
+    placeholders = cast(list[object], gate["expected_placeholder"])
+    return cast(dict[str, object], placeholders[0]).__setitem__("subject_at", 5)
+
+
+def _receipt_operation_path_not_string(receipt: dict[str, object]) -> object:
+    operation = _receipt_first_operation(receipt)
+    return operation.__setitem__("path", 5)
+
+
+def _receipt_operation_not_mapping(receipt: dict[str, object]) -> object:
+    return cast(list[object], receipt["operations"]).__setitem__(0, "x")
+
+
+def _receipt_observed_kind(receipt: dict[str, object]) -> object:
+    operation = _receipt_first_operation(receipt)
+    return cast(dict[str, object], operation["expected_old"]).__setitem__(
+        "kind", "other"
+    )
+
+
+def _receipt_planned_new_identity_kind(receipt: dict[str, object]) -> object:
+    operation = _receipt_first_operation(receipt)
+    return cast(dict[str, object], operation["planned_new"]).__setitem__(
+        "kind", "other"
+    )
+
+
+def _receipt_delete_expected_old_identity_kind(receipt: dict[str, object]) -> object:
+    delete = _operation_by_kind(receipt, "delete_file")
+    return cast(dict[str, object], delete["expected_old"]).__setitem__("kind", "other")
+
+
+def _receipt_observed_normalized_digest(receipt: dict[str, object]) -> object:
+    operation = _receipt_first_operation(receipt)
+    return cast(dict[str, object], operation["expected_old"]).__setitem__(
+        "normalized_sha256", "zzz"
+    )
+
+
+def _receipt_tree_entry_file_bad_digest(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_entry_bad_digest())
+
+
+def _receipt_observed_state_extra_key(receipt: dict[str, object]) -> object:
+    operation = _receipt_first_operation(receipt)
+    return cast(dict[str, object], operation["expected_old"]).__setitem__("extra", 1)
+
+
+def _receipt_observed_size(receipt: dict[str, object]) -> object:
+    operation = _receipt_first_operation(receipt)
+    return cast(dict[str, object], operation["expected_old"]).__setitem__("size", -1)
+
+
+def _receipt_operations_not_list(receipt: dict[str, object]) -> object:
+    return receipt.__setitem__("operations", "x")
+
+
+def _receipt_planned_content_id_missing(receipt: dict[str, object]) -> object:
+    operation = _receipt_first_operation(receipt)
+    return cast(dict[str, object], operation["planned_new"]).pop("content_id")
+
+
+def _receipt_tree_operation_extra_key(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_extra_op_key())
+
+
+def _receipt_tree_root_unsafe_path(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_bad_root())
+
+
+def _receipt_tree_planned_new_bad_sha(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_bad_sha())
+
+
+def _receipt_tree_entry_not_mapping(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_entry_not_mapping())
+
+
+def _receipt_tree_dir_entry_missing_mode(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_dir_entry_missing_mode())
+
+
+def _receipt_tree_file_entry_unsafe_path(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_file_entry_bad_path())
+
+
+def _receipt_tree_file_entry_missing_content_id(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_file_entry_missing_id())
+
+
+def _receipt_remove_empty_extra_key(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_remove_empty_extra_key())
+
+
+def _receipt_remove_empty_unsafe_path(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_remove_empty_bad_path())
+
+
+def _receipt_remove_empty_expected_old_not_mapping(
+    receipt: dict[str, object],
+) -> object:
+    return receipt.update(_receipt_with_remove_empty_old_type())
+
+
+def _receipt_remove_empty_expected_old_mode_not_int(
+    receipt: dict[str, object],
+) -> object:
+    return receipt.update(_receipt_with_remove_empty_old_mode_type())
+
+
+def _receipt_source_after_null(receipt: dict[str, object]) -> object:
+    return receipt.__setitem__("source_after", None)
+
+
 class TestPlanDigest:
     def test_receipt_round_trip_and_digest_re_derivation(self) -> None:
         receipt = build_receipt(github_plan())
@@ -2945,10 +3372,13 @@ class TestPlanDigest:
         assert b"def test_a" not in encoded
         operations = receipt["operations"]
         assert isinstance(operations, list)
+        operations = cast(list[object], operations)
         for operation in operations:
             assert isinstance(operation, dict)
+            operation = cast(dict[str, object], operation)
             planned_new = operation.get("planned_new")
             if isinstance(planned_new, dict):
+                planned_new = cast(dict[str, object], planned_new)
                 assert set(planned_new) == {
                     "kind",
                     "mode",
@@ -3077,126 +3507,41 @@ class TestPlanDigest:
     @pytest.mark.parametrize(
         ("mutate"),
         [
+            pytest.param(_receipt_extra_top_level_key, id="extra top-level key"),
+            pytest.param(_receipt_plan_schema, id="plan schema"),
+            pytest.param(_receipt_operation_kind_field, id="operation kind"),
+            pytest.param(_receipt_target_binding, id="target binding"),
+            pytest.param(_receipt_generation_path, id="generation path"),
+            pytest.param(_receipt_baseline_kind, id="baseline kind"),
+            pytest.param(_receipt_baseline_fingerprint, id="baseline fingerprint"),
             pytest.param(
-                lambda receipt: receipt.__setitem__("extra", 1),
-                id="extra top-level key",
-            ),
-            pytest.param(
-                lambda receipt: receipt.__setitem__("plan_schema", 2),
-                id="plan schema",
-            ),
-            pytest.param(
-                lambda receipt: receipt.__setitem__("operation_kind", "add"),
-                id="operation kind",
-            ),
-            pytest.param(
-                lambda receipt: receipt.__setitem__("target_binding", "zzz"),
-                id="target binding",
-            ),
-            pytest.param(
-                lambda receipt: receipt.__setitem__("generation_path", "other"),
-                id="generation path",
-            ),
-            pytest.param(
-                lambda receipt: receipt["source_after"].__setitem__("kind", "other"),
-                id="baseline kind",
-            ),
-            pytest.param(
-                lambda receipt: receipt["source_after"].__setitem__(
-                    "fingerprint", "zzz"
-                ),
-                id="baseline fingerprint",
-            ),
-            pytest.param(
-                lambda receipt: receipt["source_after"].__setitem__(
-                    "entries",
-                    [
-                        {
-                            "path": "..",
-                            "kind": "file",
-                            "mode": 420,
-                            "sha256": "0" * 64,
-                        }
-                    ],
-                ),
+                _receipt_baseline_entries_unsafe_path,
                 id="baseline entries unsafe path",
             ),
+            pytest.param(_receipt_manifest_before, id="manifest before"),
+            pytest.param(_receipt_manifest_after_null, id="manifest after null"),
+            pytest.param(_receipt_gate_missing_key, id="gate missing key"),
+            pytest.param(_receipt_gate_severity, id="gate severity"),
+            pytest.param(_receipt_gate_subject_path, id="gate subject path"),
+            pytest.param(_receipt_operation_extra_key, id="operation extra key"),
+            pytest.param(_receipt_operation_kind, id="operation kind"),
             pytest.param(
-                lambda receipt: receipt.__setitem__("manifest_before", "zzz"),
-                id="manifest before",
+                _receipt_create_missing_planned_new, id="create missing planned new"
             ),
+            pytest.param(_receipt_planned_content_id, id="planned content id"),
+            pytest.param(_receipt_planned_size, id="planned size"),
             pytest.param(
-                lambda receipt: receipt.__setitem__("manifest_after", None),
-                id="manifest after null",
+                _receipt_observed_mode_out_of_domain, id="observed mode out of domain"
             ),
-            pytest.param(
-                lambda receipt: receipt["gate_specification"].pop(
-                    "artifact_verification"
-                ),
-                id="gate missing key",
-            ),
-            pytest.param(
-                lambda receipt: receipt["gate_specification"]["expected_placeholder"][
-                    0
-                ].__setitem__("severity", "urgent"),
-                id="gate severity",
-            ),
-            pytest.param(
-                lambda receipt: receipt["gate_specification"]["expected_placeholder"][
-                    0
-                ].__setitem__("subject_at", ".."),
-                id="gate subject path",
-            ),
-            pytest.param(
-                lambda receipt: receipt["operations"][0].__setitem__("extra", 1),
-                id="operation extra key",
-            ),
-            pytest.param(
-                lambda receipt: receipt["operations"][0].__setitem__("kind", "rewind"),
-                id="operation kind",
-            ),
-            pytest.param(
-                lambda receipt: receipt["operations"][0].__setitem__(
-                    "planned_new", None
-                ),
-                id="create missing planned new",
-            ),
-            pytest.param(
-                lambda receipt: receipt["operations"][0]["planned_new"].__setitem__(
-                    "content_id", "zzz"
-                ),
-                id="planned content id",
-            ),
-            pytest.param(
-                lambda receipt: receipt["operations"][0]["planned_new"].__setitem__(
-                    "size", -1
-                ),
-                id="planned size",
-            ),
-            pytest.param(
-                lambda receipt: receipt["operations"][0]["expected_old"].__setitem__(
-                    "mode", 0o7777 + 1
-                ),
-                id="observed mode out of domain",
-            ),
-            pytest.param(
-                lambda receipt: receipt["operations"][0]["expected_old"].__setitem__(
-                    "mode", True
-                ),
-                id="observed mode boolean",
-            ),
+            pytest.param(_receipt_observed_mode_boolean, id="observed mode boolean"),
             pytest.param(
                 _set_delete_planned_new,
                 id="delete with planned new",
             ),
             pytest.param(
-                lambda receipt: receipt.update(_receipt_with_tree_extra_key()),
-                id="tree planned new extra key",
+                _receipt_tree_planned_new_extra_key, id="tree planned new extra key"
             ),
-            pytest.param(
-                lambda receipt: receipt.update(_receipt_with_tree_entry_extra_key()),
-                id="tree entry extra key",
-            ),
+            pytest.param(_receipt_tree_entry_extra_key, id="tree entry extra key"),
             pytest.param(
                 _set_remove_empty_planned_new,
                 id="remove empty with planned new",
@@ -3206,206 +3551,112 @@ class TestPlanDigest:
                 id="remove empty bad mode",
             ),
             pytest.param(
-                lambda receipt: receipt["operations"][0].__setitem__(
-                    "expected_old", "x"
-                ),
-                id="expected old wrong type",
+                _receipt_expected_old_wrong_type, id="expected old wrong type"
+            ),
+            pytest.param(_receipt_planned_new_wrong_type, id="planned new wrong type"),
+            pytest.param(_receipt_path_beyond_limits, id="path beyond limits"),
+            pytest.param(
+                _receipt_tree_expected_old_not_null, id="tree expected old not null"
             ),
             pytest.param(
-                lambda receipt: receipt["operations"][0].__setitem__(
-                    "planned_new", "x"
-                ),
-                id="planned new wrong type",
+                _receipt_tree_planned_new_wrong_type, id="tree planned new wrong type"
             ),
             pytest.param(
-                lambda receipt: receipt["operations"][0].__setitem__(
-                    "path", "a" * 1100
-                ),
-                id="path beyond limits",
-            ),
-            pytest.param(
-                lambda receipt: receipt.update(_receipt_with_tree_expected_old()),
-                id="tree expected old not null",
-            ),
-            pytest.param(
-                lambda receipt: receipt.update(_receipt_with_tree_planned_new_type()),
-                id="tree planned new wrong type",
-            ),
-            pytest.param(
-                lambda receipt: receipt.update(_receipt_with_tree_entry_bad_mode()),
+                _receipt_tree_entry_directory_bad_mode,
                 id="tree entry directory bad mode",
             ),
+            pytest.param(_receipt_tree_entry_missing_key, id="tree entry missing key"),
+            pytest.param(_receipt_gate_operation, id="gate operation"),
             pytest.param(
-                lambda receipt: receipt.update(_receipt_with_tree_entry_missing_key()),
-                id="tree entry missing key",
+                _receipt_gate_placeholder_not_list, id="gate placeholder not list"
             ),
             pytest.param(
-                lambda receipt: receipt["gate_specification"].__setitem__(
-                    "operation", "other"
-                ),
-                id="gate operation",
+                _receipt_source_before_wrong_type, id="source before wrong type"
             ),
             pytest.param(
-                lambda receipt: receipt["gate_specification"].__setitem__(
-                    "expected_placeholder", "x"
-                ),
-                id="gate placeholder not list",
+                _receipt_baseline_entries_not_list, id="baseline entries not list"
             ),
             pytest.param(
-                lambda receipt: receipt.__setitem__("source_before", "x"),
-                id="source before wrong type",
+                _receipt_baseline_entry_missing_key, id="baseline entry missing key"
             ),
             pytest.param(
-                lambda receipt: receipt["source_after"].__setitem__("entries", "x"),
-                id="baseline entries not list",
+                _receipt_baseline_entry_bad_mode, id="baseline entry bad mode"
             ),
             pytest.param(
-                lambda receipt: receipt["source_after"]["entries"][0].pop("sha256"),
-                id="baseline entry missing key",
-            ),
-            pytest.param(
-                lambda receipt: receipt["source_after"]["entries"][0].__setitem__(
-                    "mode", 0o7777 + 1
-                ),
-                id="baseline entry bad mode",
-            ),
-            pytest.param(
-                lambda receipt: receipt["source_after"].__setitem__("kind", "copier"),
+                _receipt_baseline_kind_copier_with_snapshot,
                 id="baseline kind copier with snapshot",
             ),
             pytest.param(
-                lambda receipt: receipt["source_after"]["entries"].__setitem__(0, "x"),
-                id="baseline entry not mapping",
+                _receipt_baseline_entry_not_mapping, id="baseline entry not mapping"
             ),
             pytest.param(
-                lambda receipt: receipt["gate_specification"]["expected_placeholder"][
-                    0
-                ].__setitem__("subject_at", 5),
-                id="gate subject not string",
+                _receipt_gate_subject_not_string, id="gate subject not string"
             ),
             pytest.param(
-                lambda receipt: receipt["operations"][0].__setitem__("path", 5),
-                id="operation path not string",
+                _receipt_operation_path_not_string, id="operation path not string"
+            ),
+            pytest.param(_receipt_operation_not_mapping, id="operation not mapping"),
+            pytest.param(_receipt_observed_kind, id="observed kind"),
+            pytest.param(
+                _receipt_planned_new_identity_kind, id="planned new identity kind"
             ),
             pytest.param(
-                lambda receipt: receipt["operations"].__setitem__(0, "x"),
-                id="operation not mapping",
-            ),
-            pytest.param(
-                lambda receipt: receipt["operations"][0]["expected_old"].__setitem__(
-                    "kind", "other"
-                ),
-                id="observed kind",
-            ),
-            pytest.param(
-                lambda receipt: receipt["operations"][0]["planned_new"].__setitem__(
-                    "kind", "other"
-                ),
-                id="planned new identity kind",
-            ),
-            pytest.param(
-                lambda receipt: next(
-                    operation
-                    for operation in receipt["operations"]
-                    if operation["kind"] == "delete_file"
-                )["expected_old"].__setitem__("kind", "other"),
+                _receipt_delete_expected_old_identity_kind,
                 id="delete expected old identity kind",
             ),
             pytest.param(
-                lambda receipt: receipt["operations"][0]["expected_old"].__setitem__(
-                    "normalized_sha256", "zzz"
-                ),
-                id="observed normalized digest",
+                _receipt_observed_normalized_digest, id="observed normalized digest"
             ),
             pytest.param(
-                lambda receipt: receipt.update(_receipt_with_tree_entry_bad_digest()),
-                id="tree entry file bad digest",
+                _receipt_tree_entry_file_bad_digest, id="tree entry file bad digest"
             ),
             pytest.param(
-                lambda receipt: receipt["operations"][0]["expected_old"].__setitem__(
-                    "extra", 1
-                ),
-                id="observed state extra key",
+                _receipt_observed_state_extra_key, id="observed state extra key"
+            ),
+            pytest.param(_receipt_observed_size, id="observed size"),
+            pytest.param(_receipt_operations_not_list, id="operations not list"),
+            pytest.param(
+                _receipt_planned_content_id_missing, id="planned content id missing"
             ),
             pytest.param(
-                lambda receipt: receipt["operations"][0]["expected_old"].__setitem__(
-                    "size", -1
-                ),
-                id="observed size",
+                _receipt_tree_operation_extra_key, id="tree operation extra key"
             ),
+            pytest.param(_receipt_tree_root_unsafe_path, id="tree root unsafe path"),
             pytest.param(
-                lambda receipt: receipt.__setitem__("operations", "x"),
-                id="operations not list",
+                _receipt_tree_planned_new_bad_sha, id="tree planned new bad sha"
             ),
+            pytest.param(_receipt_tree_entry_not_mapping, id="tree entry not mapping"),
             pytest.param(
-                lambda receipt: receipt["operations"][0]["planned_new"].pop(
-                    "content_id"
-                ),
-                id="planned content id missing",
-            ),
-            pytest.param(
-                lambda receipt: receipt.update(_receipt_with_tree_extra_op_key()),
-                id="tree operation extra key",
-            ),
-            pytest.param(
-                lambda receipt: receipt.update(_receipt_with_tree_bad_root()),
-                id="tree root unsafe path",
-            ),
-            pytest.param(
-                lambda receipt: receipt.update(_receipt_with_tree_bad_sha()),
-                id="tree planned new bad sha",
-            ),
-            pytest.param(
-                lambda receipt: receipt.update(_receipt_with_tree_entry_not_mapping()),
-                id="tree entry not mapping",
-            ),
-            pytest.param(
-                lambda receipt: receipt.update(
-                    _receipt_with_tree_dir_entry_missing_mode()
-                ),
+                _receipt_tree_dir_entry_missing_mode,
                 id="tree directory entry missing mode",
             ),
             pytest.param(
-                lambda receipt: receipt.update(
-                    _receipt_with_tree_file_entry_bad_path()
-                ),
-                id="tree file entry unsafe path",
+                _receipt_tree_file_entry_unsafe_path, id="tree file entry unsafe path"
             ),
             pytest.param(
-                lambda receipt: receipt.update(
-                    _receipt_with_tree_file_entry_missing_id()
-                ),
+                _receipt_tree_file_entry_missing_content_id,
                 id="tree file entry missing content id",
             ),
+            pytest.param(_receipt_remove_empty_extra_key, id="remove empty extra key"),
             pytest.param(
-                lambda receipt: receipt.update(_receipt_with_remove_empty_extra_key()),
-                id="remove empty extra key",
+                _receipt_remove_empty_unsafe_path, id="remove empty unsafe path"
             ),
             pytest.param(
-                lambda receipt: receipt.update(_receipt_with_remove_empty_bad_path()),
-                id="remove empty unsafe path",
-            ),
-            pytest.param(
-                lambda receipt: receipt.update(_receipt_with_remove_empty_old_type()),
+                _receipt_remove_empty_expected_old_not_mapping,
                 id="remove empty expected old not mapping",
             ),
             pytest.param(
-                lambda receipt: receipt.update(
-                    _receipt_with_remove_empty_old_mode_type()
-                ),
+                _receipt_remove_empty_expected_old_mode_not_int,
                 id="remove empty expected old mode not int",
             ),
-            pytest.param(
-                lambda receipt: receipt.__setitem__("source_after", None),
-                id="source after null",
-            ),
+            pytest.param(_receipt_source_after_null, id="source after null"),
         ],
     )
     def test_decode_rejects_malformed_receipts(
         self, mutate: Callable[[dict[str, object]], object]
     ) -> None:
         receipt = build_receipt(github_plan())
-        mutate(receipt)
+        _ = mutate(receipt)
         match decode_receipt(encode_receipt(receipt)):
             case Err(error):
                 assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION
@@ -3445,8 +3696,9 @@ class TestPlanDigest:
         receipt = build_receipt(github_plan())
         source_after = receipt["source_after"]
         assert isinstance(source_after, dict)
+        source_after = cast(dict[str, object], source_after)
         source_after["kind"] = "copier"
-        source_after.pop("snapshot_commit")
+        _ = source_after.pop("snapshot_commit")
         match decode_receipt(encode_receipt(receipt)):
             case Err(error):
                 assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION

@@ -12,6 +12,7 @@ from unittest.mock import patch
 from scripts import check_project_readiness as readiness
 from scripts import validate_repository as repository
 from scripts import validate_template as template
+from scripts.bootstrap.validation_program import stage_failed
 
 VALID_PRD = """# Product
 
@@ -98,8 +99,8 @@ class FunctionalCoreTests(unittest.TestCase):
         self.assertIn("READINESS_USAGE_ERROR", output.getvalue())
 
     def test_repository_core_stops_after_nonzero_stage(self) -> None:
-        self.assertTrue(repository.stage_failed(7))
-        self.assertFalse(repository.stage_failed(0))
+        self.assertTrue(stage_failed(7))
+        self.assertFalse(stage_failed(0))
 
     def test_repository_adapter_folds_successful_stages(self) -> None:
         with patch(
@@ -127,4 +128,4 @@ class FunctionalCoreTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    _ = unittest.main()

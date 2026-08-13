@@ -91,7 +91,7 @@ class TemplateContractTests(unittest.TestCase):
                 if relative != missing:
                     path = root / relative
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text("present", encoding="utf-8")
+                    _ = path.write_text("present", encoding="utf-8")
             skill_texts = tuple(
                 (
                     f".agents/skills/{skill}/SKILL.md",
@@ -120,4 +120,4 @@ class TemplateContractTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    _ = unittest.main()

@@ -15,7 +15,7 @@ class StageFailed:
     exit_code: int
 
 
-StageObservation = StagePassed | StageFailed
+type StageObservation = StagePassed | StageFailed
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,18 +38,26 @@ class ValidationProgram:
         if state.next_stage is None:
             return state
         observations = (*state.observations, observation)
-        if isinstance(observation, StageFailed):
-            return ValidationState(None, observation.exit_code, observations)
-        index = (
-            len(observations) if state.next_stage in self.stages else len(self.stages)
-        )
-        next_stage = self.stages[index] if index < len(self.stages) else None
-        return ValidationState(
-            next_stage, 0 if next_stage is None else None, observations
-        )
+        match observation:
+            case StageFailed():
+                return ValidationState(None, observation.exit_code, observations)
+            case StagePassed():
+                index = (
+                    len(observations)
+                    if state.next_stage in self.stages
+                    else len(self.stages)
+                )
+                next_stage = self.stages[index] if index < len(self.stages) else None
+                return ValidationState(
+                    next_stage, 0 if next_stage is None else None, observations
+                )
 
 
 def stage_failed(observation: StageObservation | int) -> bool:
-    if isinstance(observation, int):
-        return observation != 0
-    return isinstance(observation, StageFailed)
+    match observation:
+        case int():
+            return observation != 0
+        case StageFailed():
+            return True
+        case StagePassed():
+            return False

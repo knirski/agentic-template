@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
+from typing import assert_never
 
 from scripts.bootstrap.canonical_json import canonical_json
 from scripts.bootstrap.catalog import CATALOG, CapabilityDefinition, SettingDefinition
@@ -106,20 +107,30 @@ def _setting_value(
         return Err(
             ResolutionFailure(ResolutionErrorKind.SECRET_SETTING, definition.name)
         )
-    if definition.type == "string" and not isinstance(value, str):
-        return Err(
-            ResolutionFailure(ResolutionErrorKind.TYPE_VIOLATION, definition.name)
-        )
-    if definition.type == "boolean" and not isinstance(value, bool):
-        return Err(
-            ResolutionFailure(ResolutionErrorKind.TYPE_VIOLATION, definition.name)
-        )
-    if definition.type == "enum" and (
-        not isinstance(value, str) or value not in definition.choices
-    ):
-        return Err(
-            ResolutionFailure(ResolutionErrorKind.ENUM_VIOLATION, definition.name)
-        )
+    match definition.type:
+        case "string":
+            if not isinstance(value, str):
+                return Err(
+                    ResolutionFailure(
+                        ResolutionErrorKind.TYPE_VIOLATION, definition.name
+                    )
+                )
+        case "boolean":
+            if not isinstance(value, bool):
+                return Err(
+                    ResolutionFailure(
+                        ResolutionErrorKind.TYPE_VIOLATION, definition.name
+                    )
+                )
+        case "enum":
+            if not isinstance(value, str) or value not in definition.choices:
+                return Err(
+                    ResolutionFailure(
+                        ResolutionErrorKind.ENUM_VIOLATION, definition.name
+                    )
+                )
+        case _:  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
+            return assert_never(definition.type)  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
     return Ok(value.strip() if isinstance(value, str) else value)
 
 

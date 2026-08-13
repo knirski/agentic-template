@@ -66,7 +66,7 @@ class DirectoryEntry:
     mode: PosixMode
 
 
-TreeEntry = FileEntry | DirectoryEntry
+type TreeEntry = FileEntry | DirectoryEntry
 
 
 class DirectoryTreePayload(TypedDict):
@@ -82,7 +82,7 @@ class FileTreePayload(TypedDict):
     sha256: str
 
 
-TreePayload = DirectoryTreePayload | FileTreePayload
+type TreePayload = DirectoryTreePayload | FileTreePayload
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,19 +162,29 @@ def file_state_hash(kind: bytes, state: FileState) -> str:
     return tagged_digest(kind + b"/file", payload)
 
 
+def _entry_kind_name(entry: TreeEntry) -> str:
+    match entry:
+        case DirectoryEntry():
+            return "directory"
+        case FileEntry():
+            return "file"
+
+
 def _entry_payload(entry: TreeEntry) -> TreePayload:
-    if isinstance(entry, DirectoryEntry):
-        return {
-            "kind": "directory",
-            "path": entry.path.value,
-            "mode": entry.mode.value,
-        }
-    return {
-        "kind": "file",
-        "path": entry.path.value,
-        "mode": entry.mode.value,
-        "sha256": sha256_hex(entry.content),
-    }
+    match entry:
+        case DirectoryEntry():
+            return {
+                "kind": "directory",
+                "path": entry.path.value,
+                "mode": entry.mode.value,
+            }
+        case FileEntry():
+            return {
+                "kind": "file",
+                "path": entry.path.value,
+                "mode": entry.mode.value,
+                "sha256": sha256_hex(entry.content),
+            }
 
 
 def directory_tree_hash(kind: bytes, state: DirectoryState | None) -> str:
@@ -186,7 +196,7 @@ def directory_tree_hash(kind: bytes, state: DirectoryState | None) -> str:
         state.entries,
         key=lambda entry: (
             entry.path.value.encode("utf-8"),
-            "directory" if isinstance(entry, DirectoryEntry) else "file",
+            _entry_kind_name(entry),
         ),
     )
     seen_paths: set[str] = set()
