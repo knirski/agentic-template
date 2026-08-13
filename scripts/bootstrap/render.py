@@ -531,7 +531,7 @@ def _boolean_section_value(value: SettingValue, name: str) -> Result[bool, Rende
     match value:
         case bool():
             return Ok(value)
-        case str():
+        case _:  # kept for runtime defense — settings arrive unvalidated at the render boundary
             return Err(
                 RenderError(
                     RenderErrorKind.INVALID_TEMPLATE,
