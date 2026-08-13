@@ -157,8 +157,15 @@ class PlanContractTests(unittest.TestCase):
         # `files`, and the `github_prs` rule (pending omits it; everyone else
         # carries a list) must hold. A drift here means either the plan data
         # or the documented schema changed without the other following.
+        #
+        # The canonical plan predates `new_abstractions` (added by upstream
+        # spec-plan v3.1.0), so it legitimately lacks that key. Pinning the
+        # exact legacy shape would reject any FUTURE plan.json that follows
+        # the documented contract, so assert the positional contract instead:
+        # the canonical keys in order, with an optional `new_abstractions`
+        # between `files` and `validation` when present.
         plan = json.loads(PLAN.read_text(encoding="utf-8"))
-        expected_order = [
+        canonical_order = [
             "id",
             "name",
             "depends_on",
@@ -171,7 +178,15 @@ class PlanContractTests(unittest.TestCase):
 
         for phase in plan["phases"]:
             for task in phase["tasks"]:
-                self.assertEqual(list(task), expected_order, task["id"])
+                keys = list(task)
+                expected = canonical_order
+                if "new_abstractions" in keys:
+                    expected = (
+                        canonical_order[:6]
+                        + ["new_abstractions"]
+                        + canonical_order[6:]
+                    )
+                self.assertEqual(keys, expected, task["id"])
                 execution = task["execution"]
                 if execution["status"] == "pending":
                     self.assertNotIn("github_prs", execution, task["id"])
