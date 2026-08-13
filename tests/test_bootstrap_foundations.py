@@ -43,6 +43,7 @@ from scripts.bootstrap.errors import (
     TransitionErrorKind,
     UsageError,
     UsageErrorKind,
+    sanitize_errno,
 )
 from scripts.bootstrap.result import Err, Ok, accumulate
 from scripts.bootstrap.values import (
@@ -246,6 +247,15 @@ class DiagnosticTests(unittest.TestCase):
             UsageError(UsageErrorKind.UNKNOWN_COMMAND, 42)  # pyright: ignore[reportArgumentType]  intentional non-string subject negative test
         )
         self.assertEqual(diagnostic.subject, "")
+
+    def test_sanitize_errno_without_errno_uses_sanitized_class(self) -> None:
+        # An OSError raised from a bare message has errno=None; the closed
+        # vocabulary must still receive the sanitized fallback instead of
+        # leaking a raw errno or failing to classify.
+        self.assertEqual(
+            sanitize_errno(OSError("no errno attached")),
+            ErrnoClass.OTHER_SANITIZED_ERRNO,
+        )
 
     def test_limit_diagnostic_reports_observed_and_configured_limits(self) -> None:
         diagnostic = limit_diagnostic("paths", 11, 10)

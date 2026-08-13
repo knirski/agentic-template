@@ -43,6 +43,7 @@ from scripts.bootstrap.fs_effects import (
     fsync_directory,
     fsync_file,
     list_directory_entries,
+    map_observation_error,
     open_regular_no_follow,
     read_file_bounded,
     walk_no_follow,
@@ -51,6 +52,7 @@ from scripts.bootstrap.fs_effects import (
 from scripts.bootstrap.git_state import (
     GitCommandResult,
     ResolvedGitWorktree,
+    _stat_error,
     resolve_git_worktree,
     run_git,
 )
@@ -143,6 +145,19 @@ class FsEffectsTests(unittest.TestCase):
             os.symlink(os.path.join(tmp, "real"), os.path.join(tmp, "link"))
             error = _err(walk_no_follow(_open_dir(tmp), (b"link", b"child")))
             self.assertEqual(error.kind, ObservationErrorKind.SYMLINK_ENCOUNTERED)  # pyright: ignore[reportAttributeAccessIssue]
+
+    def test_observation_error_without_errno_is_internal_failure(self) -> None:
+        # An OSError raised from a bare message carries errno=None; the closed
+        # vocabulary must map it to InternalFailure rather than an unmapped
+        # ObservationError kind.
+        mapped = map_observation_error(OSError("no errno attached"), "subject")
+        self.assertIsInstance(mapped, InternalFailure)
+
+    def test_stat_error_without_errno_is_internal_failure(self) -> None:
+        # Same guarantee for the git-state stat path: an errno-less OSError
+        # must not produce an unbounded ObservationError kind.
+        mapped = _stat_error(OSError("no errno attached"), b"subject")
+        self.assertIsInstance(mapped, InternalFailure)
 
     def test_walk_rejects_symlink_final_component(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
