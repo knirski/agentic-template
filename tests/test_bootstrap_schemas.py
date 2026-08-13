@@ -4,7 +4,11 @@ import pytest
 from pydantic import ValidationError
 
 from scripts.bootstrap.bundles import decode_bundle
-from scripts.bootstrap.schemas import AdditionsInput, BootstrapBundle
+from scripts.bootstrap.schemas import (
+    AdditionsInput,
+    BootstrapBundle,
+    FileContent,
+)
 
 
 def bundle_data(**overrides: object) -> dict[str, object]:
@@ -59,6 +63,23 @@ def test_profile_capability_shape_is_closed(profile: dict[str, object]) -> None:
         _ = BootstrapBundle.model_validate(
             {**bundle_data(profile=profile), "capability_settings": {}}
         )
+
+
+def test_file_content_accepts_safe_paths() -> None:
+    bundle = BootstrapBundle.model_validate(
+        bundle_data(
+            content={
+                "prd": {"mode": "file", "path": "content/prd.md"},
+                "readme": {"mode": "scaffold"},
+                "validation_hook": {"mode": "scaffold"},
+                "security_policy": {"mode": "scaffold"},
+                "contributing": {"mode": "scaffold"},
+            }
+        )
+    )
+    content = bundle.content.prd
+    assert isinstance(content, FileContent)
+    assert content.path == "content/prd.md"
 
 
 def test_file_content_rejects_unsafe_paths() -> None:

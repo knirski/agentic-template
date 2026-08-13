@@ -72,6 +72,7 @@ from scripts.bootstrap.state import (
     EmptyManifestFree,
     ExistingProject,
     IncompatibleExistingProject,
+    InvalidJournal,
     InvalidManifest,
     JournalAtDifferentTarget,
     JournalPending,
@@ -105,6 +106,8 @@ from scripts.bootstrap.state import (
     UnsupportedManifestFree,
     ValidatedJournal,
     WorktreeContext,
+    context_of,
+    is_protected,
 )
 from scripts.bootstrap.values import JournalPhase
 
@@ -608,6 +611,91 @@ class StateAndDecisionTests(unittest.TestCase):
         self.assertIsInstance(
             decide_project(Reconcile(ReconcileOptions()), snapshot_same), RefuseMutation
         )
+
+    def test_plan_apply_on_a_supported_scaffold_compiles(self) -> None:
+        scaffold = ProjectAvailable(
+            worktree(),
+            RecognizedScaffold(
+                GenerationPath.GITHUB, NoSnapshotCleanup(), EmptyManifestFree(), ()
+            ),
+        )
+        self.assertIsInstance(
+            decide_project(PlanApply(ApplyPlanOptions()), scaffold), CompileCandidate
+        )
+
+    def test_add_and_restore_cover_every_copier_condition_branch(self) -> None:
+        scaffold = ProjectAvailable(
+            worktree(),
+            RecognizedScaffold(
+                GenerationPath.GITHUB, NoSnapshotCleanup(), EmptyManifestFree(), ()
+            ),
+        )
+        # Non-ExistingProject observations fall through to the refusal arm.
+        self.assertIsInstance(
+            decide_project(Add(AddOptions()), scaffold), RefuseMutation
+        )
+        self.assertIsInstance(
+            decide_project(Restore(RestoreOptions()), scaffold), RefuseMutation
+        )
+        for condition in (
+            CopierSourceSame(ManagedDrift(PathDelta((RepoPath("managed.txt"),)))),
+            CopierConflicted(PathDelta((RepoPath(".rej"),))),
+            CopierSourceChanged(
+                SourceDelta((RepoPath("source.txt"),)), ManagedVerified()
+            ),
+        ):
+            state = ProjectAvailable(
+                worktree(),
+                ExistingProject(
+                    CopierExistingProject(
+                        RecordedProjectState(GenerationPath.COPIER),
+                        condition,
+                        TargetSnapshot(()),
+                    )
+                ),
+            )
+            decision = decide_project(Add(AddOptions()), state)
+            self.assertIsInstance(decision, RefuseMutation)
+            if isinstance(decision, RefuseMutation):
+                self.assertIsInstance(decision.error, TransitionError)
+                if isinstance(decision.error, TransitionError):
+                    self.assertEqual(
+                        decision.error.kind,
+                        TransitionErrorKind.OPERATION_UNAVAILABLE,
+                    )
+
+    def test_context_of_and_is_protected_cover_every_state_family(self) -> None:
+        context = worktree().context
+        scaffold = RecognizedScaffold(
+            GenerationPath.GITHUB, NoSnapshotCleanup(), EmptyManifestFree(), ()
+        )
+        journal = ValidatedJournal("apply", context.target, JournalPhase.PLANNED)
+        self.assertIsNone(
+            context_of(
+                TargetUnavailable(UnsupportedGitTarget(TargetReason.NOT_WORKTREE))
+            )
+        )
+        self.assertEqual(
+            context_of(StalePendingWrite(context, PendingIdentity("0" * 64))),
+            context,
+        )
+        self.assertEqual(context_of(JournalPending(context, journal)), context)
+        self.assertEqual(
+            context_of(JournalAtDifferentTarget(context, journal, context.target)),
+            context,
+        )
+        self.assertEqual(
+            context_of(StateRootInvalid(context, InvalidJournal("bad"))), context
+        )
+        protected = ProtectedTargetAvailable(worktree(protected=True).context, scaffold)
+        self.assertEqual(context_of(protected), worktree(protected=True).context)
+        self.assertTrue(is_protected(protected))
+        self.assertFalse(
+            is_protected(
+                TargetUnavailable(UnsupportedGitTarget(TargetReason.NOT_WORKTREE))
+            )
+        )
+        self.assertFalse(is_protected(ProjectAvailable(worktree(), scaffold)))
 
 
 class ObservationTests(unittest.TestCase):

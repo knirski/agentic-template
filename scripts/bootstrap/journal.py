@@ -354,7 +354,7 @@ def _decode_preparation(
                 expected_mode=mode,
             )
         )
-    except TypeError as error:
+    except TypeError as error:  # pragma: no cover  defensive — every preparation field is validated above, so the frozen constructor cannot fail
         return _invalid(f"journal preparation is invalid: {error}")
 
 

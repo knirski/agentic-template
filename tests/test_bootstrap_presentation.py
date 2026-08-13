@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from scripts.bootstrap.presentation import render_json, render_text
 from scripts.bootstrap.readiness import (
@@ -27,6 +28,57 @@ class PresentationTests(unittest.TestCase):
         encoded = render_json(value)
         self.assertIn("R: x", text)
         self.assertIn('"code":"R"', encoded)
+
+    def test_text_presenter_skips_non_dict_finding_items(self) -> None:
+        value = {
+            "findings": [
+                "not-a-dict",
+                {"code": "R", "subject": "x"},
+            ]
+        }
+        self.assertEqual(render_text(value), "R: x")
+
+    def test_finding_path_and_render_cover_both_subject_shapes(self) -> None:
+        repository_finding = Finding(
+            code="R",
+            subject_at=Repository(),
+            subject="repo",
+            rule="rule",
+            severity="informational",
+            message="info",
+            next_action="inspect",
+        )
+        path_finding = Finding(
+            "R", SubjectPath("a"), "a", "rule", "blocking", "bad", "fix"
+        )
+        self.assertEqual(repository_finding.path, Path("."))
+        self.assertEqual(path_finding.path, Path("a"))
+        self.assertIn("repository", repository_finding.render())
+        self.assertIn("a", path_finding.render())
+        self.assertEqual(repository_finding.identity(), ("R", "", "repo", "rule"))
+        self.assertEqual(path_finding.identity(), ("R", "a", "a", "rule"))
+
+    def test_finding_constructor_rejects_invalid_contracts(self) -> None:
+        with self.assertRaises(TypeError):
+            _ = Finding(
+                "R",
+                42,
+                "a",
+                "rule",
+                "blocking",
+                "bad",
+                "fix",
+            )
+        with self.assertRaises(TypeError):
+            _ = Finding(
+                "R",
+                SubjectPath("a"),
+                "a",
+                "rule",
+                "invalid-severity",
+                "bad",
+                "fix",
+            )
 
     def test_validation_program_stops_at_first_failed_stage(self) -> None:
         program = ValidationProgram(("template", "readiness", "project"))

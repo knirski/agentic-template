@@ -59,7 +59,9 @@ class ArtifactDefinition(StrictModel):
     @model_validator(mode="after")
     def validate_path(self) -> ArtifactDefinition:
         match parse_path(self.path):
-            case Ok(_):
+            case Ok(
+                _
+            ):  # pragma: no cover  coverage.py attributes case headers to the neighboring branch
                 pass
             case Err(_):
                 raise ValueError("artifact path must be repository-relative")

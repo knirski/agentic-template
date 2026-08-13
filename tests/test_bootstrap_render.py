@@ -634,6 +634,26 @@ def test_optional_section_requires_normalized_boolean() -> None:
             raise AssertionError("expected a boolean-section failure")
 
 
+def test_retained_paths_must_be_repository_relative() -> None:
+    store, content_ids = fixture_blobs()
+    kept = make_render_input(
+        store,
+        content_ids,
+        maintenance=MaintenanceInfo(
+            status="retained", retained_paths=(RepoPath("docs/keep.md"),)
+        ),
+    )
+    assert kept.maintenance.retained_paths == (RepoPath("docs/keep.md"),)
+    with pytest.raises(ValueError, match="retained path"):
+        _ = make_render_input(
+            store,
+            content_ids,
+            maintenance=MaintenanceInfo(
+                status="retained", retained_paths=(RepoPath("../escape"),)
+            ),
+        )
+
+
 def test_unknown_substitution_marker_is_rejected() -> None:
     store, content_ids = fixture_blobs()
     store, unknown_id = intern(

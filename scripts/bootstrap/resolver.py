@@ -129,8 +129,10 @@ def _setting_value(
                         ResolutionErrorKind.ENUM_VIOLATION, definition.name
                     )
                 )
-        case _:  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
-            return assert_never(definition.type)  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
+        case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
+            return assert_never(
+                definition.type
+            )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
     return Ok(value.strip() if isinstance(value, str) else value)
 
 

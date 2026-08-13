@@ -85,6 +85,10 @@ from scripts.bootstrap.planner import (
     legal_output_paths,
     predicted_placeholder_findings,
 )
+from scripts.bootstrap.readiness import (
+    Finding,
+    Repository,
+)
 from scripts.bootstrap.render import (
     ManagedFile,
 )
@@ -642,6 +646,24 @@ def _file_entry(receipt: dict[str, object]) -> dict[str, object]:
     raise AssertionError("no file entry in tree")
 
 
+def _receipt_with_tree_dir_entry_bad_path() -> dict[str, object]:
+    receipt = _nested_copier_receipt()
+    _directory_entry(receipt)["path"] = ".."
+    return receipt
+
+
+def _receipt_with_tree_entry_bad_kind() -> dict[str, object]:
+    receipt = _nested_copier_receipt()
+    _directory_entry(receipt)["kind"] = "symlink"
+    return receipt
+
+
+def _receipt_with_tree_file_entry_bad_kind() -> dict[str, object]:
+    receipt = _nested_copier_receipt()
+    _file_entry(receipt)["file_kind"] = "other"
+    return receipt
+
+
 def _receipt_with_tree_dir_entry_missing_mode() -> dict[str, object]:
     receipt = _nested_copier_receipt()
     _ = _directory_entry(receipt).pop("mode")
@@ -1126,6 +1148,37 @@ class TestManifest:
             case Err(error):
                 raise AssertionError(f"manifest build failed: {error}")
 
+    def _copier_manifest_value(self) -> CandidateManifest:
+        provenance = ProvenanceRecord(
+            generation_path=GenerationPath.COPIER,
+            maintenance=MaintenanceRecord(status="clean"),
+            source_baseline=CopierSourceBaseline(
+                kind="copier",
+                fingerprint=sha256_hex(b"source"),
+                entries=fixture_source_entries(),
+            ),
+        )
+        match build_candidate_manifest(
+            answers=fixture_answers(),
+            additions=ManifestAdditions(),
+            provenance=provenance,
+            managed=(),
+        ):
+            case Ok(manifest):
+                return manifest
+            case Err(error):
+                raise AssertionError(f"copier manifest build failed: {error}")
+
+    def test_copier_manifest_round_trip_preserves_the_baseline_kind(self) -> None:
+        manifest = self._copier_manifest_value()
+        encoded = encode_manifest(manifest)
+        match decode_manifest(encoded):
+            case Ok(decoded):
+                assert decoded == manifest
+                assert encode_manifest(decoded) == encoded
+            case Err(error):
+                raise AssertionError(f"copier manifest decode failed: {error}")
+
     def test_round_trip_preserves_typed_values(self) -> None:
         manifest = self._github_manifest_value()
         encoded = encode_manifest(manifest)
@@ -1220,6 +1273,69 @@ class TestManifest:
                 assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
             case Ok(_):
                 raise AssertionError("unsorted additions accepted")
+
+    def test_manifest_rejects_unsafe_managed_paths(self) -> None:
+        provenance = self._github_manifest_value().provenance
+        unsafe = ManagedInventoryEntry(
+            path=RepoPath("../escape"),
+            kind="text",
+            mode=PosixMode.FILE,
+            sha256=sha256_hex(b"x"),
+        )
+        match build_candidate_manifest(
+            answers=fixture_answers(),
+            additions=ManifestAdditions(),
+            provenance=provenance,
+            managed=(unsafe,),
+        ):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("unsafe managed path accepted")
+
+    def test_manifest_rejects_unsafe_retained_paths(self) -> None:
+        provenance = replace(
+            self._github_manifest_value().provenance,
+            maintenance=MaintenanceRecord(
+                status="retained", retained_paths=(RepoPath(".."),)
+            ),
+        )
+        match build_candidate_manifest(
+            answers=fixture_answers(),
+            additions=ManifestAdditions(),
+            provenance=provenance,
+            managed=(),
+        ):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("unsafe retained path accepted")
+
+    def test_manifest_rejects_unsafe_baseline_entries(self) -> None:
+        provenance = replace(
+            self._github_manifest_value().provenance,
+            source_baseline=replace(
+                self._github_manifest_value().provenance.source_baseline,
+                entries=(
+                    LifecycleSourceEntry(
+                        path=RepoPath(".."),
+                        kind="file",
+                        mode=PosixMode.FILE,
+                        sha256=sha256_hex(b"x"),
+                    ),
+                ),
+            ),
+        )
+        match build_candidate_manifest(
+            answers=fixture_answers(),
+            additions=ManifestAdditions(),
+            provenance=provenance,
+            managed=(),
+        ):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("unsafe baseline entry accepted")
 
     def test_manifest_never_contains_adopter_or_legal_prose(self) -> None:
         provenance = self._github_manifest_value().provenance
@@ -1978,6 +2094,112 @@ class TestPlanner:
                 assert error.kind is PlanInvariantErrorKind.UNMATCHED_PRECONDITION
             case Ok(_):
                 raise AssertionError("duplicate delete operations applied")
+
+    def test_unsafe_seed_and_managed_paths_are_refused(self) -> None:
+        store, seed_once = fixture_seed_once(
+            VerifiedBlobStore.empty(), "retain-apache-2.0"
+        )
+        unsafe_seed = replace(seed_once[0], path=RepoPath("../escape"))
+        _, result = compile_fixture(seed_once=(unsafe_seed,), blobs=store)
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("unsafe seed path compiled")
+
+        unsafe_managed = replace(fixture_managed()[0], path=RepoPath("../escape"))
+        _, result = compile_fixture(managed=(unsafe_managed,))
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+            case Ok(_):
+                raise AssertionError("unsafe managed path compiled")
+
+    def _nested_copier_plan(self) -> OperationPlan:
+        """A Copier plan whose docs tree contains a directory entry."""
+        managed = tuple(
+            sorted(
+                (
+                    *fixture_managed(),
+                    ManagedFile(
+                        path=RepoPath("docs/api/ref.md"),
+                        kind="text",
+                        mode=PosixMode.FILE,
+                        content=b"# API\n",
+                    ),
+                ),
+                key=lambda file: file.path.value.encode("utf-8"),
+            )
+        )
+        _, result = compile_fixture(
+            generation=GenerationPath.COPIER,
+            snapshot=fixture_copier_snapshot(),
+            cleanup=None,
+            snapshot_commit=None,
+            managed=managed,
+        )
+        return get_plan(result)
+
+    def test_apply_plan_rejects_duplicate_tree_entries(self) -> None:
+        snapshot = fixture_copier_snapshot()
+        plan = self._nested_copier_plan()
+        operations = list(plan.ordered_operations)
+        index = next(
+            index
+            for index, operation in enumerate(plan.ordered_operations)
+            if isinstance(operation, CreateTreeOperation)
+            and operation.root.value == "docs"
+        )
+        tree = operations[index]
+        assert isinstance(tree, CreateTreeOperation)
+        entries = tree.planned_new.entries
+        for duplicate in (entries[0], entries[1]):
+            operations[index] = replace(
+                tree,
+                planned_new=replace(tree.planned_new, entries=(*entries, duplicate)),
+            )
+            duplicated = replace(plan, ordered_operations=tuple(operations))
+            match apply_plan(snapshot, duplicated):
+                case Err(error):
+                    assert error.kind is PlanInvariantErrorKind.DUPLICATE_PATH
+                case Ok(_):
+                    raise AssertionError("duplicate tree entry applied")
+
+    def test_apply_plan_rejects_a_missing_tree_entry_blob(self) -> None:
+        snapshot = fixture_copier_snapshot()
+        plan = self._nested_copier_plan()
+        operations = list(plan.ordered_operations)
+        index = next(
+            index
+            for index, operation in enumerate(plan.ordered_operations)
+            if isinstance(operation, CreateTreeOperation)
+            and operation.root.value == "docs"
+        )
+        tree = operations[index]
+        assert isinstance(tree, CreateTreeOperation)
+        file_entry = next(
+            entry
+            for entry in tree.planned_new.entries
+            if isinstance(entry, PlannedFileEntry)
+        )
+        operations[index] = replace(
+            tree,
+            planned_new=replace(
+                tree.planned_new,
+                entries=tuple(
+                    replace(entry, content_id=ContentId("0" * 64))
+                    if entry is file_entry
+                    else entry
+                    for entry in tree.planned_new.entries
+                ),
+            ),
+        )
+        missing = replace(plan, ordered_operations=tuple(operations))
+        match apply_plan(snapshot, missing):
+            case Err(error):
+                assert error.kind is PlanInvariantErrorKind.MISSING_BLOB
+            case Ok(_):
+                raise AssertionError("tree entry with a missing blob applied")
 
     def test_apply_plan_rejects_removing_directory_with_remaining_files(self) -> None:
         plan = github_plan()
@@ -3307,6 +3529,28 @@ def _receipt_tree_entry_not_mapping(receipt: dict[str, object]) -> object:
     return receipt.update(_receipt_with_tree_entry_not_mapping())
 
 
+def _receipt_tree_dir_entry_unsafe_path(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_dir_entry_bad_path())
+
+
+def _receipt_tree_entry_unknown_kind(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_entry_bad_kind())
+
+
+def _receipt_tree_file_entry_bad_kind(receipt: dict[str, object]) -> object:
+    return receipt.update(_receipt_with_tree_file_entry_bad_kind())
+
+
+def _receipt_delete_extra_key(receipt: dict[str, object]) -> object:
+    delete = _operation_by_kind(receipt, "delete_file")
+    return delete.__setitem__("extra", 1)
+
+
+def _receipt_delete_unsafe_path(receipt: dict[str, object]) -> object:
+    delete = _operation_by_kind(receipt, "delete_file")
+    return delete.__setitem__("path", "..")
+
+
 def _receipt_tree_dir_entry_missing_mode(receipt: dict[str, object]) -> object:
     return receipt.update(_receipt_with_tree_dir_entry_missing_mode())
 
@@ -3387,6 +3631,41 @@ class TestPlanDigest:
                     "size",
                     "content_id",
                 }
+
+    def test_nested_tree_receipt_round_trip(self) -> None:
+        receipt = _nested_copier_receipt()
+        match decode_receipt(encode_receipt(receipt)):
+            case Ok(decoded):
+                assert decoded == receipt
+            case Err(error):
+                raise AssertionError(f"nested tree receipt decode failed: {error}")
+
+    def test_receipt_round_trip_with_a_repository_level_finding(self) -> None:
+        plan = github_plan()
+        finding = Finding(
+            "R",
+            Repository(),
+            "repository",
+            "rule",
+            "informational",
+            "message",
+            "inspect",
+        )
+        plan = replace(
+            plan,
+            gate_specification=replace(
+                plan.gate_specification,
+                expected_placeholder=(finding,),
+            ),
+        )
+        receipt = build_receipt(plan)
+        match decode_receipt(encode_receipt(receipt)):
+            case Ok(decoded):
+                assert decoded == receipt
+            case Err(error):
+                raise AssertionError(
+                    f"repository finding receipt decode failed: {error}"
+                )
 
     def test_receipt_binds_target_identity(self) -> None:
         plan = github_plan()
@@ -3630,6 +3909,18 @@ class TestPlanDigest:
                 _receipt_tree_dir_entry_missing_mode,
                 id="tree directory entry missing mode",
             ),
+            pytest.param(
+                _receipt_tree_dir_entry_unsafe_path,
+                id="tree directory entry unsafe path",
+            ),
+            pytest.param(
+                _receipt_tree_entry_unknown_kind, id="tree entry unknown kind"
+            ),
+            pytest.param(
+                _receipt_tree_file_entry_bad_kind, id="tree file entry bad kind"
+            ),
+            pytest.param(_receipt_delete_extra_key, id="delete extra key"),
+            pytest.param(_receipt_delete_unsafe_path, id="delete unsafe path"),
             pytest.param(
                 _receipt_tree_file_entry_unsafe_path, id="tree file entry unsafe path"
             ),

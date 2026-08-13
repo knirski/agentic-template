@@ -672,7 +672,9 @@ def _build_tree(
                 byte_entries.append(DirectoryEntry(entry.path, entry.mode))
             case PlannedFileEntry():
                 content = blobs.get(entry.content_id)
-                if content is None:
+                if (
+                    content is None
+                ):  # pragma: no cover  defensive — every planned output blob was resolved above
                     return Err(
                         _compile_error(CompileErrorKind.MISSING_BLOB, entry.path.value)
                     )
@@ -1121,7 +1123,7 @@ def compile_initial_plan(
                         inventory_ops = (operation,)
         case RetainMaintenance():
             pass
-        case _:  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
+        case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
             return assert_never(
                 maintenance
             )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
@@ -1207,7 +1209,7 @@ def _expected_kind(identity: FileContentIdentity) -> Literal["text", "binary"]:
             return "text"
         case "binary":
             return "binary"
-        case _:  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
+        case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
             return assert_never(
                 identity.kind
             )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
