@@ -637,7 +637,9 @@
                 "python3 scripts/validate_repository.py (expected template-source exit 1; template contract passed)"
               ]
             },
-            "github_prs": []
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/57"
+            ]
           },
           "files": {
             "create": [
