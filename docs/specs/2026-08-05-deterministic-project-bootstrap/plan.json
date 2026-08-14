@@ -680,7 +680,7 @@
           "inputs": [
             "CLI contract and exit semantics; Copier/GitHub scaffold recognition; maintenance cleanup inventory; complete status/plan/apply/add/restore/reconcile/recover transition matrix."
           ],
-          "description": "Add the thin `bootstrap-project.py` adapter for `init`, `status`, `plan apply`, `plan add`, `plan restore`, `plan reconcile`, `apply`, `add`, `restore`, `reconcile`, and `recover`. Implement deterministic text/JSON output, command-family exit codes, scaffold marker checks, cleanup mismatch refusal/leave behavior, target protection, phase-specific recovery presentation, and hook-at-most-once finalization after a gated installation. `init` accepts `--from` only (no interactive mode); `status` uses one observation pass; planning uses a coherent two-pass observation; mutating commands repeat the coherent two-pass observation after lock acquisition and require the plan receipt and target identity to match; `apply` on an already-installed project refuses with `status`/`scripts/validate_repository.py` as the next action.",
+          "description": "Add the thin `bootstrap_project.py` adapter for `init`, `status`, `plan apply`, `plan add`, `plan restore`, `plan reconcile`, `apply`, `add`, `restore`, `reconcile`, and `recover`. Implement deterministic text/JSON output, command-family exit codes, scaffold marker checks, cleanup mismatch refusal/leave behavior, target protection, phase-specific recovery presentation, and hook-at-most-once finalization after a gated installation. `init` accepts `--from` only (no interactive mode); `status` uses one observation pass; planning uses a coherent two-pass observation; mutating commands repeat the coherent two-pass observation after lock acquisition and require the plan receipt and target identity to match; `apply` on an already-installed project refuses with `status`/`scripts/validate_repository.py` as the next action.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -688,7 +688,7 @@
           },
           "files": {
             "create": [
-              "scripts/bootstrap-project.py",
+              "scripts/bootstrap_project.py",
               "scripts/bootstrap/cli.py",
               "scripts/bootstrap/scaffold.py",
               "tests/test_bootstrap_cli.py"
@@ -968,7 +968,7 @@
               "scripts/bootstrap/decisions.py",
               "scripts/bootstrap/render.py",
               "scripts/bootstrap/planner.py",
-              "scripts/bootstrap-project.py"
+              "scripts/bootstrap_project.py"
             ],
             "remove": []
           },
@@ -1009,7 +1009,7 @@
               "scripts/bootstrap/decisions.py",
               "scripts/bootstrap/source_baseline.py",
               "scripts/bootstrap/planner.py",
-              "scripts/bootstrap-project.py"
+              "scripts/bootstrap_project.py"
             ],
             "remove": []
           },

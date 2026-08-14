@@ -31,6 +31,29 @@ specific release.
 Copier requires Python and Git. Template-owned readiness validation requires Python 3.14+ and the
 standard library. The template itself does not bundle or distribute a custom updater.
 
+### Deterministic bootstrap CLI
+
+The repository ships `scripts/bootstrap_project.py`, the deterministic bootstrap compiler. It turns a
+reviewable input bundle into one complete typed installation plan and applies it through a
+recoverable transaction:
+
+```console
+python3 scripts/bootstrap_project.py init --from ./bootstrap.json --output ./bundle
+python3 scripts/bootstrap_project.py status --target ./my-project
+python3 scripts/bootstrap_project.py plan apply --bundle ./bundle --target ./my-project --out receipt.json
+python3 scripts/bootstrap_project.py apply --bundle ./bundle --target ./my-project
+python3 scripts/bootstrap_project.py recover --target ./my-project
+```
+
+`init` writes a complete reviewable bundle from an input file; there is no interactive mode. `status`
+describes the generation path and mechanical readiness in one observation pass and never runs the
+adopter hook. `plan apply` compiles the plan and writes a canonical receipt without mutating the
+target; only `apply` installs. An install whose adopter hook succeeds exits 0; an installed-but-unready
+project exits 1, and usage, contract, or internal failures exit 2. `apply` on an already-installed
+project refuses and names `status` or `python3 scripts/validate_repository.py` as the next action.
+`recover` finishes or discards an interrupted transaction and never re-runs the adopter hook.
+`--format json` emits exactly one canonical command envelope on stdout.
+
 `docs/prd.md` is the product source of truth. `docs/agents/issue-tracker.md` defines the relationship
 between GitHub Issues and Atelier plans, while `docs/agents/domain.md` defines lazy domain and ADR
 documentation.

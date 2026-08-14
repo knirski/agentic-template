@@ -221,13 +221,15 @@ def outcome_for_error(error: CommandError) -> CommandOutcome:
     match error:
         case UsageError() | InputError():
             return InvalidRequest((diagnostic,))
-        case ContractError():
+        case ContractError() | ObservationError():
+            # An observation that prevents trustworthy decoding is a contract
+            # failure (design: ``ContractFailure``), never an advisory refusal.
             return ContractFailure((diagnostic,))
         case TransactionError():
             return RecoveryFailure((diagnostic,))
         case CoreInternalFailure():
             return InternalFailure((diagnostic,))
-        case ObservationError() | TransitionError():
+        case TransitionError():
             return ActionRequired((diagnostic,))
     return assert_never(
         error

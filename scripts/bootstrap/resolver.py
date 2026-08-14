@@ -217,6 +217,41 @@ def normalized_settings_identity(
     return tagged_digest(b"normalized-settings", canonical_json(payload))
 
 
+def resolve_recorded_selection(
+    *,
+    profile_id: str,
+    requested: tuple[str, ...],
+    additions: tuple[str, ...],
+    settings: Mapping[str, Mapping[str, SettingValue]],
+) -> Result[ResolvedBundle, ResolutionFailure]:
+    """Resolve a recorded profile plus append-only additions against the catalog.
+
+    ``status`` and lifecycle operations use this instead of fabricating a
+    bundle: the recorded selection already carries the frozen profile id,
+    requested ids, additions, and persisted normalized settings.
+    """
+
+    combined = tuple(requested) + tuple(additions)
+    if len(set(combined)) != len(combined):
+        return Err(ResolutionFailure(ResolutionErrorKind.DUPLICATE_ADDITION))
+    match _closure(combined, CATALOG):
+        case Err(failure):
+            return Err(failure)
+        case Ok(effective_set):
+            pass
+    match _topological_order(effective_set):
+        case Err(failure):
+            return Err(failure)
+        case Ok(effective):
+            pass
+    match _resolve_settings(effective, settings):
+        case Err(failure):
+            return Err(failure)
+        case Ok(resolved):
+            pass
+    return Ok(ResolvedBundle(profile_id, combined, effective, resolved))
+
+
 def resolve_additions(
     current: ResolvedBundle,
     additions: AdditionsInput,

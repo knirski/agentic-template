@@ -25,6 +25,7 @@ class StatusOptions:
 
 @dataclass(frozen=True, slots=True)
 class ApplyPlanOptions:
+    leave_maintenance_artifacts: bool = False
     bundle_digest: str = ""
 
 

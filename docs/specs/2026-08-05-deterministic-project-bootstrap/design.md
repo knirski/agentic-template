@@ -220,7 +220,7 @@ executing one another for policy decisions:
 - `check-project-readiness` observes the declared readiness paths and evaluates pure readiness rules;
 - `validate-repository` folds a pure `ValidationProgram` over effectful stage results in canonical
   order, stopping according to the program rather than ad hoc control flow; and
-- `bootstrap-project` observes target/template/bundle state, obtains a pure command decision and plan,
+- `bootstrap_project` observes target/template/bundle state, obtains a pure command decision and plan,
   and interprets that plan transactionally.
 
 Subprocess execution remains an effect. A stage's exit, signal, stdout, and stderr become a
@@ -1812,29 +1812,29 @@ evidence is **point-in-time evidence**: never written to the manifest, never cac
 ## CLI contract
 
 ```text
-python3 scripts/bootstrap-project.py [global-output-options] init
+python3 scripts/bootstrap_project.py [global-output-options] init
     --output PATH --from FILE
 
-python3 scripts/bootstrap-project.py [global-output-options] status [--target PATH]
+python3 scripts/bootstrap_project.py [global-output-options] status [--target PATH]
 
-python3 scripts/bootstrap-project.py [global-output-options] plan apply
+python3 scripts/bootstrap_project.py [global-output-options] plan apply
     --bundle PATH [--target PATH] [--leave-maintenance-artifacts] [--out FILE]
-python3 scripts/bootstrap-project.py [global-output-options] plan add
+python3 scripts/bootstrap_project.py [global-output-options] plan add
     --input FILE [--target PATH] [--out FILE]
-python3 scripts/bootstrap-project.py [global-output-options] plan restore
+python3 scripts/bootstrap_project.py [global-output-options] plan restore
     [--path PATH]... [--target PATH] [--out FILE]
-python3 scripts/bootstrap-project.py [global-output-options] plan reconcile
+python3 scripts/bootstrap_project.py [global-output-options] plan reconcile
     [--target PATH] [--overwrite-drift] [--out FILE]
 
-python3 scripts/bootstrap-project.py [global-output-options] apply
+python3 scripts/bootstrap_project.py [global-output-options] apply
     --bundle PATH [--target PATH] [--leave-maintenance-artifacts]
-python3 scripts/bootstrap-project.py [global-output-options] add
+python3 scripts/bootstrap_project.py [global-output-options] add
     --input FILE [--target PATH]
-python3 scripts/bootstrap-project.py [global-output-options] restore
+python3 scripts/bootstrap_project.py [global-output-options] restore
     [--path PATH]... [--target PATH]
-python3 scripts/bootstrap-project.py [global-output-options] reconcile
+python3 scripts/bootstrap_project.py [global-output-options] reconcile
     [--target PATH] [--overwrite-drift --plan FILE]
-python3 scripts/bootstrap-project.py [global-output-options] recover [--target PATH]
+python3 scripts/bootstrap_project.py [global-output-options] recover [--target PATH]
 
 global-output-options :=
     [--format text|json] [--color auto|always|never] [--explain] [--quiet]

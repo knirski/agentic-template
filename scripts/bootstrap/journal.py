@@ -50,6 +50,7 @@ from scripts.bootstrap.identity import (
     target_identity,
 )
 from scripts.bootstrap.paths import RepoPath
+from scripts.bootstrap.plan_digest import PlanReceipt, decode_receipt
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.state import (
     InvalidJournal,
@@ -156,13 +157,21 @@ class PreparationIdentity:
 
 @dataclass(frozen=True, slots=True)
 class JournalEnvelope:
-    """The complete authoritative journal record for one transaction phase."""
+    """The complete authoritative journal record for one transaction phase.
+
+    ``receipt`` is the byte-erased plan receipt: it carries every identity,
+    mode, path, and topology the recovery reducers need without any file
+    bytes.  New journals always record it; a journal written before the
+    receipt field existed decodes with ``receipt=None`` and phase recovery
+    that requires the plan refuses with ``RecoveryEvidenceInvalid``.
+    """
 
     operation: str
     target: JournalTarget
     phase: JournalPhase
     transaction_id: str
     preparations: tuple[PreparationIdentity, ...] = ()
+    receipt: PlanReceipt | None = None
     schema_version: int = JOURNAL_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
@@ -198,6 +207,10 @@ class JournalEnvelope:
             for preparation in self.preparations
         ):
             raise TypeError("every preparation must belong to the journal transaction")
+        if self.receipt is not None and not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check on a hand-constructible record
+            self.receipt, dict
+        ):
+            raise TypeError("journal receipt must be a plan receipt mapping")
 
 
 def new_transaction_id() -> str:
@@ -244,32 +257,33 @@ def backup_relative_path(transaction_id: str, operation_index: int) -> RepoPath:
 def encode_journal(envelope: JournalEnvelope) -> bytes:
     """Serialize the journal envelope as strict canonical JSON."""
 
-    return canonical_json(
-        {
-            "schema_version": envelope.schema_version,
-            "operation": envelope.operation,
-            "target": {
-                "root": envelope.target.root_hex,
-                "device": envelope.target.device,
-                "inode": envelope.target.inode,
-                "digest": envelope.target.digest,
-            },
-            "phase": envelope.phase.value,
-            "transaction_id": envelope.transaction_id,
-            "preparations": [
-                {
-                    "transaction_id": preparation.transaction_id,
-                    "operation_index": preparation.operation_index,
-                    "role": preparation.role.value,
-                    "ownership_token_sha256": preparation.ownership_token_sha256,
-                    "expected_kind": preparation.expected_kind,
-                    "expected_raw_sha256": preparation.expected_raw_sha256,
-                    "expected_mode": preparation.expected_mode.value,
-                }
-                for preparation in envelope.preparations
-            ],
-        }
-    )
+    document: dict[str, object] = {
+        "schema_version": envelope.schema_version,
+        "operation": envelope.operation,
+        "target": {
+            "root": envelope.target.root_hex,
+            "device": envelope.target.device,
+            "inode": envelope.target.inode,
+            "digest": envelope.target.digest,
+        },
+        "phase": envelope.phase.value,
+        "transaction_id": envelope.transaction_id,
+        "preparations": [
+            {
+                "transaction_id": preparation.transaction_id,
+                "operation_index": preparation.operation_index,
+                "role": preparation.role.value,
+                "ownership_token_sha256": preparation.ownership_token_sha256,
+                "expected_kind": preparation.expected_kind,
+                "expected_raw_sha256": preparation.expected_raw_sha256,
+                "expected_mode": preparation.expected_mode.value,
+            }
+            for preparation in envelope.preparations
+        ],
+    }
+    if envelope.receipt is not None:
+        document["receipt"] = envelope.receipt
+    return canonical_json(document)
 
 
 def _invalid[ValueT](reason: str) -> Result[ValueT, InvalidJournal]:
@@ -400,6 +414,20 @@ def decode_journal(data: bytes) -> Result[JournalEnvelope, InvalidJournal]:
                 return Err(error)
             case Ok(preparation):
                 preparations.append(preparation)
+    raw_receipt = decoded.get("receipt")
+    receipt: PlanReceipt | None = None
+    if raw_receipt is not None:
+        if not isinstance(raw_receipt, dict):
+            return _invalid("journal receipt must be a plan receipt mapping")
+        try:
+            receipt_bytes = canonical_json(raw_receipt)
+        except ValueError:
+            return _invalid("journal receipt must be strict JSON")
+        match decode_receipt(receipt_bytes):
+            case Err(error):
+                return _invalid(f"journal receipt is invalid: {error.kind.value}")
+            case Ok(validated):
+                receipt = validated
     return Ok(
         JournalEnvelope(
             operation=operation,
@@ -407,6 +435,7 @@ def decode_journal(data: bytes) -> Result[JournalEnvelope, InvalidJournal]:
             phase=phase,
             transaction_id=transaction_id,
             preparations=tuple(preparations),
+            receipt=receipt,
         )
     )
 

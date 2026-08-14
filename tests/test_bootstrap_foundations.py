@@ -269,7 +269,9 @@ class DiagnosticTests(unittest.TestCase):
         cases = (
             (UsageError(UsageErrorKind.UNKNOWN_COMMAND), InvalidRequest),
             (InputError(InputErrorKind.WRONG_KIND), InvalidRequest),
-            (ObservationError(ObservationErrorKind.PATH_MISSING), ActionRequired),
+            # An observation that prevents trustworthy decoding is a contract
+            # failure (design: ``ContractFailure``), never an advisory refusal.
+            (ObservationError(ObservationErrorKind.PATH_MISSING), ContractFailure),
             (ContractError(ContractErrorKind.INVALID_TEMPLATE), ContractFailure),
             (
                 TransitionError(TransitionErrorKind.OPERATION_UNAVAILABLE),
