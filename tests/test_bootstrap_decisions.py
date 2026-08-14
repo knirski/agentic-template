@@ -384,16 +384,28 @@ class StateAndDecisionTests(unittest.TestCase):
         for state in (
             TargetUnavailable(UnsupportedGitTarget(TargetReason.NOT_WORKTREE)),
             StateRootInvalid(worktree().context, OrphanTransactionState("orphan")),
-            ProtectedTargetAvailable(
-                worktree(protected=True).context,
-                RecognizedScaffold(
-                    GenerationPath.GITHUB, NoSnapshotCleanup(), EmptyManifestFree(), ()
-                ),
-            ),
             StalePendingWrite(worktree().context, PendingIdentity("digest")),
         ):
             decision = decide_project(Recover(RecoverOptions()), state)
             self.assertIsInstance(decision, (RefuseRecovery, DiscardStalePending))
+
+        # A canonical template source needs no recovery: the design maps it
+        # to ``NoRecoveryNeeded`` rather than a refusal.
+        self.assertIsInstance(
+            decide_project(
+                Recover(RecoverOptions()),
+                ProtectedTargetAvailable(
+                    worktree(protected=True).context,
+                    RecognizedScaffold(
+                        GenerationPath.GITHUB,
+                        NoSnapshotCleanup(),
+                        EmptyManifestFree(),
+                        (),
+                    ),
+                ),
+            ),
+            NoRecoveryNeeded,
+        )
 
         for state in (
             StalePendingWrite(worktree().context, PendingIdentity("digest")),

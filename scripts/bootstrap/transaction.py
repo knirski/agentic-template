@@ -58,6 +58,7 @@ from scripts.bootstrap.journal import (
     derive_preparation_identity,
 )
 from scripts.bootstrap.paths import RepoPath
+from scripts.bootstrap.plan_digest import build_receipt
 from scripts.bootstrap.planner import (
     CreateFileOperation,
     CreateTreeOperation,
@@ -815,6 +816,7 @@ def _envelope(
         preparations=preparations
         if preparations is not None
         else compiled.preparations,
+        receipt=build_receipt(compiled.plan),
     )
 
 

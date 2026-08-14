@@ -234,8 +234,12 @@ def _recovery(_intent: Recover, state: SystemState) -> RecoveryDecision:
             return RefuseRecovery(
                 _transition(TransitionErrorKind.RECOVERY_TARGET_MISMATCH)
             )
-        case TargetUnavailable() | StateRootInvalid() | ProtectedTargetAvailable():
+        case TargetUnavailable() | StateRootInvalid():
             return RefuseRecovery(_transition(TransitionErrorKind.UNSUPPORTED_TARGET))
+        case ProtectedTargetAvailable():
+            # A canonical template source needs no recovery: the design maps
+            # it to ``NoRecoveryNeeded`` rather than a refusal.
+            return NoRecoveryNeeded()
         case ProjectAvailable():
             return NoRecoveryNeeded()
     return assert_never(
@@ -376,7 +380,7 @@ def _apply_decision(
 def _apply_cleanup_mismatch(intent: Apply | PlanApply) -> CommandDecision:
     """A cleanup-mismatch scaffold installs only when the adopter permits leftovers."""
     match intent:
-        case Apply() if intent.options.leave_maintenance_artifacts:
+        case Apply() | PlanApply() if intent.options.leave_maintenance_artifacts:
             return InitialInstall(intent)
         case Apply() | PlanApply():
             return RefuseMutation(

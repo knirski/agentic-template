@@ -16,5 +16,11 @@ coverage of adopter-owned validation. It never executes or rewrites the hook. Th
 returns the first failing stage's status; readiness returns 1 for an unready project and 2 for usage
 or internal errors.
 
+The bootstrap CLI reports the same findings without running the hook:
+`python3 scripts/bootstrap_project.py status --target .` describes the generation path, scaffold
+or installed-project state, cleanup contract, source and managed drift, and any pending journal. It
+never executes or rewrites the hook and never exits 1; run `python3 scripts/validate_repository.py`
+for the executed check.
+
 GitHub-generated projects are one-time snapshots. Copier-generated projects retain update lineage;
 Copier owns update and conflict behavior.

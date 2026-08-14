@@ -53,6 +53,7 @@ from scripts.bootstrap.plan_digest import (
     decode_receipt,
     encode_receipt,
     plan_receipt_digest,
+    reconstruct_plan,
 )
 from scripts.bootstrap.planner import (
     MAINTENANCE_INVENTORY_PATH,
@@ -71,6 +72,7 @@ from scripts.bootstrap.planner import (
     ObservedFileEntry,
     OperationPlan,
     PlanInvariantErrorKind,
+    PlannedDirectoryEntry,
     PlannedFileEntry,
     PlannedFilePresent,
     RemoveEmptyDirectoryOperation,
@@ -1273,6 +1275,39 @@ class TestManifest:
                 assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
             case Ok(_):
                 raise AssertionError("unsorted additions accepted")
+
+    def test_build_rejects_overlapping_answers_and_additions_settings(self) -> None:
+        provenance = self._github_manifest_value().provenance
+        answers = replace(
+            fixture_answers(), settings=MappingProxyType({"nix": {"cache_name": "a"}})
+        )
+        additions = ManifestAdditions(
+            settings=MappingProxyType({"nix": {"cache_name": "b"}})
+        )
+        match build_candidate_manifest(
+            answers=answers,
+            additions=additions,
+            provenance=provenance,
+            managed=(),
+        ):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+                assert error.subject == "settings.nix"
+            case Ok(_):
+                raise AssertionError("overlapping capability settings accepted")
+
+    def test_decode_rejects_overlapping_answers_and_additions_settings(self) -> None:
+        document = manifest_document(self._github_manifest_value())
+        answers = cast(dict[str, object], document["answers"])
+        answers["settings"] = {"nix": {"cache_name": "a"}}
+        additions = cast(dict[str, object], document["additions"])
+        additions["settings"] = {"nix": {"cache_name": "b"}}
+        encoded = canonical_json({**document, "checksum": manifest_checksum(document)})
+        match decode_manifest(encoded):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("overlapping capability settings decoded")
 
     def test_manifest_rejects_unsafe_managed_paths(self) -> None:
         provenance = self._github_manifest_value().provenance
@@ -3444,6 +3479,58 @@ def _receipt_baseline_kind_copier_with_snapshot(receipt: dict[str, object]) -> o
     )
 
 
+def _receipt_baseline_bad_snapshot_commit(receipt: dict[str, object]) -> object:
+    return cast(dict[str, object], receipt["source_after"]).__setitem__(
+        "snapshot_commit", "zzz"
+    )
+
+
+def _receipt_copier_baseline_with_snapshot_commit(receipt: dict[str, object]) -> object:
+    receipt.update(_copier_receipt())
+    source_after = cast(dict[str, object], receipt["source_after"])
+    source_after["snapshot_commit"] = "0" * 40
+    return receipt
+
+
+def _receipt_gate_not_mapping(receipt: dict[str, object]) -> object:
+    return receipt.__setitem__("gate_specification", "x")
+
+
+def _receipt_gate_finding_not_mapping(receipt: dict[str, object]) -> object:
+    gate = cast(dict[str, object], receipt["gate_specification"])
+    return gate.__setitem__("expected_placeholder", ["x"])
+
+
+def _receipt_gate_readiness_rule(receipt: dict[str, object]) -> object:
+    gate = cast(dict[str, object], receipt["gate_specification"])
+    return gate.__setitem__("readiness_rule", "bogus")
+
+
+def _receipt_tree_duplicate_entry_path(receipt: dict[str, object]) -> object:
+    receipt.update(_nested_copier_receipt())
+    operations = receipt["operations"]
+    assert isinstance(operations, list)
+    for operation in cast(list[object], operations):
+        assert isinstance(operation, dict)
+        operation = cast(dict[str, object], operation)
+        if operation.get("kind") != "create_tree":
+            continue
+        planned_new = operation["planned_new"]
+        assert isinstance(planned_new, dict)
+        planned_new = cast(dict[str, object], planned_new)
+        entries = planned_new["entries"]
+        assert isinstance(entries, list)
+        entries = cast(list[object], entries)
+        if len(entries) >= 2:
+            first = entries[0]
+            second = entries[1]
+            assert isinstance(first, dict) and isinstance(second, dict)
+            second_path = cast(dict[str, object], second)
+            second_path["path"] = cast(dict[str, object], first)["path"]
+            return receipt
+    raise AssertionError("no create_tree with two entries")
+
+
 def _receipt_baseline_entry_not_mapping(receipt: dict[str, object]) -> object:
     source_after = cast(dict[str, object], receipt["source_after"])
     return cast(list[object], source_after["entries"]).__setitem__(0, "x")
@@ -3585,6 +3672,78 @@ def _receipt_remove_empty_expected_old_mode_not_int(
 
 def _receipt_source_after_null(receipt: dict[str, object]) -> object:
     return receipt.__setitem__("source_after", None)
+
+
+# Mutators that must also make ``reconstruct_plan`` fail: every branch of the
+# reconstruction decoders rejects the same closed-shape violations the strict
+# receipt decoder rejects, except the extra-key and already-stubbed top-level
+# fields that reconstruction deliberately does not re-validate.
+_RECONSTRUCT_REJECTIONS: tuple[Callable[[dict[str, object]], object], ...] = (
+    _receipt_target_binding,
+    _receipt_generation_path,
+    _receipt_baseline_kind,
+    _receipt_baseline_fingerprint,
+    _receipt_baseline_entries_unsafe_path,
+    _receipt_manifest_before,
+    _receipt_manifest_after_null,
+    _receipt_gate_severity,
+    _receipt_gate_operation,
+    _receipt_gate_placeholder_not_list,
+    _receipt_gate_not_mapping,
+    _receipt_gate_finding_not_mapping,
+    _receipt_gate_readiness_rule,
+    _receipt_tree_duplicate_entry_path,
+    _receipt_gate_subject_not_string,
+    _receipt_operation_kind,
+    _receipt_operation_path_not_string,
+    _receipt_operation_not_mapping,
+    _receipt_create_missing_planned_new,
+    _receipt_planned_content_id,
+    _receipt_planned_content_id_missing,
+    _receipt_planned_size,
+    _receipt_planned_new_wrong_type,
+    _receipt_planned_new_identity_kind,
+    _receipt_observed_kind,
+    _receipt_observed_mode_out_of_domain,
+    _receipt_observed_mode_boolean,
+    _receipt_observed_normalized_digest,
+    _receipt_observed_state_extra_key,
+    _receipt_observed_size,
+    _receipt_expected_old_wrong_type,
+    _receipt_delete_expected_old_identity_kind,
+    _receipt_path_beyond_limits,
+    _set_delete_planned_new,
+    _receipt_delete_unsafe_path,
+    _receipt_source_before_wrong_type,
+    _receipt_source_after_null,
+    _receipt_baseline_entries_not_list,
+    _receipt_baseline_entry_missing_key,
+    _receipt_baseline_entry_bad_mode,
+    _receipt_baseline_entry_not_mapping,
+    _receipt_baseline_kind_copier_with_snapshot,
+    _receipt_baseline_bad_snapshot_commit,
+    _receipt_copier_baseline_with_snapshot_commit,
+    _receipt_operations_not_list,
+    _receipt_tree_expected_old_not_null,
+    _receipt_tree_planned_new_wrong_type,
+    _receipt_tree_root_unsafe_path,
+    _receipt_tree_planned_new_bad_sha,
+    _receipt_tree_entry_not_mapping,
+    _receipt_tree_entry_directory_bad_mode,
+    _receipt_tree_entry_missing_key,
+    _receipt_tree_entry_unknown_kind,
+    _receipt_tree_entry_file_bad_digest,
+    _receipt_tree_dir_entry_missing_mode,
+    _receipt_tree_dir_entry_unsafe_path,
+    _receipt_tree_file_entry_bad_kind,
+    _receipt_tree_file_entry_unsafe_path,
+    _receipt_tree_file_entry_missing_content_id,
+    _set_remove_empty_planned_new,
+    _set_remove_empty_bad_mode,
+    _receipt_remove_empty_unsafe_path,
+    _receipt_remove_empty_expected_old_not_mapping,
+    _receipt_remove_empty_expected_old_mode_not_int,
+)
 
 
 class TestPlanDigest:
@@ -3928,6 +4087,9 @@ class TestPlanDigest:
                 _receipt_tree_file_entry_missing_content_id,
                 id="tree file entry missing content id",
             ),
+            pytest.param(
+                _receipt_tree_duplicate_entry_path, id="tree duplicate entry path"
+            ),
             pytest.param(_receipt_remove_empty_extra_key, id="remove empty extra key"),
             pytest.param(
                 _receipt_remove_empty_unsafe_path, id="remove empty unsafe path"
@@ -3997,6 +4159,115 @@ class TestPlanDigest:
                 raise AssertionError(
                     "receipt with github generation and copier baseline decoded"
                 )
+
+    def test_reconstruct_github_plan_preserves_operations_and_identities(self) -> None:
+        plan = github_plan()
+        match reconstruct_plan(build_receipt(plan), target=plan.target_identity):
+            case Ok(reconstructed):
+                assert reconstructed.ordered_operations == plan.ordered_operations
+                assert reconstructed.source_after == plan.source_after
+                assert reconstructed.source_before == plan.source_before
+                assert reconstructed.manifest_after.digest == plan.manifest_after.digest
+                assert reconstructed.manifest_before == plan.manifest_before
+                assert reconstructed.gate_specification.operation == "initial"
+                assert [
+                    finding.code
+                    for finding in reconstructed.gate_specification.expected_placeholder
+                ] == [
+                    finding.code
+                    for finding in plan.gate_specification.expected_placeholder
+                ]
+            case Err(error):
+                raise AssertionError(f"github plan reconstruction failed: {error}")
+
+    def test_reconstruct_copier_plan_preserves_tree_operations(self) -> None:
+        match reconstruct_plan(_copier_receipt(), target=TARGET):
+            case Ok(reconstructed):
+                assert reconstructed.generation_path is GenerationPath.COPIER
+                assert any(
+                    isinstance(operation, CreateTreeOperation)
+                    for operation in reconstructed.ordered_operations
+                )
+            case Err(error):
+                raise AssertionError(f"copier plan reconstruction failed: {error}")
+
+    def test_reconstruct_nested_tree_preserves_directory_entries(self) -> None:
+        match reconstruct_plan(_nested_copier_receipt(), target=TARGET):
+            case Ok(reconstructed):
+                trees = [
+                    operation
+                    for operation in reconstructed.ordered_operations
+                    if isinstance(operation, CreateTreeOperation)
+                ]
+                assert trees
+                assert any(
+                    isinstance(entry, PlannedDirectoryEntry)
+                    for tree in trees
+                    for entry in tree.planned_new.entries
+                )
+            case Err(error):
+                raise AssertionError(f"nested tree reconstruction failed: {error}")
+
+    def test_reconstruct_preserves_a_repository_level_finding(self) -> None:
+        plan = github_plan()
+        plan = replace(
+            plan,
+            gate_specification=replace(
+                plan.gate_specification,
+                expected_placeholder=(
+                    Finding(
+                        "R",
+                        Repository(),
+                        "repository",
+                        "rule",
+                        "informational",
+                        "message",
+                        "inspect",
+                    ),
+                ),
+            ),
+        )
+        match reconstruct_plan(build_receipt(plan), target=plan.target_identity):
+            case Ok(reconstructed):
+                finding = reconstructed.gate_specification.expected_placeholder[0]
+                assert finding.code == "R"
+                assert isinstance(finding.subject_at, Repository)
+            case Err(error):
+                raise AssertionError(
+                    f"repository finding reconstruction failed: {error}"
+                )
+
+    def test_reconstruct_rejects_a_different_target_binding(self) -> None:
+        plan = github_plan()
+        other = replace(
+            plan, target_identity=target_identity(b"/work/other", device=1, inode=3)
+        )
+        match reconstruct_plan(build_receipt(plan), target=other.target_identity):
+            case Err(error):
+                assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("reconstruction bound a different target")
+
+    def test_reconstruct_honors_caller_supplied_path_limits(self) -> None:
+        receipt = build_receipt(github_plan())
+        tight = replace(DEFAULT_LIMITS, max_path_bytes=8)
+        match reconstruct_plan(receipt, target=TARGET, limits=tight):
+            case Err(error):
+                assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("tighter path limits ignored")
+
+    @pytest.mark.parametrize("mutate", _RECONSTRUCT_REJECTIONS)
+    def test_reconstruct_rejects_malformed_receipts(
+        self, mutate: Callable[[dict[str, object]], object]
+    ) -> None:
+        receipt = build_receipt(github_plan())
+        _ = mutate(receipt)
+        match reconstruct_plan(receipt, target=TARGET):
+            case Err(error):
+                assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("malformed receipt reconstructed")
 
 
 class TestExpectedTarget:
