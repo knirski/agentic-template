@@ -13,6 +13,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -850,6 +851,37 @@ class CliFamilyTests(unittest.TestCase):
     def test_main_json_emits_single_envelope(self) -> None:
         code = main(["--format", "json", "status", "--target", self.target_arg()])
         self.assertEqual(code, 0)
+
+
+class EntryPointTests(unittest.TestCase):
+    """The ``scripts/bootstrap_project.py`` adapter: process-level exit contract.
+
+    ``runpy`` executes the real entry file with ``__name__ == "__main__"`` in
+    this process so the guarded block and its ``SystemExit`` are exercised
+    (and measured by coverage), with the child argv staged on ``sys.argv``.
+    """
+
+    def _run(self, *argv: str) -> int:
+        import runpy
+
+        original = sys.argv
+        sys.argv = ["bootstrap_project.py", *argv]
+        try:
+            with self.assertRaises(SystemExit) as context:
+                _ = runpy.run_path(
+                    str(ROOT / "scripts/bootstrap_project.py"), run_name="__main__"
+                )
+        finally:
+            sys.argv = original
+        code = context.exception.code
+        assert isinstance(code, int)
+        return code
+
+    def test_help_exits_zero(self) -> None:
+        self.assertEqual(self._run("--help"), 0)
+
+    def test_usage_error_exits_two(self) -> None:
+        self.assertEqual(self._run("--bogus"), 2)
 
 
 def _target_identity(root: Path) -> TargetIdentity:

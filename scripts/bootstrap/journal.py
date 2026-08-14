@@ -421,7 +421,7 @@ def decode_journal(data: bytes) -> Result[JournalEnvelope, InvalidJournal]:
             return _invalid("journal receipt must be a plan receipt mapping")
         try:
             receipt_bytes = canonical_json(raw_receipt)
-        except ValueError:
+        except ValueError:  # pragma: no cover  defensive — decode_json already rejected every value canonical_json rejects
             return _invalid("journal receipt must be strict JSON")
         match decode_receipt(receipt_bytes):
             case Err(error):

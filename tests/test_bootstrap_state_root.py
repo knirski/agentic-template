@@ -1607,6 +1607,31 @@ class JournalTests(unittest.TestCase):
                 preparations=(foreign,),
             )
 
+    def test_construction_rejects_a_non_mapping_receipt(self) -> None:
+        base = _sample_envelope()
+        with self.assertRaises(TypeError):
+            _ = JournalEnvelope(
+                operation="apply",
+                target=base.target,
+                phase=JournalPhase.PLANNED,
+                transaction_id="a" * 64,
+                receipt=cast(dict[str, object], "not-a-mapping"),  # pyright: ignore[reportInvalidCast]  intentional invalid-value negative test
+            )
+
+    def test_decode_rejects_a_non_mapping_receipt(self) -> None:
+        data = cast(dict[str, object], json.loads(encode_journal(_sample_envelope())))
+        data["receipt"] = "x"
+        self.assertIsInstance(
+            _err(decode_journal(json.dumps(data).encode())), InvalidJournal
+        )
+
+    def test_decode_rejects_an_invalid_receipt_shape(self) -> None:
+        data = cast(dict[str, object], json.loads(encode_journal(_sample_envelope())))
+        data["receipt"] = {"plan_schema": 1}
+        self.assertIsInstance(
+            _err(decode_journal(json.dumps(data).encode())), InvalidJournal
+        )
+
     def test_persist_writes_journal_atomically(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             state = self._state_root(tmp)

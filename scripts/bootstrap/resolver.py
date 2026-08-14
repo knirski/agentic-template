@@ -241,7 +241,9 @@ def resolve_recorded_selection(
             pass
     match _topological_order(effective_set):
         case Err(failure):
-            return Err(failure)
+            return Err(  # pragma: no cover  defensive — the closed catalog is a dependency DAG
+                failure
+            )
         case Ok(effective):
             pass
     match _resolve_settings(effective, settings):
