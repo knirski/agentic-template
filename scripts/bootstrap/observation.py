@@ -374,6 +374,7 @@ def classify_existing_project(
                 manifest=manifest,
                 managed=managed,
                 files=files,
+                directories=directories,
                 commit_reachable=snapshot_commit_reachable,
                 path_bytes_at_commit=path_bytes_at_commit,
             )
@@ -385,7 +386,9 @@ def classify_existing_project(
                 )
             else:
                 delta = _source_delta(
-                    manifest.provenance.source_baseline.entries, files
+                    manifest.provenance.source_baseline.entries,
+                    files,
+                    directories,
                 )
                 condition = (
                     CopierSourceSame(managed)
@@ -439,20 +442,31 @@ def _managed_observation(
 def _source_delta(
     entries: tuple[LifecycleSourceEntry, ...],
     files: Mapping[RepoPath, CapturedFile],
+    directories: Mapping[RepoPath, CapturedDirectory],
 ) -> SourceDelta:
-    changed: list[RepoPath] = []
+    """Name baseline entries whose observed presence, mode, or digest differs.
+
+    File entries compare the raw digest of the observed bytes; directory entries
+    compare presence and mode, because a directory's recorded tree digest cannot
+    be re-derived from the bounded pass.  A path reported by several entries is
+    named once.
+    """
+
+    changed: set[RepoPath] = set()
     for entry in entries:
-        if entry.kind != "file":
-            continue
-        observed = files.get(entry.path)
-        if (
-            observed is None
-            or content_identity(observed.content, text=False).raw_sha256 != entry.sha256
-        ):
-            changed.append(entry.path)
-    return SourceDelta(
-        tuple(sorted(changed, key=lambda path: path.value.encode("utf-8")))
-    )
+        if entry.kind == "file":
+            observed = files.get(entry.path)
+            if (
+                observed is None
+                or content_identity(observed.content, text=False).raw_sha256
+                != entry.sha256
+            ):
+                changed.add(entry.path)
+        elif entry.kind == "directory":
+            observed = directories.get(entry.path)
+            if observed is None or observed.mode != entry.mode:
+                changed.add(entry.path)
+    return SourceDelta(tuple(sorted(changed, key=lambda path: path.value.encode())))
 
 
 def _snapshot_condition(
@@ -460,11 +474,12 @@ def _snapshot_condition(
     manifest: CandidateManifest,
     managed: ManagedObservation,
     files: Mapping[RepoPath, CapturedFile],
+    directories: Mapping[RepoPath, CapturedDirectory],
     commit_reachable: Callable[[], bool],
     path_bytes_at_commit: Callable[[RepoPath], bytes | None],
 ) -> SnapshotCondition:
     entries = manifest.provenance.source_baseline.entries
-    delta = _source_delta(entries, files)
+    delta = _source_delta(entries, files, directories)
     if not delta.paths:
         return SnapshotSourceSame(managed)
     if not commit_reachable():

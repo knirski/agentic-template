@@ -168,6 +168,15 @@ def _observed_files() -> dict[RepoPath, CapturedFile]:
     }
 
 
+def _observed_directories() -> dict[RepoPath, CapturedDirectory]:
+    """Observed directories matching every directory entry of ``_source_entries``."""
+    return {
+        RepoPath("src/tools"): CapturedDirectory(
+            RepoPath("src/tools"), PosixMode.DIRECTORY
+        ),
+    }
+
+
 def _classify(
     manifest: CandidateManifest,
     *,
@@ -189,7 +198,11 @@ def _classify(
 
 class ProjectClassificationTests(unittest.TestCase):
     def test_github_matching_observation_classifies_source_same(self) -> None:
-        result = _classify(_manifest(), files=_observed_files())
+        result = _classify(
+            _manifest(),
+            files=_observed_files(),
+            directories=_observed_directories(),
+        )
         self.assertIsInstance(result, SnapshotExistingProject)
         if isinstance(result, SnapshotExistingProject):
             self.assertIsInstance(result.condition, SnapshotSourceSame)
@@ -252,7 +265,12 @@ class ProjectClassificationTests(unittest.TestCase):
                 self.assertIn("differs at commit", result.condition.reason)
 
     def test_changed_file_repairs_from_the_recorded_commit(self) -> None:
-        result = _classify(_manifest(), files={}, at_commit=b"present\n")
+        result = _classify(
+            _manifest(),
+            files={},
+            directories=_observed_directories(),
+            at_commit=b"present\n",
+        )
         self.assertIsInstance(result, SnapshotExistingProject)
         if isinstance(result, SnapshotExistingProject):
             self.assertIsInstance(result.condition, SnapshotSourceChanged)
@@ -261,6 +279,34 @@ class ProjectClassificationTests(unittest.TestCase):
                 self.assertEqual(
                     result.condition.repair.paths,
                     (RepoPath("src/lib.py"),),
+                )
+
+    def test_absent_directory_is_source_drift(self) -> None:
+        result = _classify(_manifest(), files=_observed_files(), directories={})
+        self.assertIsInstance(result, SnapshotExistingProject)
+        if isinstance(result, SnapshotExistingProject):
+            self.assertIsInstance(result.condition, SnapshotSourceUnrecoverable)
+            if isinstance(result.condition, SnapshotSourceUnrecoverable):
+                self.assertIn(
+                    "directory source repair is unavailable", result.condition.reason
+                )
+
+    def test_changed_directory_mode_is_source_drift(self) -> None:
+        result = _classify(
+            _manifest(),
+            files=_observed_files(),
+            directories={
+                RepoPath("src/tools"): CapturedDirectory(
+                    RepoPath("src/tools"), PosixMode(0o700)
+                )
+            },
+        )
+        self.assertIsInstance(result, SnapshotExistingProject)
+        if isinstance(result, SnapshotExistingProject):
+            self.assertIsInstance(result.condition, SnapshotSourceUnrecoverable)
+            if isinstance(result.condition, SnapshotSourceUnrecoverable):
+                self.assertIn(
+                    "directory source repair is unavailable", result.condition.reason
                 )
 
     def test_missing_copier_answers_is_conflicted(self) -> None:
@@ -274,6 +320,7 @@ class ProjectClassificationTests(unittest.TestCase):
             _manifest(copier=True),
             copier_answers_present=True,
             files=_observed_files(),
+            directories=_observed_directories(),
         )
         self.assertIsInstance(result, CopierExistingProject)
         if isinstance(result, CopierExistingProject):
@@ -281,7 +328,10 @@ class ProjectClassificationTests(unittest.TestCase):
 
     def test_copier_source_change_is_reported(self) -> None:
         result = _classify(
-            _manifest(copier=True), copier_answers_present=True, files={}
+            _manifest(copier=True),
+            copier_answers_present=True,
+            files={},
+            directories=_observed_directories(),
         )
         self.assertIsInstance(result, CopierExistingProject)
         if isinstance(result, CopierExistingProject):
@@ -305,6 +355,7 @@ class ProjectClassificationTests(unittest.TestCase):
             _manifest(copier=True, managed=managed),
             copier_answers_present=True,
             files=_observed_files(),
+            directories=_observed_directories(),
         )
         self.assertIsInstance(result, CopierExistingProject)
         if isinstance(result, CopierExistingProject):
@@ -334,6 +385,7 @@ class ProjectClassificationTests(unittest.TestCase):
             _manifest(copier=True, managed=managed),
             copier_answers_present=True,
             files=files,
+            directories=_observed_directories(),
         )
         self.assertIsInstance(result, CopierExistingProject)
         if isinstance(result, CopierExistingProject):
@@ -358,6 +410,7 @@ class ProjectClassificationTests(unittest.TestCase):
             _manifest(copier=True, managed=managed),
             copier_answers_present=True,
             files=files,
+            directories=_observed_directories(),
         )
         self.assertIsInstance(result, CopierExistingProject)
         if isinstance(result, CopierExistingProject):
