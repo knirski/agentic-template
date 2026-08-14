@@ -1276,6 +1276,39 @@ class TestManifest:
             case Ok(_):
                 raise AssertionError("unsorted additions accepted")
 
+    def test_build_rejects_overlapping_answers_and_additions_settings(self) -> None:
+        provenance = self._github_manifest_value().provenance
+        answers = replace(
+            fixture_answers(), settings=MappingProxyType({"nix": {"cache_name": "a"}})
+        )
+        additions = ManifestAdditions(
+            settings=MappingProxyType({"nix": {"cache_name": "b"}})
+        )
+        match build_candidate_manifest(
+            answers=answers,
+            additions=additions,
+            provenance=provenance,
+            managed=(),
+        ):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+                assert error.subject == "settings.nix"
+            case Ok(_):
+                raise AssertionError("overlapping capability settings accepted")
+
+    def test_decode_rejects_overlapping_answers_and_additions_settings(self) -> None:
+        document = manifest_document(self._github_manifest_value())
+        answers = cast(dict[str, object], document["answers"])
+        answers["settings"] = {"nix": {"cache_name": "a"}}
+        additions = cast(dict[str, object], document["additions"])
+        additions["settings"] = {"nix": {"cache_name": "b"}}
+        encoded = canonical_json({**document, "checksum": manifest_checksum(document)})
+        match decode_manifest(encoded):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("overlapping capability settings decoded")
+
     def test_manifest_rejects_unsafe_managed_paths(self) -> None:
         provenance = self._github_manifest_value().provenance
         unsafe = ManagedInventoryEntry(

@@ -421,6 +421,14 @@ def build_candidate_manifest(
             return Err(error)
         case Ok(_):
             pass
+    overlapping = set(answers.settings).intersection(additions.settings)
+    if overlapping:
+        return Err(
+            _manifest_error(
+                ManifestErrorKind.SCHEMA_VIOLATION,
+                f"settings.{sorted(overlapping)[0]}",
+            )
+        )
     match _validate_provenance(provenance):
         case Err(error):
             return Err(error)
