@@ -698,9 +698,11 @@
                 "multi-agent review: 15 confirmed design-contract findings fixed with reproductions (exception boundary, status evidence exits, stage litter, recovery token reconstruction, fd-based tree capture, umask-deterministic modes, cleanup fixture digest, protected recover, cleanup-mismatch diagnostic, status hook line, usage-kind classification, observation-to-contract mapping, fsync coverage, explain/color presentation, closed decision gates)",
                 "dead-code removal and closed-union typing hardening after review (snapshot_from_pass, InitOptions.source, unreplaced_slot_markers, lifecycle decodes, unused constants and parameters; RecoveryDecision-typed recovery dispatch, match-based condition changes)"
               ]
-            },
-            "github_prs": []
+            }
           },
+          "github_prs": [
+            "https://github.com/knirski/agentic-template/pull/58"
+          ],
           "files": {
             "create": [
               "scripts/bootstrap_project.py",
