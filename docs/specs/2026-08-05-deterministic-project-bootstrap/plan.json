@@ -578,10 +578,11 @@
                 "0c1f3ec"
               ],
               "evidence": [
-                "uv run pytest (654 passed, including 63 new transaction-machine tests)",
+                "uv run pytest (656 passed, including 65 new transaction-machine tests)",
                 "uv run ruff check (clean)",
                 "uv run ruff format --check (clean)",
-                "uv run basedpyright (clean)",
+                "uv run basedpyright (clean) — the repository-declared type-check gate",
+                "uvx ty check (clean for the T11 files; 9 pre-existing diagnostics elsewhere come from pyright-style ignores)",
                 "coverage: scripts/bootstrap/transaction.py 96%; remaining gaps are defensive contract guards",
                 "python3 scripts/validate_repository.py (expected template-source findings; template contract passed)"
               ]
