@@ -3506,6 +3506,31 @@ def _receipt_gate_readiness_rule(receipt: dict[str, object]) -> object:
     return gate.__setitem__("readiness_rule", "bogus")
 
 
+def _receipt_tree_duplicate_entry_path(receipt: dict[str, object]) -> object:
+    receipt.update(_nested_copier_receipt())
+    operations = receipt["operations"]
+    assert isinstance(operations, list)
+    for operation in cast(list[object], operations):
+        assert isinstance(operation, dict)
+        operation = cast(dict[str, object], operation)
+        if operation.get("kind") != "create_tree":
+            continue
+        planned_new = operation["planned_new"]
+        assert isinstance(planned_new, dict)
+        planned_new = cast(dict[str, object], planned_new)
+        entries = planned_new["entries"]
+        assert isinstance(entries, list)
+        entries = cast(list[object], entries)
+        if len(entries) >= 2:
+            first = entries[0]
+            second = entries[1]
+            assert isinstance(first, dict) and isinstance(second, dict)
+            second_path = cast(dict[str, object], second)
+            second_path["path"] = cast(dict[str, object], first)["path"]
+            return receipt
+    raise AssertionError("no create_tree with two entries")
+
+
 def _receipt_baseline_entry_not_mapping(receipt: dict[str, object]) -> object:
     source_after = cast(dict[str, object], receipt["source_after"])
     return cast(list[object], source_after["entries"]).__setitem__(0, "x")
@@ -3667,6 +3692,7 @@ _RECONSTRUCT_REJECTIONS: tuple[Callable[[dict[str, object]], object], ...] = (
     _receipt_gate_not_mapping,
     _receipt_gate_finding_not_mapping,
     _receipt_gate_readiness_rule,
+    _receipt_tree_duplicate_entry_path,
     _receipt_gate_subject_not_string,
     _receipt_operation_kind,
     _receipt_operation_path_not_string,
@@ -4060,6 +4086,9 @@ class TestPlanDigest:
             pytest.param(
                 _receipt_tree_file_entry_missing_content_id,
                 id="tree file entry missing content id",
+            ),
+            pytest.param(
+                _receipt_tree_duplicate_entry_path, id="tree duplicate entry path"
             ),
             pytest.param(_receipt_remove_empty_extra_key, id="remove empty extra key"),
             pytest.param(

@@ -523,12 +523,19 @@ def _decode_operation(value: StrictJsonValue) -> Result[None, ReceiptError]:
                 or not isinstance(entries, list)
             ):
                 return Err(_receipt_error("operation.planned_new"))
+            seen_paths: set[str] = set()
             for entry in entries:
                 match _decode_tree_entry(entry):
                     case Err(error):
                         return Err(error)
                     case Ok(_):
                         pass
+                if not isinstance(entry, dict):
+                    return Err(_receipt_error("operation.entries"))
+                path_value = entry.get("path")
+                if not isinstance(path_value, str) or path_value in seen_paths:
+                    return Err(_receipt_error("operation.entries"))
+                seen_paths.add(path_value)
             return Ok(None)
         case "remove_empty_directory":
             if set(value) != {"kind", "path", "expected_old", "planned_new"}:
@@ -989,6 +996,7 @@ def _reconstruct_tree(
     ):
         return Err(_receipt_error("operation.planned_new"))
     tree_entries: list[PlannedDirectoryEntry | PlannedFileEntry] = []
+    seen_paths: set[str] = set()
     for entry in cast(list[object], entries):
         if not isinstance(entry, dict):
             return Err(_receipt_error("operation.planned_new"))
@@ -1002,6 +1010,9 @@ def _reconstruct_tree(
                         return Err(error)
                     case Ok(path):
                         pass
+                if path.value in seen_paths:
+                    return Err(_receipt_error("operation.entries"))
+                seen_paths.add(path.value)
                 mode = entry_document.get("mode")
                 if type(mode) is not int or mode != PosixMode.DIRECTORY:
                     return Err(_receipt_error("operation.entries"))
@@ -1014,6 +1025,9 @@ def _reconstruct_tree(
                         return Err(error)
                     case Ok(path):
                         pass
+                if path.value in seen_paths:
+                    return Err(_receipt_error("operation.entries"))
+                seen_paths.add(path.value)
                 file_kind = entry_document.get("file_kind")
                 if file_kind not in ("text", "binary"):
                     return Err(_receipt_error("operation.entries"))
