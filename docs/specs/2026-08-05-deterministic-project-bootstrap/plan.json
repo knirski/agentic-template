@@ -683,8 +683,23 @@
           "description": "Add the thin `bootstrap_project.py` adapter for `init`, `status`, `plan apply`, `plan add`, `plan restore`, `plan reconcile`, `apply`, `add`, `restore`, `reconcile`, and `recover`. Implement deterministic text/JSON output, command-family exit codes, scaffold marker checks, cleanup mismatch refusal/leave behavior, target protection, phase-specific recovery presentation, and hook-at-most-once finalization after a gated installation. `init` accepts `--from` only (no interactive mode); `status` uses one observation pass; planning uses a coherent two-pass observation; mutating commands repeat the coherent two-pass observation after lock acquisition and require the plan receipt and target identity to match; `apply` on an already-installed project refuses with `status`/`scripts/validate_repository.py` as the next action.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-14",
+              "commits": [
+                "6547682"
+              ],
+              "evidence": [
+                "uv run pytest (766 passed, including 28 new CLI end-to-end tests covering every command family, exit mappings, hook counts, cleanup valid/leave paths, phase recovery, and text/JSON parity)",
+                "uv run ruff check (clean)",
+                "uv run ruff format --check (69 files already formatted)",
+                "uv run basedpyright (0 errors, 0 warnings, 0 notes) — the repository-declared type-check gate",
+                "python3 scripts/validate_repository.py (expected template-source exit 1; template contract passed and readiness findings emitted in canonical order)",
+                "multi-agent review: 15 confirmed design-contract findings fixed with reproductions (exception boundary, status evidence exits, stage litter, recovery token reconstruction, fd-based tree capture, umask-deterministic modes, cleanup fixture digest, protected recover, cleanup-mismatch diagnostic, status hook line, usage-kind classification, observation-to-contract mapping, fsync coverage, explain/color presentation, closed decision gates)",
+                "dead-code removal and closed-union typing hardening after review (snapshot_from_pass, InitOptions.source, unreplaced_slot_markers, lifecycle decodes, unused constants and parameters; RecoveryDecision-typed recovery dispatch, match-based condition changes)"
+              ]
+            },
+            "github_prs": []
           },
           "files": {
             "create": [
