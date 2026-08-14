@@ -585,7 +585,10 @@
                 "coverage: scripts/bootstrap/transaction.py 96%; remaining gaps are defensive contract guards",
                 "python3 scripts/validate_repository.py (expected template-source findings; template contract passed)"
               ]
-            }
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/56"
+            ]
           },
           "files": {
             "create": [
