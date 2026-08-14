@@ -928,10 +928,11 @@ def _template_root() -> str:
 
 def _remotes_for(worktree: ResolvedGitWorktree) -> tuple[str, ...]:
     match run_git(("remote", "--verbose"), cwd=worktree.root_abs):
-        case Err(_):
-            return ()
-        case Ok(result):
+        case Ok(result) if result.returncode == 0:
             pass
+        case _:
+            # A failed git command may carry partial output; never parse it.
+            return ()
     urls: list[str] = []
     for line in result.stdout.decode("utf-8", "replace").splitlines():
         stripped = line.strip()
