@@ -744,17 +744,19 @@ def reconstruct_plan(
     if not isinstance(raw_operations, list):
         return Err(_receipt_error("operations"))
     for raw_operation in cast(list[object], raw_operations):
-        match _reconstruct_operation(raw_operation):
+        match _reconstruct_operation(raw_operation, limits):
             case Err(error):
                 return Err(error)
             case Ok(operation):
                 operations.append(operation)
-    match _reconstruct_source_baseline(receipt.get("source_before"), generation):
+    match _reconstruct_source_baseline(
+        receipt.get("source_before"), generation, limits
+    ):
         case Err(error):
             return Err(error)
         case Ok(source_before):
             pass
-    match _reconstruct_source_baseline(receipt.get("source_after"), generation):
+    match _reconstruct_source_baseline(receipt.get("source_after"), generation, limits):
         case Err(error):
             return Err(error)
         case Ok(source_after):
@@ -795,6 +797,7 @@ def reconstruct_plan(
 
 def _reconstruct_operation(
     value: object,
+    limits: ResourceLimits = DEFAULT_LIMITS,
 ) -> Result[FileOperation | DirectoryOperation, ReceiptError]:
     """Reconstruct one closed operation document into its typed constructor."""
 
@@ -803,7 +806,7 @@ def _reconstruct_operation(
     document = cast(dict[str, object], value)
     match document.get("kind"):
         case "create_file" | "replace_file":
-            match _reconstruct_path(document.get("path"), "operation.path"):
+            match _reconstruct_path(document.get("path"), "operation.path", limits):
                 case Err(error):
                     return Err(error)
                 case Ok(path):
@@ -822,7 +825,7 @@ def _reconstruct_operation(
                 return Ok(CreateFileOperation(path, expected_old, planned_new))
             return Ok(ReplaceFileOperation(path, expected_old, planned_new))
         case "delete_file":
-            match _reconstruct_path(document.get("path"), "operation.path"):
+            match _reconstruct_path(document.get("path"), "operation.path", limits):
                 case Err(error):
                     return Err(error)
                 case Ok(path):
@@ -836,7 +839,7 @@ def _reconstruct_operation(
                 return Err(_receipt_error("operation.planned_new"))
             return Ok(DeleteFileOperation(path, expected_old, FileAbsent()))
         case "create_tree":
-            match _reconstruct_path(document.get("root"), "operation.root"):
+            match _reconstruct_path(document.get("root"), "operation.root", limits):
                 case Err(error):
                     return Err(error)
                 case Ok(root):
@@ -844,7 +847,7 @@ def _reconstruct_operation(
             planned = document.get("planned_new")
             if not isinstance(planned, dict):
                 return Err(_receipt_error("operation.planned_new"))
-            match _reconstruct_tree(root, cast(dict[str, object], planned)):
+            match _reconstruct_tree(root, cast(dict[str, object], planned), limits):
                 case Err(error):
                     return Err(error)
                 case Ok(tree):
@@ -853,7 +856,7 @@ def _reconstruct_operation(
                 return Err(_receipt_error("operation.expected_old"))
             return Ok(CreateTreeOperation(root, None, tree))
         case "remove_empty_directory":
-            match _reconstruct_path(document.get("path"), "operation.path"):
+            match _reconstruct_path(document.get("path"), "operation.path", limits):
                 case Err(error):
                     return Err(error)
                 case Ok(path):
@@ -878,7 +881,9 @@ def _reconstruct_operation(
             return Err(_receipt_error("operation.kind"))
 
 
-def _reconstruct_path(value: object, subject: str) -> Result[RepoPath, ReceiptError]:
+def _reconstruct_path(
+    value: object, subject: str, limits: ResourceLimits = DEFAULT_LIMITS
+) -> Result[RepoPath, ReceiptError]:
     if not isinstance(value, str):
         return Err(_receipt_error(subject))
     match parse_path(value):
@@ -886,7 +891,7 @@ def _reconstruct_path(value: object, subject: str) -> Result[RepoPath, ReceiptEr
             return Err(_receipt_error(subject))
         case Ok(path):
             pass
-    if not path_within_limits(path):
+    if not path_within_limits(path, limits):
         return Err(_receipt_error(subject))
     return Ok(path)
 
@@ -969,7 +974,9 @@ def _reconstruct_planned_new(value: object) -> Result[PlannedFilePresent, Receip
 
 
 def _reconstruct_tree(
-    root: RepoPath, document: dict[str, object]
+    root: RepoPath,
+    document: dict[str, object],
+    limits: ResourceLimits = DEFAULT_LIMITS,
 ) -> Result[MaterializedTree, ReceiptError]:
     root_mode = document.get("root_mode")
     raw_tree_sha256 = document.get("raw_tree_sha256")
@@ -989,7 +996,7 @@ def _reconstruct_tree(
         match entry_document.get("kind"):
             case "directory":
                 match _reconstruct_path(
-                    entry_document.get("path"), "operation.entries"
+                    entry_document.get("path"), "operation.entries", limits
                 ):
                     case Err(error):
                         return Err(error)
@@ -1001,7 +1008,7 @@ def _reconstruct_tree(
                 tree_entries.append(PlannedDirectoryEntry(path, PosixMode(mode)))
             case "file":
                 match _reconstruct_path(
-                    entry_document.get("path"), "operation.entries"
+                    entry_document.get("path"), "operation.entries", limits
                 ):
                     case Err(error):
                         return Err(error)
@@ -1045,7 +1052,9 @@ def _reconstruct_tree(
 
 
 def _reconstruct_source_baseline(
-    value: object, generation: GenerationPath
+    value: object,
+    generation: GenerationPath,
+    limits: ResourceLimits = DEFAULT_LIMITS,
 ) -> Result[SourceBaseline | None, ReceiptError]:
     if value is None:
         return Ok(None)
@@ -1064,7 +1073,9 @@ def _reconstruct_source_baseline(
         if not isinstance(entry, dict):
             return Err(_receipt_error("source_baseline.entries"))
         entry_document = cast(dict[str, object], entry)
-        match _reconstruct_path(entry_document.get("path"), "source_baseline.entries"):
+        match _reconstruct_path(
+            entry_document.get("path"), "source_baseline.entries", limits
+        ):
             case Err(error):
                 return Err(error)
             case Ok(path):

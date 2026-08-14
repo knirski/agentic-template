@@ -4219,6 +4219,15 @@ class TestPlanDigest:
             case Ok(_):
                 raise AssertionError("reconstruction bound a different target")
 
+    def test_reconstruct_honors_caller_supplied_path_limits(self) -> None:
+        receipt = build_receipt(github_plan())
+        tight = replace(DEFAULT_LIMITS, max_path_bytes=8)
+        match reconstruct_plan(receipt, target=TARGET, limits=tight):
+            case Err(error):
+                assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("tighter path limits ignored")
+
     @pytest.mark.parametrize("mutate", _RECONSTRUCT_REJECTIONS)
     def test_reconstruct_rejects_malformed_receipts(
         self, mutate: Callable[[dict[str, object]], object]
