@@ -1199,18 +1199,6 @@ def compile_initial_plan(
     )
 
 
-def _expected_kind(identity: FileContentIdentity) -> Literal["text", "binary"]:
-    match identity.kind:
-        case "text":
-            return "text"
-        case "binary":
-            return "binary"
-        case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
-            return assert_never(
-                identity.kind
-            )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
-
-
 def _apply_file_write(
     operation: CreateFileOperation | ReplaceFileOperation,
     observed_states: Mapping[str, FileState],
@@ -1239,7 +1227,7 @@ def _apply_file_write(
         )
     files[operation.path.value] = ExpectedFile(
         path=operation.path,
-        kind=_expected_kind(operation.planned_new.identity),
+        kind=operation.planned_new.identity.kind,
         mode=operation.planned_new.mode,
         content=content,
     )
@@ -1283,7 +1271,7 @@ def _apply_tree_entries(
                     )
                 files[entry.path.value] = ExpectedFile(
                     path=entry.path,
-                    kind=_expected_kind(entry.identity),
+                    kind=entry.identity.kind,
                     mode=entry.mode,
                     content=content,
                 )
@@ -1305,7 +1293,7 @@ def apply_plan(
             continue
         files[entry.path.value] = ExpectedFile(
             path=entry.path,
-            kind=_expected_kind(entry.state.identity),
+            kind=entry.state.identity.kind,
             mode=entry.state.mode,
             content=entry.content,
         )

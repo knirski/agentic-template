@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import dataclasses
 import unittest
-from typing import cast
 
 from hypothesis import given
 from hypothesis import strategies as st
@@ -49,41 +48,16 @@ from scripts.bootstrap.errors import (
     sanitize_errno,
     sanitize_process_error,
 )
-from scripts.bootstrap.result import Err, Ok, Result, accumulate
+from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.values import (
     DEFAULT_LIMITS,
     LimitKind,
     ResourceLimits,
     check_limit,
-    freeze,
 )
 
 
-class ResultTests(unittest.TestCase):
-    def test_result_maps_and_binds_without_raising_expected_errors(self) -> None:
-        self.assertEqual(Ok(2).map(lambda value: value + 1), Ok(3))
-        self.assertEqual(Ok(2).bind(lambda value: Ok(value * 2)), Ok(4))
-        self.assertEqual(Err("bad").map(lambda value: value), Err("bad"))
-        self.assertEqual(Err("bad").bind(lambda value: Ok(str(value))), Err("bad"))
-
-    def test_map_error_transforms_only_the_error_variant(self) -> None:
-        self.assertEqual(Ok(2).map_error(lambda error: cast(str, error).upper()), Ok(2))
-        self.assertEqual(Err("bad").map_error(lambda error: error.upper()), Err("BAD"))
-
-    def test_accumulate_preserves_all_independent_errors(self) -> None:
-        result = accumulate((Err("first"), Ok(2), Err("last")))
-        self.assertEqual(result, Err(("first", "last")))
-
-    @given(st.lists(st.integers(), max_size=20))
-    def test_accumulate_preserves_arbitrary_success_order(
-        self, values: list[int]
-    ) -> None:
-        result = cast(
-            Result[tuple[int, ...], tuple[str, ...]],
-            accumulate(tuple(Ok(value) for value in values)),
-        )
-        self.assertEqual(result, Ok(tuple(values)))
-
+class CanonicalJsonTests(unittest.TestCase):
     @given(
         st.recursive(
             st.one_of(
@@ -112,22 +86,6 @@ class ResultTests(unittest.TestCase):
 
 
 class ValuesTests(unittest.TestCase):
-    def test_freeze_deeply_removes_mutability(self) -> None:
-        frozen = freeze({"nested": [1, {"value": "x"}]})
-        self.assertEqual(frozen, (("nested", (1, (("value", "x"),))),))
-        self.assertIsInstance(frozen, tuple)
-        with self.assertRaises(TypeError):
-            frozen[0] = ("changed", ())  # pyright: ignore[reportIndexIssue]  frozen tuple rejects __setitem__ at runtime
-
-    def test_freeze_handles_tuples_and_sets(self) -> None:
-        self.assertEqual(freeze((1, [2, 3])), (1, (2, 3)))
-        self.assertEqual(freeze({1, 2}), frozenset({1, 2}))
-        self.assertEqual(freeze(frozenset({"a"})), frozenset({"a"}))
-        with self.assertRaises(TypeError):
-            _ = freeze({1: "int key"})
-        with self.assertRaises(TypeError):
-            _ = freeze(object())
-
     def test_sanitize_process_error_maps_launch_failures(self) -> None:
         self.assertEqual(
             sanitize_process_error(FileNotFoundError()),

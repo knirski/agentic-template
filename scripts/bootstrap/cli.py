@@ -2436,12 +2436,11 @@ def _observe_path_state(
         match _read_file_state_at(root_fd, path, resources.limits):
             case Err(error):
                 return _err_effect(error)
-            case Ok(None):
-                return Ok(ObservedFileAbsent())
             case Ok(observed):
-                if observed is None:
-                    return Ok(ObservedFileAbsent())
-                content, mode, device, inode = observed
+                pass
+        if observed is None:
+            return Ok(ObservedFileAbsent())
+        content, mode, device, inode = observed
         return Ok(
             ObservedFilePresent(_observed_identity(content, mode), mode, device, inode)
         )
@@ -2468,12 +2467,11 @@ def capture_plan_snapshot(
             match _read_file_state_at(root_fd, path, resources.limits):
                 case Err(error):
                     return Err(error)
-                case Ok(None):
-                    continue
                 case Ok(observed):
-                    if observed is None:
-                        continue
-                    content, mode, _device, _inode = observed
+                    pass
+            if observed is None:
+                continue
+            content, mode, _device, _inode = observed
             identity = _observed_identity(content, mode)
             observed_files.append(
                 ObservedFileEntry(path, FileState(identity, mode), content)
@@ -2676,23 +2674,15 @@ def _execute_prepare_one(
                 match _read_file_state_at(root_fd, operation.path, resources.limits):
                     case Err(error):
                         return _err_effect(error)
-                    case Ok(None):
-                        return _err_effect(_precondition_changed(operation.path.value))
                     case Ok(observed):
-                        if observed is None:
-                            return _err_effect(
-                                _precondition_changed(operation.path.value)
-                            )
-                        content, mode, _device, _inode = observed
+                        pass
             finally:
                 os.close(root_fd)
+            if observed is None:
+                return _err_effect(_precondition_changed(operation.path.value))
+            content, mode, _device, _inode = observed
             expected = operation.expected_old
-            if (
-                expected.identity is None
-                or expected.mode is None
-                or sha256_hex(content) != expected.identity.raw_sha256
-                or mode != expected.mode
-            ):
+            if not _old_file_matches(expected, content, mode):
                 return _err_effect(_precondition_changed(operation.path.value))
             state_root = resources.worktree.state_root_abs
             match _ensure_directory_chain(
@@ -2731,6 +2721,17 @@ def _execute_prepare_one(
     )
 
 
+def _old_file_matches(expected: FileState, content: bytes, mode: PosixMode) -> bool:
+    """Return whether observed bytes and mode equal the plan's expected old state."""
+
+    return not (
+        expected.identity is None
+        or expected.mode is None
+        or sha256_hex(content) != expected.identity.raw_sha256
+        or mode != expected.mode
+    )
+
+
 def _verify_old_file(
     operation: FileOperation,
     resources: TransactionResources,
@@ -2755,12 +2756,7 @@ def _verify_old_file(
     if observed is None:
         return _err_effect(_precondition_changed(operation.path.value))
     content, mode, _device, _inode = observed
-    if (
-        expected.identity is None
-        or expected.mode is None
-        or sha256_hex(content) != expected.identity.raw_sha256
-        or mode != expected.mode
-    ):
+    if not _old_file_matches(expected, content, mode):
         return _err_effect(_precondition_changed(operation.path.value))
     return Ok(None)
 
@@ -3668,20 +3664,10 @@ def _execute_effect(
                     case Ok(guard):
                         resources.lock = guard
                         return LockAcquired()
-                    case Err(
-                        TransitionError(kind=TransitionErrorKind.LOCK_HELD) as held
-                    ):
-                        return LockRefused(held)
-                    case Err(TransitionError() as error):
-                        return EffectFailed(
-                            EffectRequestKind.ACQUIRE_LOCK,
-                            TransactionError(
-                                TransactionErrorKind.INVALID_STATE_ROOT,
-                                subject="lock acquisition failed",
-                            ),
-                        )
                     case Err(error):
                         if isinstance(error, TransitionError):
+                            if error.kind is TransitionErrorKind.LOCK_HELD:
+                                return LockRefused(error)
                             return EffectFailed(
                                 EffectRequestKind.ACQUIRE_LOCK,
                                 TransactionError(
@@ -3840,35 +3826,45 @@ def _run_hook(worktree: ResolvedGitWorktree) -> HookEvidence:
     return HookExited(returncode, stdout, stderr)
 
 
-def _not_ready_diagnostics(
-    readiness: MechanicalReadinessResult,
+def _transition_diagnostic(
+    *,
+    code: str,
+    severity: DiagnosticSeverity,
+    subject: str,
+    details: str,
 ) -> tuple[Diagnostic, ...]:
-    if not readiness.blocking:
-        return ()
     return (
         Diagnostic(
-            code="BOOTSTRAP_READINESS_BLOCKING",
+            code=code,
             category=DiagnosticCategory.TRANSITION,
-            severity=DiagnosticSeverity.WARNING,
-            subject="repository readiness",
+            severity=severity,
+            subject=subject,
             summary="bootstrap files were installed; the repository is not locally ready",
-            details="replace every remaining placeholder and run the canonical validator",
+            details=details,
             next_action=RunCommand(("python3", "scripts/validate_repository.py")),
         ),
     )
 
 
+def _not_ready_diagnostics(
+    readiness: MechanicalReadinessResult,
+) -> tuple[Diagnostic, ...]:
+    if not readiness.blocking:
+        return ()
+    return _transition_diagnostic(
+        code="BOOTSTRAP_READINESS_BLOCKING",
+        severity=DiagnosticSeverity.WARNING,
+        subject="repository readiness",
+        details="replace every remaining placeholder and run the canonical validator",
+    )
+
+
 def _hook_failure_diagnostics() -> tuple[Diagnostic, ...]:
-    return (
-        Diagnostic(
-            code="BOOTSTRAP_HOOK_FAILED",
-            category=DiagnosticCategory.TRANSITION,
-            severity=DiagnosticSeverity.ERROR,
-            subject="adopter hook",
-            summary="bootstrap files were installed; the repository is not locally ready",
-            details="the adopter hook did not exit 0",
-            next_action=RunCommand(("python3", "scripts/validate_repository.py")),
-        ),
+    return _transition_diagnostic(
+        code="BOOTSTRAP_HOOK_FAILED",
+        severity=DiagnosticSeverity.ERROR,
+        subject="adopter hook",
+        details="the adopter hook did not exit 0",
     )
 
 

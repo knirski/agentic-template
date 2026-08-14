@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import cast
 
 from scripts.bootstrap.result import Err, Ok, Result
 
@@ -68,28 +67,3 @@ def check_limit(
     if observed < 0 or observed > limit:
         return Err(LimitViolation(kind=kind, observed=observed, limit=limit))
     return Ok(observed)
-
-
-def freeze(value: object) -> object:
-    """Convert supported decoded containers into recursively immutable values."""
-
-    if value is None or isinstance(value, (str, bytes, bool, int)):
-        return value
-    if isinstance(value, tuple):
-        items = cast(tuple[object, ...], value)
-        return tuple(freeze(item) for item in items)
-    if isinstance(value, list):
-        items = cast(list[object], value)
-        return tuple(freeze(item) for item in items)
-    if isinstance(value, dict):
-        mapping = cast(dict[object, object], value)
-        if not all(isinstance(key, str) for key in mapping):
-            raise TypeError("frozen mappings require string keys")
-        string_mapping = cast(dict[str, object], mapping)
-        return tuple(
-            (key, freeze(string_mapping[key])) for key in sorted(string_mapping)
-        )
-    if isinstance(value, (set, frozenset)):
-        items = cast(set[object] | frozenset[object], value)
-        return frozenset(freeze(item) for item in items)
-    raise TypeError(f"unsupported mutable or shell value: {type(value).__name__}")
