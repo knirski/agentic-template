@@ -126,6 +126,14 @@ class CleanupInventoryTests(unittest.TestCase):
             case Ok(_):
                 self.fail("invalid JSON inventory decoded")
 
+    def test_deeply_nested_inventory_is_rejected(self) -> None:
+        payload = b"[" * 10000 + b"0" + b"]" * 10000
+        match decode_cleanup_inventory(payload):
+            case Err(error):
+                self.assertIsInstance(error, CleanupContractMismatch)
+            case Ok(_):
+                self.fail("deeply nested inventory decoded")
+
     def test_wrong_document_shape_is_rejected(self) -> None:
         match decode_cleanup_inventory(canonical_json({"schema_version": 1})):
             case Err(error):

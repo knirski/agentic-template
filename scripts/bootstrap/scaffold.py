@@ -111,7 +111,7 @@ def decode_cleanup_inventory(
 
     try:
         value = decode_json(data)
-    except ValueError:
+    except ValueError, RecursionError:
         return Err(CleanupContractMismatch((MAINTENANCE_INVENTORY_PATH,)))
     if not isinstance(value, dict) or set(value) != {"schema_version", "entries"}:
         return Err(CleanupContractMismatch((MAINTENANCE_INVENTORY_PATH,)))
