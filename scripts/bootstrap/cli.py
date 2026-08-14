@@ -1978,6 +1978,17 @@ def _write_file_exclusive(
                 mode,
                 dir_fd=parent_fd,
             )
+        except FileExistsError:
+            return _err_effect(_invalid_state(os.fsdecode(name)))
+        except OSError as error:
+            return Err(
+                TransactionError.primitive_failed(
+                    TransactionPrimitive.WRITE_FILE,
+                    sanitize_errno(error),
+                    os.fsdecode(name),
+                )
+            )
+        try:
             try:
                 # The open mode is umask-masked; pin the exact plan mode so
                 # installed and backup modes never depend on the shell umask.
@@ -1990,17 +2001,6 @@ def _write_file_exclusive(
                         os.fsdecode(name),
                     )
                 )
-        except FileExistsError:
-            return _err_effect(_invalid_state(os.fsdecode(name)))
-        except OSError as error:
-            return Err(
-                TransactionError.primitive_failed(
-                    TransactionPrimitive.WRITE_FILE,
-                    sanitize_errno(error),
-                    os.fsdecode(name),
-                )
-            )
-        try:
             match write_all(fd, content):
                 case Err(error):
                     return _err_effect(error)
