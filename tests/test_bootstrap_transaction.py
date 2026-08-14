@@ -601,9 +601,13 @@ class TestEnvelopes:
 
 
 def _snapshot_with_file(
-    path: RepoPath, state: FileState, content: bytes
+    path: RepoPath,
+    state: FileState,
+    content: bytes,
+    *,
+    base: TargetSnapshot | None = None,
 ) -> TargetSnapshot:
-    base = _precondition_snapshot()
+    base = base if base is not None else _precondition_snapshot()
     files = (
         *(entry for entry in base.files if entry.path != path),
         ObservedFileEntry(path, state, content),
@@ -636,6 +640,23 @@ class TestSnapshotVerification:
     def test_preconditions_match_full_snapshot(self) -> None:
         plan, _, _ = _full_plan()
         assert snapshot_matches_preconditions(plan, _precondition_snapshot()) is True
+
+    def test_preconditions_accept_explicit_absent_entries(self) -> None:
+        plan, _, _ = _full_plan()
+        snapshot = _snapshot_with_file(
+            RepoPath("app.py"), file_state_identity(None, text=False), b""
+        )
+        assert snapshot_matches_preconditions(plan, snapshot) is True
+
+    def test_candidate_accepts_explicit_absent_deleted_entry(self) -> None:
+        plan, _, _ = _full_plan()
+        snapshot = _snapshot_with_file(
+            RepoPath("stale.txt"),
+            file_state_identity(None, text=False),
+            b"",
+            base=_candidate_snapshot(),
+        )
+        assert snapshot_matches_candidate(plan, snapshot) is True
 
     @pytest.mark.parametrize(
         "label, snapshot",

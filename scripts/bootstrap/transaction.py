@@ -704,6 +704,8 @@ def _planned_directory_state(
 
 
 def _file_state_matches(observed: FileState | None, expected: FileState) -> bool:
+    if observed is not None and not observed.present:
+        observed = None  # an explicit absent entry is absence
     if expected.present:
         return observed is not None and observed == expected
     return observed is None
@@ -770,7 +772,8 @@ def _candidate_matches(
                 observed.identity == planned.identity and observed.mode == planned.mode
             )
         case DeleteFileOperation(path=path):
-            return path not in files
+            state = files.get(path)
+            return state is None or not state.present
         case CreateTreeOperation(root=root, planned_new=planned_tree):
             observed = directories.get(root)
             return observed is not None and observed == _planned_directory_state(
