@@ -560,9 +560,19 @@ class TestCleanupDerivation:
             CleanupItem(CleanupKind.JOURNAL),
         )
 
-    def test_restored_cleanup_order_matches_sealed_base(self) -> None:
+    def test_restored_cleanup_adds_rollback_containers(self) -> None:
         plan, _, _ = _full_plan()
-        assert _restored_cleanup(plan) == _sealed_cleanup(plan)
+        sealed = _sealed_cleanup(plan)
+        restored = _restored_cleanup(plan)
+        assert restored == (
+            *sealed[:5],
+            CleanupItem(CleanupKind.ROLLBACK, 1),
+            CleanupItem(CleanupKind.ROLLBACK, 2),
+            CleanupItem(CleanupKind.ROLLBACK, 3),
+            CleanupItem(CleanupKind.ROLLBACK, 4),
+            CleanupItem(CleanupKind.TRANSACTION_DIRECTORY),
+            CleanupItem(CleanupKind.JOURNAL),
+        )
 
     def test_cleanup_rejects_other_phases(self) -> None:
         plan, _, _ = _full_plan()

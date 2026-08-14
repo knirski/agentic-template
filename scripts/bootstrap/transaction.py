@@ -75,6 +75,7 @@ from scripts.bootstrap.planner import (
     ReplaceFileOperation,
     TargetSnapshot,
 )
+from scripts.bootstrap.rollback import derive_rollback_specs
 from scripts.bootstrap.values import JournalPhase
 
 _TRANSACTION_HEX = re.compile(r"[0-9a-f]{64}\Z")
@@ -552,6 +553,7 @@ def derive_preparations(
 class CleanupKind(StrEnum):
     STAGE = "stage"
     BACKUP = "backup"
+    ROLLBACK = "rollback"
     TRANSACTION_DIRECTORY = "transaction_directory"
     JOURNAL = "journal"
 
@@ -569,8 +571,8 @@ def derive_cleanup(plan: OperationPlan, phase: JournalPhase) -> tuple[CleanupIte
 
     Stages and backups are removed in plan order, then the transaction
     directory, and ``journal.json`` last so the journal remains authoritative
-    until every other artifact is gone.  T11b extends the ``RESTORED``
-    inventory with rollback containers.
+    until every other artifact is gone.  The ``RESTORED`` inventory adds the
+    marked rollback containers between backups and the transaction directory.
     """
 
     if phase not in (JournalPhase.RESTORED, JournalPhase.SEALED):
@@ -584,6 +586,9 @@ def derive_cleanup(plan: OperationPlan, phase: JournalPhase) -> tuple[CleanupIte
                 items.append(CleanupItem(CleanupKind.BACKUP, spec.operation_index))
             case PreparationRole.ROLLBACK:  # pragma: no cover — v1 preparation specs never reserve rollback containers
                 pass
+    if phase is JournalPhase.RESTORED:
+        for spec in derive_rollback_specs(plan):
+            items.append(CleanupItem(CleanupKind.ROLLBACK, spec.operation_index))
     items.append(CleanupItem(CleanupKind.TRANSACTION_DIRECTORY))
     items.append(CleanupItem(CleanupKind.JOURNAL))
     return tuple(items)
@@ -797,13 +802,19 @@ def snapshot_matches_candidate(plan: OperationPlan, snapshot: TargetSnapshot) ->
     )
 
 
-def _envelope(compiled: CompiledTransaction, phase: JournalPhase) -> JournalEnvelope:
+def _envelope(
+    compiled: CompiledTransaction,
+    phase: JournalPhase,
+    preparations: tuple[PreparationIdentity, ...] | None = None,
+) -> JournalEnvelope:
     return JournalEnvelope(
         operation=compiled.plan.operation_kind,
         target=JournalTarget.from_identity(compiled.plan.target_identity),
         phase=phase,
         transaction_id=compiled.transaction_id,
-        preparations=compiled.preparations,
+        preparations=preparations
+        if preparations is not None
+        else compiled.preparations,
     )
 
 
@@ -815,9 +826,17 @@ def mutating_envelope(planned: PlannedTransaction) -> JournalEnvelope:
     return _envelope(planned.validated.locked.compiled, JournalPhase.MUTATING)
 
 
-def restored_envelope(verified: VerifiedRestoredTransaction) -> JournalEnvelope:
+def restored_envelope(
+    verified: VerifiedRestoredTransaction,
+    rollback_preparations: tuple[PreparationIdentity, ...] = (),
+) -> JournalEnvelope:
+    """Build the ``RESTORED`` journal, including the marked rollback containers."""
+
+    compiled = verified.mutating.planned.validated.locked.compiled
     return _envelope(
-        verified.mutating.planned.validated.locked.compiled, JournalPhase.RESTORED
+        compiled,
+        JournalPhase.RESTORED,
+        (*compiled.preparations, *rollback_preparations),
     )
 
 
