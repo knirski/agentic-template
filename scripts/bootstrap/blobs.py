@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass, field
 
 from scripts.bootstrap.errors import InputError, InputErrorKind
+from scripts.bootstrap.identity import sha256_hex
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
 
@@ -16,7 +16,7 @@ class ContentId:
 
     @classmethod
     def from_bytes(cls, content: bytes) -> ContentId:
-        return cls(hashlib.sha256(content).hexdigest())
+        return cls(sha256_hex(content))
 
 
 @dataclass(frozen=True, slots=True)

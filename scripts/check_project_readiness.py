@@ -36,6 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT))
 
+from scripts.bootstrap.entrypoint import reject_arguments  # noqa: E402
 from scripts.bootstrap.presentation import render_text  # noqa: E402
 from scripts.bootstrap.readiness import (  # noqa: E402
     Finding as CoreFinding,
@@ -468,11 +469,14 @@ def inspect_hook(path: Path, findings: list[Finding]) -> HookState:
 
 
 def main(argv: list[str]) -> int:
-    if argv:
-        print(
-            "READINESS_USAGE_ERROR: scripts/check_project_readiness.py: unexpected arguments; next: run it without arguments",
-            file=sys.stderr,
+    if (
+        reject_arguments(
+            argv,
+            "scripts/check_project_readiness.py",
+            message="READINESS_USAGE_ERROR: scripts/check_project_readiness.py: unexpected arguments; next: run it without arguments",
         )
+        is not None
+    ):
         return 2
     initial_findings: list[Finding] = []
     try:

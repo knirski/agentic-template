@@ -10,13 +10,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal, TypeGuard, assert_never, cast
+from typing import Literal, assert_never, cast
 
 from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
 from scripts.bootstrap.canonical_json import (
     StrictJsonValue,
     canonical_json,
-    decode_json,
+    decode_object,
 )
 from scripts.bootstrap.identity import (
     DirectoryState,
@@ -26,6 +26,7 @@ from scripts.bootstrap.identity import (
     PosixMode,
     TargetIdentity,
     directory_tree_hash,
+    file_state_document,
     tagged_digest,
 )
 from scripts.bootstrap.intents import GenerationPath
@@ -62,7 +63,7 @@ from scripts.bootstrap.source_baseline import (
     SourceBaseline,
 )
 from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
-from scripts.bootstrap.vocabulary import COMMIT_SHA, SHA256
+from scripts.bootstrap.vocabulary import COMMIT_SHA, SHA256, is_sha256
 
 _GENERATION_PATHS = frozenset({"github", "copier"})
 _READINESS_RULES = frozenset({"initial-equality", "no-worse-blocking"})
@@ -85,18 +86,6 @@ class ReceiptError:
 
 def _receipt_error(subject: str = "") -> ReceiptError:
     return ReceiptError(ReceiptErrorKind.SCHEMA_VIOLATION, subject)
-
-
-def _file_state_document(state: FileState) -> dict[str, object] | None:
-    if not state.present or state.identity is None or state.mode is None:
-        return None
-    return {
-        "kind": state.identity.kind,
-        "mode": state.mode.value,
-        "normalized_sha256": state.identity.normalized_sha256,
-        "raw_sha256": state.identity.raw_sha256,
-        "size": state.identity.size,
-    }
 
 
 def _planned_file_document(planned: PlannedFilePresent) -> dict[str, object]:
@@ -134,7 +123,7 @@ def _file_operation_document(
     return {
         "kind": kind,
         "path": operation.path.value,
-        "expected_old": _file_state_document(operation.expected_old),
+        "expected_old": file_state_document(operation.expected_old),
         "planned_new": planned,
     }
 
@@ -267,27 +256,35 @@ def encode_receipt(receipt: PlanReceipt) -> bytes:
 
 def decode_receipt(data: bytes) -> Result[PlanReceipt, ReceiptError]:
     """Strictly decode a canonical receipt and reject any shape outside the closed contract."""
-    if len(data) > DEFAULT_LIMITS.max_file_bytes:
-        return Err(_receipt_error("size"))
-    try:
-        value = decode_json(data)
-    except ValueError, RecursionError:
-        return Err(ReceiptError(ReceiptErrorKind.INVALID_JSON))
-    if not isinstance(value, dict):
-        return Err(_receipt_error("document"))
-    if set(value) != {
-        "plan_schema",
-        "operation_kind",
-        "target_binding",
-        "generation_path",
-        "source_before",
-        "source_after",
-        "manifest_before",
-        "manifest_after",
-        "gate_specification",
-        "operations",
-    }:
-        return Err(_receipt_error("document"))
+
+    def _reason(reason: str) -> ReceiptError:
+        if reason == "json":
+            return ReceiptError(ReceiptErrorKind.INVALID_JSON)
+        return _receipt_error(reason)
+
+    match decode_object(
+        data,
+        error=_reason,
+        max_bytes=DEFAULT_LIMITS.max_file_bytes,
+        allowed_keys=frozenset(
+            {
+                "plan_schema",
+                "operation_kind",
+                "target_binding",
+                "generation_path",
+                "source_before",
+                "source_after",
+                "manifest_before",
+                "manifest_after",
+                "gate_specification",
+                "operations",
+            }
+        ),
+    ):
+        case Err(error):
+            return Err(error)
+        case Ok(value):
+            pass
     if value.get("plan_schema") != 1:
         return Err(_receipt_error("plan_schema"))
     if value.get("operation_kind") != "initial":
@@ -313,10 +310,10 @@ def decode_receipt(data: bytes) -> Result[PlanReceipt, ReceiptError]:
         case Ok(_):
             pass
     manifest_before = value.get("manifest_before")
-    if manifest_before is not None and not _is_digest(manifest_before):
+    if manifest_before is not None and not is_sha256(manifest_before):
         return Err(_receipt_error("manifest_before"))
     manifest_after = value.get("manifest_after")
-    if not _is_digest(manifest_after):
+    if not is_sha256(manifest_after):
         return Err(_receipt_error("manifest_after"))
     match _decode_gate(value.get("gate_specification")):
         case Err(error):
@@ -350,10 +347,6 @@ def _decode_path(
     return Ok(path)
 
 
-def _is_digest(value: object) -> TypeGuard[str]:
-    return isinstance(value, str) and SHA256.fullmatch(value) is not None
-
-
 def _decode_identity(
     value: StrictJsonValue, subject: str
 ) -> Result[FileContentIdentity, ReceiptError]:
@@ -377,14 +370,14 @@ def _decode_identity(
     if (
         type(mode) is not int
         or mode not in INSTALL_MODES
-        or not _is_digest(normalized_sha256)
-        or not _is_digest(raw_sha256)
+        or not is_sha256(normalized_sha256)
+        or not is_sha256(raw_sha256)
         or not isinstance(size, int)
         or size < 0
     ):
         return Err(_receipt_error(subject))
     content_id = value.get("content_id")
-    if content_id is not None and not _is_digest(content_id):
+    if content_id is not None and not is_sha256(content_id):
         return Err(_receipt_error(subject))
     return Ok(
         FileContentIdentity(
@@ -425,8 +418,8 @@ def _decode_observed_state(
     if (
         type(mode) is not int
         or not 0 <= mode <= 0o7777
-        or not _is_digest(normalized_sha256)
-        or not _is_digest(raw_sha256)
+        or not is_sha256(normalized_sha256)
+        or not is_sha256(raw_sha256)
         or not isinstance(size, int)
         or size < 0
     ):
@@ -492,7 +485,7 @@ def _decode_operation(value: StrictJsonValue) -> Result[None, ReceiptError]:
                 case Ok(_):
                     pass
             content_id = planned_new.get("content_id")
-            if not _is_digest(content_id):
+            if not is_sha256(content_id):
                 return Err(_receipt_error("operation.planned_new"))
             return Ok(None)
         case "create_tree":
@@ -519,7 +512,7 @@ def _decode_operation(value: StrictJsonValue) -> Result[None, ReceiptError]:
             if (
                 not isinstance(root_mode, int)
                 or root_mode != PosixMode.DIRECTORY
-                or not _is_digest(raw_tree_sha256)
+                or not is_sha256(raw_tree_sha256)
                 or not isinstance(entries, list)
             ):
                 return Err(_receipt_error("operation.planned_new"))
@@ -557,7 +550,7 @@ def _decode_operation(value: StrictJsonValue) -> Result[None, ReceiptError]:
                 set(expected_old) != {"mode", "raw_tree_sha256"}
                 or type(mode) is not int
                 or not 0 <= mode <= 0o7777
-                or not _is_digest(digest)
+                or not is_sha256(digest)
                 or value.get("planned_new") is not None
             ):
                 return Err(_receipt_error("operation.expected_old"))
@@ -679,7 +672,7 @@ def _decode_baseline(
     kind = value.get("kind")
     fingerprint = value.get("fingerprint")
     entries = value.get("entries")
-    if kind not in ("github", "copier") or not _is_digest(fingerprint):
+    if kind not in ("github", "copier") or not is_sha256(fingerprint):
         return Err(_receipt_error("source_baseline"))
     if kind != generation:
         return Err(_receipt_error("source_baseline"))
@@ -718,7 +711,7 @@ def _decode_baseline(
             kind not in ("file", "directory")
             or type(mode) is not int
             or mode not in INSTALL_MODES
-            or not _is_digest(entry.get("sha256"))
+            or not is_sha256(entry.get("sha256"))
         ):
             return Err(_receipt_error("source_baseline.entries"))
     return Ok(None)
@@ -771,10 +764,10 @@ def reconstruct_plan(
                 return Err(_receipt_error("source_after"))
             pass
     manifest_after = receipt.get("manifest_after")
-    if not _is_digest(manifest_after):
+    if not is_sha256(manifest_after):
         return Err(_receipt_error("manifest_after"))
     manifest_before = receipt.get("manifest_before")
-    if manifest_before is not None and not _is_digest(manifest_before):
+    if manifest_before is not None and not is_sha256(manifest_before):
         return Err(_receipt_error("manifest_before"))
     match _reconstruct_gate(receipt.get("gate_specification")):
         case Err(error):
@@ -926,8 +919,8 @@ def _reconstruct_observed_state(value: object) -> Result[FileState, ReceiptError
         kind not in ("text", "binary")
         or type(mode) is not int
         or not 0 <= mode <= 0o7777
-        or not _is_digest(normalized)
-        or not _is_digest(raw)
+        or not is_sha256(normalized)
+        or not is_sha256(raw)
         or not isinstance(size, int)
         or size < 0
     ):
@@ -959,11 +952,11 @@ def _reconstruct_planned_new(value: object) -> Result[PlannedFilePresent, Receip
         kind not in ("text", "binary")
         or type(mode) is not int
         or mode not in INSTALL_MODES
-        or not _is_digest(normalized)
-        or not _is_digest(raw)
+        or not is_sha256(normalized)
+        or not is_sha256(raw)
         or not isinstance(size, int)
         or size < 0
-        or not _is_digest(content_id)
+        or not is_sha256(content_id)
     ):
         return Err(_receipt_error("operation.planned_new"))
     return Ok(
@@ -991,7 +984,7 @@ def _reconstruct_tree(
     if (
         not isinstance(root_mode, int)
         or root_mode != PosixMode.DIRECTORY
-        or not _is_digest(raw_tree_sha256)
+        or not is_sha256(raw_tree_sha256)
         or not isinstance(entries, list)
     ):
         return Err(_receipt_error("operation.planned_new"))
@@ -1078,7 +1071,7 @@ def _reconstruct_source_baseline(
     kind = document.get("kind")
     fingerprint = document.get("fingerprint")
     entries_value = document.get("entries")
-    if kind != generation.value or not _is_digest(fingerprint):
+    if kind != generation.value or not is_sha256(fingerprint):
         return Err(_receipt_error("source_baseline"))
     if not isinstance(entries_value, list):
         return Err(_receipt_error("source_baseline.entries"))
@@ -1101,7 +1094,7 @@ def _reconstruct_source_baseline(
             entry_kind not in ("file", "directory")
             or type(mode) is not int
             or mode not in INSTALL_MODES
-            or not _is_digest(digest)
+            or not is_sha256(digest)
         ):
             return Err(_receipt_error("source_baseline.entries"))
         entries.append(

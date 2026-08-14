@@ -29,6 +29,7 @@ from scripts.bootstrap.result import Err, Ok, Result
 
 _O_DIRECTORY = os.O_DIRECTORY | os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
 _O_NOFOLLOW_READ = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+_EXCL_WRITE = os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW | os.O_CLOEXEC
 
 
 class ChildKind(StrEnum):
@@ -316,3 +317,81 @@ def fsync_directory(fd: int) -> Result[None, TransactionError]:
     """Durably persist directory entry changes for the held descriptor."""
 
     return fsync_file(fd)
+
+
+def write_file_exclusive(
+    parent_fd: int,
+    name: bytes,
+    data: bytes,
+    mode: int,
+    *,
+    exists_subject: str | None = None,
+) -> Result[None, TransactionError]:
+    """Create one file exclusively below a held descriptor and durably persist it.
+
+    A pre-existing sibling is ``InvalidStateRoot``; ``exists_subject`` names it
+    when the caller's contract does.  The open mode is pinned with ``fchmod``
+    so the shell umask can never shift an installed or journaled mode.
+    """
+
+    try:
+        fd = os.open(name, _EXCL_WRITE, mode, dir_fd=parent_fd)
+    except FileExistsError:
+        return Err(
+            TransactionError(
+                TransactionErrorKind.INVALID_STATE_ROOT,
+                subject=(
+                    exists_subject if exists_subject is not None else os.fsdecode(name)
+                ),
+            )
+        )
+    except OSError as error:
+        return Err(
+            _transaction_error(
+                TransactionPrimitive.WRITE_FILE, error, os.fsdecode(name)
+            )
+        )
+    try:
+        try:
+            os.fchmod(fd, mode)
+        except OSError as error:
+            return Err(
+                _transaction_error(
+                    TransactionPrimitive.WRITE_FILE, error, os.fsdecode(name)
+                )
+            )
+        match write_all(fd, data):
+            case Err(error):
+                return Err(error)
+            case Ok(_):
+                pass
+        match fsync_file(fd):
+            case Err(error):
+                return Err(error)
+            case Ok(_):
+                pass
+    finally:
+        os.close(fd)
+    return Ok(None)
+
+
+def atomic_replace_file(
+    src_dir_fd: int,
+    dst_dir_fd: int,
+    src: bytes,
+    dst: bytes,
+    subject: str,
+) -> Result[None, TransactionError]:
+    """Atomically replace ``dst`` with ``src`` and durably persist the directory."""
+
+    try:
+        os.replace(src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
+    except OSError as error:
+        return Err(
+            TransactionError(
+                TransactionErrorKind.ATOMIC_REPLACE_FAILED,
+                errno_class=sanitize_errno(error),
+                subject=subject,
+            )
+        )
+    return fsync_directory(dst_dir_fd)

@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT))
 
+from scripts.bootstrap.entrypoint import reject_arguments  # noqa: E402
 from scripts.bootstrap.validation_program import (  # noqa: E402
     StageFailed,
     StagePassed,
@@ -34,8 +35,7 @@ def validation_program() -> ValidationProgram:
 
 
 def main(argv: list[str]) -> int:
-    if argv:
-        print("usage: scripts/validate_repository.py", file=sys.stderr)
+    if reject_arguments(argv, "scripts/validate_repository.py") is not None:
         return 2
     program = validation_program()
     state = program.start()

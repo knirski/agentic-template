@@ -18,11 +18,11 @@ from typing import Literal, assert_never, cast
 from scripts.bootstrap.canonical_json import (
     StrictJsonValue,
     canonical_json,
-    decode_json,
+    decode_object,
 )
-from scripts.bootstrap.identity import InstallFileMode, PosixMode, tagged_digest
+from scripts.bootstrap.identity import InstallFileMode, PosixMode, manifest_identity
 from scripts.bootstrap.intents import GenerationPath
-from scripts.bootstrap.paths import RepoPath, parse_path
+from scripts.bootstrap.paths import RepoPath, parse_path, path_byte_key, sorted_paths
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.source_baseline import (
     CopierSourceBaseline,
@@ -40,6 +40,7 @@ from scripts.bootstrap.vocabulary import (
     SETTING_NAME,
     SHA256,
     SLOT_MODES,
+    is_sha256,
 )
 
 MANIFEST_SCHEMA_VERSION = 1
@@ -163,7 +164,7 @@ def _manifest_error(kind: ManifestErrorKind, subject: str = "") -> ManifestError
 
 
 def _sorted_unique_paths(paths: tuple[RepoPath, ...]) -> tuple[RepoPath, ...]:
-    return tuple(sorted(set(paths), key=lambda path: path.value.encode("utf-8")))
+    return sorted_paths(set(paths))
 
 
 def path_within_limits(path: RepoPath, limits: ResourceLimits = DEFAULT_LIMITS) -> bool:
@@ -180,7 +181,7 @@ def path_within_limits(path: RepoPath, limits: ResourceLimits = DEFAULT_LIMITS) 
 
 
 def _is_sha256(value: object) -> bool:
-    return isinstance(value, str) and SHA256.fullmatch(value) is not None
+    return is_sha256(value)
 
 
 def _is_identifier(value: object) -> bool:
@@ -251,10 +252,7 @@ def _validate_managed(
             return Err(
                 _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, entry.path.value)
             )
-    if (
-        tuple(sorted(managed, key=lambda entry: entry.path.value.encode("utf-8")))
-        != managed
-    ):
+    if tuple(sorted(managed, key=lambda entry: path_byte_key(entry.path))) != managed:
         return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "managed"))
     return Ok(managed)
 
@@ -542,7 +540,7 @@ def manifest_document(manifest: CandidateManifest) -> dict[str, object]:
 
 def manifest_checksum(document: Mapping[str, object]) -> str:
     """Tag the canonical document bytes; the checksum field itself is never hashed."""
-    return tagged_digest(b"manifest", canonical_json(document))
+    return manifest_identity(document).digest
 
 
 def encode_manifest(manifest: CandidateManifest) -> bytes:
@@ -553,23 +551,31 @@ def encode_manifest(manifest: CandidateManifest) -> bytes:
 
 def decode_manifest(data: bytes) -> Result[CandidateManifest, ManifestError]:
     """Strictly decode a manifest: parse, schema, and checksum are the only validity."""
-    if len(data) > DEFAULT_LIMITS.max_file_bytes:
-        return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "size"))
-    try:
-        value = decode_json(data)
-    except ValueError, RecursionError:
-        return Err(_manifest_error(ManifestErrorKind.INVALID_JSON))
-    if not isinstance(value, Mapping):
-        return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "document"))
-    if set(value) != {
-        "schema_version",
-        "answers",
-        "additions",
-        "provenance",
-        "managed",
-        "checksum",
-    }:
-        return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "document"))
+
+    def _reason(reason: str) -> ManifestError:
+        if reason == "json":
+            return _manifest_error(ManifestErrorKind.INVALID_JSON)
+        return _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, reason)
+
+    match decode_object(
+        data,
+        error=_reason,
+        max_bytes=DEFAULT_LIMITS.max_file_bytes,
+        allowed_keys=frozenset(
+            {
+                "schema_version",
+                "answers",
+                "additions",
+                "provenance",
+                "managed",
+                "checksum",
+            }
+        ),
+    ):
+        case Err(error):
+            return Err(error)
+        case Ok(value):
+            pass
     schema_version = value.get("schema_version")
     if schema_version != MANIFEST_SCHEMA_VERSION:
         return Err(

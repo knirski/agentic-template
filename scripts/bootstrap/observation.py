@@ -24,7 +24,7 @@ from scripts.bootstrap.manifest import (
     ManagedInventoryEntry,
     decode_manifest,
 )
-from scripts.bootstrap.paths import RepoPath
+from scripts.bootstrap.paths import RepoPath, sorted_paths
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.scaffold import (
     COPIER_ANSWERS_PATH,
@@ -132,18 +132,12 @@ class ProjectObservationPass:
     directories: tuple[CapturedDirectory, ...]
 
     def __post_init__(self) -> None:
-        if tuple(entry.path for entry in self.files) != tuple(
-            sorted(
-                (entry.path for entry in self.files),
-                key=lambda p: p.value.encode(),
-            )
+        if sorted_paths(entry.path for entry in self.files) != tuple(
+            entry.path for entry in self.files
         ):
             raise TypeError("captured files must be sorted by path")
-        if tuple(entry.path for entry in self.directories) != tuple(
-            sorted(
-                (entry.path for entry in self.directories),
-                key=lambda p: p.value.encode(),
-            )
+        if sorted_paths(entry.path for entry in self.directories) != tuple(
+            entry.path for entry in self.directories
         ):
             raise TypeError("captured directories must be sorted by path")
 
@@ -342,7 +336,7 @@ def classify_existing_project(
         return UnsafeExistingProject(
             recorded,
             TopologyError(
-                tuple(sorted(unsafe_paths, key=lambda path: path.value.encode()))
+                sorted_paths(unsafe_paths),
             ),
             snapshot,
         )
@@ -406,10 +400,7 @@ def _observed_entries(
     directories: Mapping[RepoPath, CapturedDirectory],
 ) -> tuple[RepoPath, ...]:
     return tuple(
-        sorted(
-            (*files.keys(), *directories.keys()),
-            key=lambda path: path.value.encode("utf-8"),
-        )
+        sorted_paths((*files.keys(), *directories.keys())),
     )
 
 
@@ -433,7 +424,7 @@ def _managed_observation(
     if drifted:
         return ManagedDrift(
             PathDelta(
-                tuple(sorted(drifted, key=lambda path: path.value.encode("utf-8")))
+                sorted_paths(drifted),
             )
         )
     return ManagedVerified()
@@ -466,7 +457,7 @@ def _source_delta(
             observed = directories.get(entry.path)
             if observed is None or observed.mode != entry.mode:
                 changed.add(entry.path)
-    return SourceDelta(tuple(sorted(changed, key=lambda path: path.value.encode())))
+    return SourceDelta(sorted_paths(changed))
 
 
 def _snapshot_condition(
