@@ -14,7 +14,6 @@ from typing import Literal, assert_never, cast, get_args, get_type_hints
 
 from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
 from scripts.bootstrap.canonical_json import (
-    StrictJsonValue,
     canonical_json,
     decode_object,
 )
@@ -257,7 +256,12 @@ def encode_receipt(receipt: PlanReceipt) -> bytes:
 
 
 def decode_receipt(data: bytes) -> Result[PlanReceipt, ReceiptError]:
-    """Strictly decode a canonical receipt and reject any shape outside the closed contract."""
+    """Strictly decode a canonical receipt and reject any shape outside the closed contract.
+
+    The top-level fields are validated here; every nested document is
+    validated by the same reconstructors ``reconstruct_plan`` uses, so the
+    decode and reconstruction paths cannot drift.
+    """
 
     def _reason(reason: str) -> ReceiptError:
         if reason == "json":
@@ -294,22 +298,24 @@ def decode_receipt(data: bytes) -> Result[PlanReceipt, ReceiptError]:
     target_binding = value.get("target_binding")
     if not isinstance(target_binding, str) or SHA256.fullmatch(target_binding) is None:
         return Err(_receipt_error("target_binding"))
-    generation = value.get("generation_path")
-    if not isinstance(generation, str) or generation not in _GENERATION_PATHS:
-        return Err(_receipt_error("generation_path"))
-    match _decode_baseline(
-        value.get("source_before"), required=False, generation=generation
+    generation_value = value.get("generation_path")
+    if (
+        not isinstance(generation_value, str)
+        or generation_value not in _GENERATION_PATHS
     ):
+        return Err(_receipt_error("generation_path"))
+    generation = GenerationPath(generation_value)  # closed set checked above
+    match _reconstruct_source_baseline(value.get("source_before"), generation):
         case Err(error):
             return Err(error)
         case Ok(_):
             pass
-    match _decode_baseline(
-        value.get("source_after"), required=True, generation=generation
-    ):
+    match _reconstruct_source_baseline(value.get("source_after"), generation):
         case Err(error):
             return Err(error)
-        case Ok(_):
+        case Ok(source_after):
+            if source_after is None:
+                return Err(_receipt_error("source_after"))
             pass
     manifest_before = value.get("manifest_before")
     if manifest_before is not None and not is_sha256(manifest_before):
@@ -317,7 +323,7 @@ def decode_receipt(data: bytes) -> Result[PlanReceipt, ReceiptError]:
     manifest_after = value.get("manifest_after")
     if not is_sha256(manifest_after):
         return Err(_receipt_error("manifest_after"))
-    match _decode_gate(value.get("gate_specification")):
+    match _reconstruct_gate(value.get("gate_specification")):
         case Err(error):
             return Err(error)
         case Ok(_):
@@ -326,397 +332,12 @@ def decode_receipt(data: bytes) -> Result[PlanReceipt, ReceiptError]:
     if not isinstance(operations, list):
         return Err(_receipt_error("operations"))
     for operation in operations:
-        match _decode_operation(operation):
+        match _reconstruct_operation(operation):
             case Err(error):
                 return Err(error)
             case Ok(_):
                 pass
     return Ok(cast(PlanReceipt, value))
-
-
-def _decode_path(
-    value: StrictJsonValue, subject: str
-) -> Result[RepoPath, ReceiptError]:
-    if not isinstance(value, str):
-        return Err(_receipt_error(subject))
-    match parse_path(value):
-        case Err(_):
-            return Err(_receipt_error(subject))
-        case Ok(path):
-            pass
-    if not path_within_limits(path):
-        return Err(_receipt_error(subject))
-    return Ok(path)
-
-
-def _decode_identity(
-    value: StrictJsonValue, subject: str
-) -> Result[FileContentIdentity, ReceiptError]:
-    if not isinstance(value, dict) or set(value) not in (
-        {"kind", "mode", "normalized_sha256", "raw_sha256", "size"},
-        {"kind", "mode", "normalized_sha256", "raw_sha256", "size", "content_id"},
-    ):
-        return Err(_receipt_error(subject))
-    kind = value.get("kind")
-    mode = value.get("mode")
-    size = value.get("size")
-    normalized_sha256 = value.get("normalized_sha256")
-    raw_sha256 = value.get("raw_sha256")
-    match kind:
-        case "text":
-            file_kind: Literal["text", "binary"] = "text"
-        case "binary":
-            file_kind = "binary"
-        case _:
-            return Err(_receipt_error(subject))
-    if (
-        type(mode) is not int
-        or mode not in INSTALL_MODES
-        or not is_sha256(normalized_sha256)
-        or not is_sha256(raw_sha256)
-        or not isinstance(size, int)
-        or size < 0
-    ):
-        return Err(_receipt_error(subject))
-    content_id = value.get("content_id")
-    if content_id is not None and not is_sha256(content_id):
-        return Err(_receipt_error(subject))
-    return Ok(
-        FileContentIdentity(
-            kind=file_kind,
-            normalized_sha256=normalized_sha256,
-            raw_sha256=raw_sha256,
-            size=size,
-        )
-    )
-
-
-def _decode_observed_state(
-    value: StrictJsonValue, subject: str
-) -> Result[FileState, ReceiptError]:
-    """Decode an observed pre-state file: the full POSIX mode domain is legal."""
-    if value is None:
-        return Ok(FileState(None, None))
-    if not isinstance(value, dict) or set(value) != {
-        "kind",
-        "mode",
-        "normalized_sha256",
-        "raw_sha256",
-        "size",
-    }:
-        return Err(_receipt_error(subject))
-    kind = value.get("kind")
-    mode = value.get("mode")
-    size = value.get("size")
-    normalized_sha256 = value.get("normalized_sha256")
-    raw_sha256 = value.get("raw_sha256")
-    match kind:
-        case "text":
-            file_kind: Literal["text", "binary"] = "text"
-        case "binary":
-            file_kind = "binary"
-        case _:
-            return Err(_receipt_error(subject))
-    if (
-        type(mode) is not int
-        or not 0 <= mode <= 0o7777
-        or not is_sha256(normalized_sha256)
-        or not is_sha256(raw_sha256)
-        or not isinstance(size, int)
-        or size < 0
-    ):
-        return Err(_receipt_error(subject))
-    return Ok(
-        FileState(
-            identity=FileContentIdentity(
-                kind=file_kind,
-                normalized_sha256=normalized_sha256,
-                raw_sha256=raw_sha256,
-                size=size,
-            ),
-            mode=PosixMode(mode),
-        )
-    )
-
-
-def _decode_operation(value: StrictJsonValue) -> Result[None, ReceiptError]:
-    if not isinstance(value, dict):
-        return Err(_receipt_error("operation"))
-    match value.get("kind"):
-        case "delete_file":
-            if set(value) != {"kind", "path", "expected_old", "planned_new"}:
-                return Err(_receipt_error("operation"))
-            path = value.get("path")
-            match _decode_path(path, "operation.path"):
-                case Err(error):
-                    return Err(error)
-                case Ok(_):
-                    pass
-            match _decode_observed_state(
-                value.get("expected_old"), "operation.expected_old"
-            ):
-                case Err(error):
-                    return Err(error)
-                case Ok(_):
-                    pass
-            if value.get("planned_new") is not None:
-                return Err(_receipt_error("operation.planned_new"))
-            return Ok(None)
-        case "create_file" | "replace_file":
-            if set(value) != {"kind", "path", "expected_old", "planned_new"}:
-                return Err(_receipt_error("operation"))
-            path = value.get("path")
-            match _decode_path(path, "operation.path"):
-                case Err(error):
-                    return Err(error)
-                case Ok(_):
-                    pass
-            match _decode_observed_state(
-                value.get("expected_old"), "operation.expected_old"
-            ):
-                case Err(error):
-                    return Err(error)
-                case Ok(_):
-                    pass
-            planned_new = value.get("planned_new")
-            if not isinstance(planned_new, dict):
-                return Err(_receipt_error("operation.planned_new"))
-            match _decode_identity(planned_new, "operation.planned_new"):
-                case Err(error):
-                    return Err(error)
-                case Ok(_):
-                    pass
-            content_id = planned_new.get("content_id")
-            if not is_sha256(content_id):
-                return Err(_receipt_error("operation.planned_new"))
-            return Ok(None)
-        case "create_tree":
-            if set(value) != {"kind", "root", "expected_old", "planned_new"}:
-                return Err(_receipt_error("operation"))
-            root = value.get("root")
-            match _decode_path(root, "operation.root"):
-                case Err(error):
-                    return Err(error)
-                case Ok(_):
-                    pass
-            if value.get("expected_old") is not None:
-                return Err(_receipt_error("operation.expected_old"))
-            planned_new = value.get("planned_new")
-            if not isinstance(planned_new, dict) or set(planned_new) != {
-                "root_mode",
-                "raw_tree_sha256",
-                "entries",
-            }:
-                return Err(_receipt_error("operation.planned_new"))
-            root_mode = planned_new.get("root_mode")
-            raw_tree_sha256 = planned_new.get("raw_tree_sha256")
-            entries = planned_new.get("entries")
-            if (
-                not isinstance(root_mode, int)
-                or root_mode != PosixMode.DIRECTORY
-                or not is_sha256(raw_tree_sha256)
-                or not isinstance(entries, list)
-            ):
-                return Err(_receipt_error("operation.planned_new"))
-            seen_paths: set[str] = set()
-            for entry in entries:
-                match _decode_tree_entry(entry):
-                    case Err(error):
-                        return Err(error)
-                    case Ok(_):
-                        pass
-                if not isinstance(entry, dict):
-                    return Err(_receipt_error("operation.entries"))
-                path_value = entry.get("path")
-                if not isinstance(path_value, str) or path_value in seen_paths:
-                    return Err(_receipt_error("operation.entries"))
-                seen_paths.add(path_value)
-            return Ok(None)
-        case "remove_empty_directory":
-            if set(value) != {"kind", "path", "expected_old", "planned_new"}:
-                return Err(_receipt_error("operation"))
-            path = value.get("path")
-            match _decode_path(path, "operation.path"):
-                case Err(error):
-                    return Err(error)
-                case Ok(_):
-                    pass
-            expected_old = value.get("expected_old")
-            if not isinstance(expected_old, dict):
-                return Err(_receipt_error("operation.expected_old"))
-            # Bind once so basedpyright narrows across the boolean chain; repeated
-            # `expected_old.get(...)` calls would each reintroduce `object | None`.
-            mode = expected_old.get("mode")
-            digest = expected_old.get("raw_tree_sha256")
-            if (
-                set(expected_old) != {"mode", "raw_tree_sha256"}
-                or type(mode) is not int
-                or not 0 <= mode <= 0o7777
-                or not is_sha256(digest)
-                or value.get("planned_new") is not None
-            ):
-                return Err(_receipt_error("operation.expected_old"))
-            return Ok(None)
-        case _:
-            return Err(_receipt_error("operation.kind"))
-
-
-def _decode_tree_entry(value: StrictJsonValue) -> Result[None, ReceiptError]:
-    if not isinstance(value, dict) or "kind" not in value:
-        return Err(_receipt_error("operation.entries"))
-    match value.get("kind"):
-        case "directory":
-            if set(value) != {"kind", "path", "mode"}:
-                return Err(_receipt_error("operation.entries"))
-            match _decode_path(value.get("path"), "operation.entries"):
-                case Err(error):
-                    return Err(error)
-                case Ok(_):
-                    pass
-            mode = value.get("mode")
-            if type(mode) is not int or mode != PosixMode.DIRECTORY:
-                return Err(_receipt_error("operation.entries"))
-            return Ok(None)
-        case "file":
-            if set(value) != {
-                "kind",
-                "file_kind",
-                "path",
-                "mode",
-                "normalized_sha256",
-                "raw_sha256",
-                "size",
-                "content_id",
-            }:
-                return Err(_receipt_error("operation.entries"))
-            match _decode_path(value.get("path"), "operation.entries"):
-                case Err(error):
-                    return Err(error)
-                case Ok(_):
-                    pass
-            file_kind = value.get("file_kind")
-            if file_kind not in ("text", "binary"):
-                return Err(_receipt_error("operation.entries"))
-            match _decode_identity(
-                {
-                    "kind": file_kind,
-                    "mode": value["mode"],
-                    "normalized_sha256": value["normalized_sha256"],
-                    "raw_sha256": value["raw_sha256"],
-                    "size": value["size"],
-                    "content_id": value["content_id"],
-                },
-                "operation.entries",
-            ):
-                case Err(error):
-                    return Err(error)
-                case Ok(_):
-                    pass
-            return Ok(None)
-        case _:
-            return Err(_receipt_error("operation.entries"))
-
-
-def _decode_gate(value: StrictJsonValue) -> Result[None, ReceiptError]:
-    if not isinstance(value, dict) or set(value) != {
-        "operation",
-        "artifact_verification",
-        "template_contract",
-        "readiness_rule",
-        "expected_placeholder",
-    }:
-        return Err(_receipt_error("gate_specification"))
-    operation = value.get("operation")
-    artifact_verification = value.get("artifact_verification")
-    template_contract = value.get("template_contract")
-    readiness_rule = value.get("readiness_rule")
-    expected_placeholder = value.get("expected_placeholder")
-    if (
-        operation not in _OPERATIONS
-        or not isinstance(artifact_verification, bool)
-        or not isinstance(template_contract, bool)
-        or readiness_rule not in _READINESS_RULES
-        or not isinstance(expected_placeholder, list)
-    ):
-        return Err(_receipt_error("gate_specification"))
-    for finding in expected_placeholder:
-        if not isinstance(finding, dict) or set(finding) != {
-            "code",
-            "subject_at",
-            "subject",
-            "rule",
-            "severity",
-        }:
-            return Err(_receipt_error("gate_specification.expected_placeholder"))
-        subject_at = finding.get("subject_at")
-        if subject_at != "repository":
-            match _decode_path(subject_at, "gate_specification.expected_placeholder"):
-                case Err(error):
-                    return Err(error)
-                case Ok(_):
-                    pass
-        if finding.get("severity") not in _SEVERITIES or not all(
-            isinstance(finding.get(key), str) for key in ("code", "subject", "rule")
-        ):
-            return Err(_receipt_error("gate_specification.expected_placeholder"))
-    return Ok(None)
-
-
-def _decode_baseline(
-    value: StrictJsonValue, *, required: bool, generation: str
-) -> Result[None, ReceiptError]:
-    if value is None:
-        if required:
-            return Err(_receipt_error("source_after"))
-        return Ok(None)
-    if not isinstance(value, dict):
-        return Err(_receipt_error("source_baseline"))
-    kind = value.get("kind")
-    fingerprint = value.get("fingerprint")
-    entries = value.get("entries")
-    if kind not in ("github", "copier") or not is_sha256(fingerprint):
-        return Err(_receipt_error("source_baseline"))
-    if kind != generation:
-        return Err(_receipt_error("source_baseline"))
-    expected_keys = (
-        {"kind", "fingerprint", "entries", "snapshot_commit"}
-        if kind == "github"
-        else {"kind", "fingerprint", "entries"}
-    )
-    if set(value) != expected_keys:
-        return Err(_receipt_error("source_baseline"))
-    if kind == "github":
-        snapshot_commit = value.get("snapshot_commit")
-        if (
-            not isinstance(snapshot_commit, str)
-            or COMMIT_SHA.fullmatch(snapshot_commit) is None
-        ):
-            return Err(_receipt_error("source_baseline"))
-    if not isinstance(entries, list):
-        return Err(_receipt_error("source_baseline.entries"))
-    for entry in entries:
-        if not isinstance(entry, dict) or set(entry) != {
-            "path",
-            "kind",
-            "mode",
-            "sha256",
-        }:
-            return Err(_receipt_error("source_baseline.entries"))
-        match _decode_path(entry.get("path"), "source_baseline.entries"):
-            case Err(error):
-                return Err(error)
-            case Ok(_):
-                pass
-        kind = entry.get("kind")
-        mode = entry.get("mode")
-        if (
-            kind not in ("file", "directory")
-            or type(mode) is not int
-            or mode not in INSTALL_MODES
-            or not is_sha256(entry.get("sha256"))
-        ):
-            return Err(_receipt_error("source_baseline.entries"))
-    return Ok(None)
 
 
 def reconstruct_plan(
@@ -808,6 +429,8 @@ def _reconstruct_operation(
     document = cast(dict[str, object], value)
     match document.get("kind"):
         case "create_file" | "replace_file":
+            if set(document) != {"kind", "path", "expected_old", "planned_new"}:
+                return Err(_receipt_error("operation"))
             match _reconstruct_path(document.get("path"), "operation.path", limits):
                 case Err(error):
                     return Err(error)
@@ -827,6 +450,8 @@ def _reconstruct_operation(
                 return Ok(CreateFileOperation(path, expected_old, planned_new))
             return Ok(ReplaceFileOperation(path, expected_old, planned_new))
         case "delete_file":
+            if set(document) != {"kind", "path", "expected_old", "planned_new"}:
+                return Err(_receipt_error("operation"))
             match _reconstruct_path(document.get("path"), "operation.path", limits):
                 case Err(error):
                     return Err(error)
@@ -841,11 +466,15 @@ def _reconstruct_operation(
                 return Err(_receipt_error("operation.planned_new"))
             return Ok(DeleteFileOperation(path, expected_old, FileAbsent()))
         case "create_tree":
+            if set(document) != {"kind", "root", "expected_old", "planned_new"}:
+                return Err(_receipt_error("operation"))
             match _reconstruct_path(document.get("root"), "operation.root", limits):
                 case Err(error):
                     return Err(error)
                 case Ok(root):
                     pass
+            if document.get("expected_old") is not None:
+                return Err(_receipt_error("operation.expected_old"))
             planned = document.get("planned_new")
             if not isinstance(planned, dict):
                 return Err(_receipt_error("operation.planned_new"))
@@ -854,10 +483,10 @@ def _reconstruct_operation(
                     return Err(error)
                 case Ok(tree):
                     pass
-            if document.get("expected_old") is not None:
-                return Err(_receipt_error("operation.expected_old"))
             return Ok(CreateTreeOperation(root, None, tree))
         case "remove_empty_directory":
+            if set(document) != {"kind", "path", "expected_old", "planned_new"}:
+                return Err(_receipt_error("operation"))
             match _reconstruct_path(document.get("path"), "operation.path", limits):
                 case Err(error):
                     return Err(error)
@@ -868,9 +497,14 @@ def _reconstruct_operation(
                 return Err(_receipt_error("operation.expected_old"))
             expected_document = cast(dict[str, object], expected)
             mode = expected_document.get("mode")
-            if not isinstance(mode, int):
-                return Err(_receipt_error("operation.expected_old"))
-            if not 0 <= mode <= 0o7777 or document.get("planned_new") is not None:
+            digest = expected_document.get("raw_tree_sha256")
+            if (
+                set(expected_document) != {"mode", "raw_tree_sha256"}
+                or type(mode) is not int
+                or not 0 <= mode <= 0o7777
+                or not is_sha256(digest)
+                or document.get("planned_new") is not None
+            ):
                 return Err(_receipt_error("operation.expected_old"))
             return Ok(
                 RemoveEmptyDirectoryOperation(
@@ -944,6 +578,11 @@ def _reconstruct_planned_new(value: object) -> Result[PlannedFilePresent, Receip
     if not isinstance(value, dict):
         return Err(_receipt_error("operation.planned_new"))
     document = cast(dict[str, object], value)
+    if set(document) not in (
+        {"kind", "mode", "normalized_sha256", "raw_sha256", "size"},
+        {"kind", "mode", "normalized_sha256", "raw_sha256", "size", "content_id"},
+    ):
+        return Err(_receipt_error("operation.planned_new"))
     kind = document.get("kind")
     mode = document.get("mode")
     size = document.get("size")
@@ -980,6 +619,8 @@ def _reconstruct_tree(
     document: dict[str, object],
     limits: ResourceLimits = DEFAULT_LIMITS,
 ) -> Result[MaterializedTree, ReceiptError]:
+    if set(document) != {"root_mode", "raw_tree_sha256", "entries"}:
+        return Err(_receipt_error("operation.planned_new"))
     root_mode = document.get("root_mode")
     raw_tree_sha256 = document.get("raw_tree_sha256")
     entries = document.get("entries")
@@ -998,6 +639,8 @@ def _reconstruct_tree(
         entry_document = cast(dict[str, object], entry)
         match entry_document.get("kind"):
             case "directory":
+                if set(entry_document) != {"kind", "path", "mode"}:
+                    return Err(_receipt_error("operation.entries"))
                 match _reconstruct_path(
                     entry_document.get("path"), "operation.entries", limits
                 ):
@@ -1013,6 +656,17 @@ def _reconstruct_tree(
                     return Err(_receipt_error("operation.entries"))
                 tree_entries.append(PlannedDirectoryEntry(path, PosixMode(mode)))
             case "file":
+                if set(entry_document) != {
+                    "kind",
+                    "file_kind",
+                    "path",
+                    "mode",
+                    "normalized_sha256",
+                    "raw_sha256",
+                    "size",
+                    "content_id",
+                }:
+                    return Err(_receipt_error("operation.entries"))
                 match _reconstruct_path(
                     entry_document.get("path"), "operation.entries", limits
                 ):
@@ -1072,9 +726,25 @@ def _reconstruct_source_baseline(
     document = cast(dict[str, object], value)
     kind = document.get("kind")
     fingerprint = document.get("fingerprint")
-    entries_value = document.get("entries")
-    if kind != generation.value or not is_sha256(fingerprint):
+    if kind not in ("github", "copier") or not is_sha256(fingerprint):
         return Err(_receipt_error("source_baseline"))
+    if kind != generation.value:
+        return Err(_receipt_error("source_baseline"))
+    expected_keys = (
+        {"kind", "fingerprint", "entries", "snapshot_commit"}
+        if kind == "github"
+        else {"kind", "fingerprint", "entries"}
+    )
+    if set(document) != expected_keys:
+        return Err(_receipt_error("source_baseline"))
+    if kind == "github":
+        snapshot_commit = document.get("snapshot_commit")
+        if (
+            not isinstance(snapshot_commit, str)
+            or COMMIT_SHA.fullmatch(snapshot_commit) is None
+        ):
+            return Err(_receipt_error("source_baseline"))
+    entries_value = document.get("entries")
     if not isinstance(entries_value, list):
         return Err(_receipt_error("source_baseline.entries"))
     entries: list[LifecycleSourceEntry] = []
@@ -1082,6 +752,8 @@ def _reconstruct_source_baseline(
         if not isinstance(entry, dict):
             return Err(_receipt_error("source_baseline.entries"))
         entry_document = cast(dict[str, object], entry)
+        if set(entry_document) != {"path", "kind", "mode", "sha256"}:
+            return Err(_receipt_error("source_baseline.entries"))
         match _reconstruct_path(
             entry_document.get("path"), "source_baseline.entries", limits
         ):
@@ -1108,22 +780,15 @@ def _reconstruct_source_baseline(
             )
         )
     if kind == "github":
-        snapshot_commit = document.get("snapshot_commit")
-        if (
-            not isinstance(snapshot_commit, str)
-            or COMMIT_SHA.fullmatch(snapshot_commit) is None
-        ):
-            return Err(_receipt_error("source_baseline"))
         return Ok(
             GitHubSourceBaseline(
                 kind="github",
                 fingerprint=fingerprint,
                 entries=tuple(entries),
-                snapshot_commit=snapshot_commit,
+                # the key-set and digest checks above guarantee a commit string
+                snapshot_commit=cast(str, document.get("snapshot_commit")),
             )
         )
-    if "snapshot_commit" in document:
-        return Err(_receipt_error("source_baseline"))
     return Ok(
         CopierSourceBaseline(
             kind="copier",
@@ -1137,21 +802,51 @@ def _reconstruct_gate(value: object) -> Result[GateSpecification, ReceiptError]:
     if not isinstance(value, dict):
         return Err(_receipt_error("gate_specification"))
     document = cast(dict[str, object], value)
+    if set(document) != {
+        "operation",
+        "artifact_verification",
+        "template_contract",
+        "readiness_rule",
+        "expected_placeholder",
+    }:
+        return Err(_receipt_error("gate_specification"))
     operation = document.get("operation")
+    artifact_verification = document.get("artifact_verification")
+    template_contract = document.get("template_contract")
     readiness_rule = document.get("readiness_rule")
     expected = document.get("expected_placeholder")
-    if operation not in _OPERATIONS or not isinstance(expected, list):
+    if (
+        operation not in _OPERATIONS
+        or not isinstance(artifact_verification, bool)
+        or not isinstance(template_contract, bool)
+        or readiness_rule not in _READINESS_RULES
+        or not isinstance(expected, list)
+    ):
         return Err(_receipt_error("gate_specification"))
     findings: list[Finding] = []
     for raw_finding in cast(list[object], expected):
         if not isinstance(raw_finding, dict):
             return Err(_receipt_error("gate_specification.expected_placeholder"))
         finding_document = cast(dict[str, object], raw_finding)
+        if set(finding_document) != {
+            "code",
+            "subject_at",
+            "subject",
+            "rule",
+            "severity",
+        }:
+            return Err(_receipt_error("gate_specification.expected_placeholder"))
         subject_at = finding_document.get("subject_at")
         if subject_at == "repository":
             location: SubjectPath | Repository = Repository()
         elif isinstance(subject_at, str):
-            location = SubjectPath(subject_at)
+            match _reconstruct_path(
+                subject_at, "gate_specification.expected_placeholder"
+            ):
+                case Err(error):
+                    return Err(error)
+                case Ok(path):
+                    location = SubjectPath(path.value)
         else:
             return Err(_receipt_error("gate_specification.expected_placeholder"))
         # Reconstructed findings are gate-shape stubs: the receipt deliberately
@@ -1163,11 +858,10 @@ def _reconstruct_gate(value: object) -> Result[GateSpecification, ReceiptError]:
         rule = finding_document.get("rule")
         severity = finding_document.get("severity")
         if (
-            not isinstance(code, str)
+            severity not in ("blocking", "informational")
+            or not isinstance(code, str)
             or not isinstance(subject, str)
             or not isinstance(rule, str)
-            or not isinstance(severity, str)
-            or severity not in ("blocking", "informational")
         ):
             return Err(_receipt_error("gate_specification.expected_placeholder"))
         findings.append(
@@ -1181,18 +875,14 @@ def _reconstruct_gate(value: object) -> Result[GateSpecification, ReceiptError]:
                 next_action="",
             )
         )
-    try:
-        rule = ReadinessRule(cast(str, readiness_rule))
-    except ValueError:
-        return Err(_receipt_error("gate_specification"))
     return Ok(
         GateSpecification(
             operation=cast(
                 Literal["initial", "add", "restore", "reconcile"], operation
             ),
-            artifact_verification=cast(bool, document.get("artifact_verification")),
-            template_contract=cast(bool, document.get("template_contract")),
-            readiness_rule=rule,
+            artifact_verification=artifact_verification,
+            template_contract=template_contract,
+            readiness_rule=ReadinessRule(cast(str, readiness_rule)),
             expected_placeholder=tuple(findings),
         )
     )
