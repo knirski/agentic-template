@@ -313,9 +313,9 @@ def decode_receipt(data: bytes) -> Result[PlanReceipt, ReceiptError]:
     match _reconstruct_source_baseline(value.get("source_after"), generation):
         case Err(error):
             return Err(error)
-        case Ok(source_after):
-            if source_after is None:
-                return Err(_receipt_error("source_after"))
+        case Ok(None):
+            return Err(_receipt_error("source_after"))
+        case Ok(_):
             pass
     manifest_before = value.get("manifest_before")
     if manifest_before is not None and not is_sha256(manifest_before):
