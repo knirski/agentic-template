@@ -1135,17 +1135,28 @@ def _reconstruct_gate(value: object) -> Result[GateSpecification, ReceiptError]:
         else:
             return Err(_receipt_error("gate_specification.expected_placeholder"))
         # Reconstructed findings are gate-shape stubs: the receipt deliberately
-        # erases message prose, so verification never renders it.
+        # erases message prose, so verification never renders it.  The four
+        # carrier fields are still validated so malformed receipt JSON cannot
+        # construct an invalid ``Finding``.
+        code = finding_document.get("code")
+        subject = finding_document.get("subject")
+        rule = finding_document.get("rule")
+        severity = finding_document.get("severity")
+        if (
+            not isinstance(code, str)
+            or not isinstance(subject, str)
+            or not isinstance(rule, str)
+            or not isinstance(severity, str)
+            or severity not in ("blocking", "informational")
+        ):
+            return Err(_receipt_error("gate_specification.expected_placeholder"))
         findings.append(
             Finding(
-                code=cast(str, finding_document.get("code")),
+                code=code,
                 subject_at=location,
-                subject=cast(str, finding_document.get("subject")),
-                rule=cast(str, finding_document.get("rule")),
-                severity=cast(
-                    Literal["blocking", "informational"],
-                    finding_document.get("severity"),
-                ),
+                subject=subject,
+                rule=rule,
+                severity=severity,
                 message="",
                 next_action="",
             )
