@@ -401,6 +401,35 @@ class ProjectClassificationTests(unittest.TestCase):
         )
         self.assertIsInstance(result, UnsafeExistingProject)
 
+    def test_overlapping_unsafe_path_is_named_once(self) -> None:
+        path = RepoPath("docs/agents/domain.md")
+        managed = (
+            ManagedInventoryEntry(
+                path=path,
+                kind="text",
+                mode=PosixMode.FILE,
+                sha256=sha256_hex(b"x"),
+            ),
+        )
+        baseline = _github_baseline(
+            entries=(
+                LifecycleSourceEntry(
+                    path=path,
+                    kind="file",
+                    mode=PosixMode.FILE,
+                    sha256=sha256_hex(b"present\n"),
+                ),
+            )
+        )
+        result = _classify(
+            _manifest(baseline=baseline, managed=managed),
+            files={},
+            directories={path: CapturedDirectory(path, PosixMode.DIRECTORY)},
+        )
+        self.assertIsInstance(result, UnsafeExistingProject)
+        if isinstance(result, UnsafeExistingProject):
+            self.assertEqual(result.error.paths, (path,))
+
     def test_duplicate_recorded_addition_is_incompatible(self) -> None:
         result = _classify(
             _manifest(

@@ -328,16 +328,16 @@ def classify_existing_project(
         source_fingerprint=manifest.provenance.source_baseline.fingerprint,
     )
     snapshot = TargetSnapshot(_observed_entries(files, directories))
-    unsafe_paths: list[RepoPath] = []
+    unsafe_paths: set[RepoPath] = set()
     for entry in manifest.managed:
         if entry.path in directories:
-            unsafe_paths.append(entry.path)
+            unsafe_paths.add(entry.path)
     for entry in manifest.provenance.source_baseline.entries:
         shape_mismatch = (entry.kind == "file" and entry.path in directories) or (
             entry.kind == "directory" and entry.path in files
         )
         if shape_mismatch:
-            unsafe_paths.append(entry.path)
+            unsafe_paths.add(entry.path)
     if unsafe_paths:
         return UnsafeExistingProject(
             recorded,
