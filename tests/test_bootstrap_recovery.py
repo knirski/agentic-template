@@ -33,6 +33,7 @@ from scripts.bootstrap.identity import (
     content_identity,
     directory_tree_hash,
     file_state_identity,
+    old_file_parts,
     sha256_hex,
     target_identity,
 )
@@ -40,6 +41,7 @@ from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.journal import (
     PreparationIdentity,
     PreparationRole,
+    PreparationSpec,
     decode_journal,
     encode_journal,
 )
@@ -95,11 +97,9 @@ from scripts.bootstrap.rollback import (
     RemoveCreatedTreeAtomically,
     RestoreEmptyDirectoryAtomically,
     RestoreOldFile,
-    RollbackSpec,
     RollbackStep,
     RollbackThirdState,
     SealedThirdState,
-    _old_file_state,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     derive_rollback_preparations,
     derive_rollback_specs,
     rollback_directory_step,
@@ -624,22 +624,22 @@ class TestSealedPlanSteps:
 
 
 class TestRollbackPreparations:
-    def test_old_file_state_absent_state_returns_none(self) -> None:
-        assert _old_file_state(ABSENT_FILE) is None
+    def test_old_file_parts_absent_state_returns_none(self) -> None:
+        assert old_file_parts(ABSENT_FILE) is None
 
     def test_rollback_specs_cover_every_restoring_operation(self) -> None:
         plan, _, _ = _fixture_plan()
         assert derive_rollback_specs(plan) == (
-            RollbackSpec(
+            PreparationSpec(
                 1, PreparationRole.ROLLBACK, "file", sha256_hex(OLD), PosixMode.FILE
             ),
-            RollbackSpec(
+            PreparationSpec(
                 2, PreparationRole.ROLLBACK, "file", sha256_hex(STALE), PosixMode.FILE
             ),
-            RollbackSpec(
+            PreparationSpec(
                 3, PreparationRole.ROLLBACK, "directory", None, PosixMode.DIRECTORY
             ),
-            RollbackSpec(
+            PreparationSpec(
                 4, PreparationRole.ROLLBACK, "directory", None, PosixMode.DIRECTORY
             ),
         )

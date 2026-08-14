@@ -15,18 +15,19 @@ created children disappear before a created parent.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, assert_never
+from typing import assert_never
 
 from scripts.bootstrap.identity import (
     DirectoryState,
     FileState,
-    PosixMode,
     directory_tree_hash,
+    old_file_parts,
 )
 from scripts.bootstrap.journal import (
     PreparationIdentity,
     PreparationRole,
-    derive_preparation_identity,
+    PreparationSpec,
+    derive_identities,
 )
 from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.planner import (
@@ -314,20 +315,9 @@ def _operation_path(operation: FileOperation | DirectoryOperation) -> RepoPath:
     )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
 
 
-@dataclass(frozen=True, slots=True)
-class RollbackSpec:
-    """The journaled shape of one reserved rollback container."""
-
-    operation_index: int
-    role: PreparationRole
-    expected_kind: Literal["file", "directory"]
-    expected_raw_sha256: str | None
-    expected_mode: PosixMode
-
-
 def _rollback_specs_for_operation(
     operation: FileOperation | DirectoryOperation, index: int
-) -> tuple[RollbackSpec, ...]:
+) -> tuple[PreparationSpec, ...]:
     """Return the rollback container specs one operation needs to restore its old state."""
 
     match operation:
@@ -339,7 +329,7 @@ def _rollback_specs_for_operation(
             return _restore_spec(index, expected)
         case CreateTreeOperation(planned_new=planned_tree):
             return (
-                RollbackSpec(
+                PreparationSpec(
                     index,
                     PreparationRole.ROLLBACK,
                     "directory",
@@ -349,7 +339,7 @@ def _rollback_specs_for_operation(
             )
         case RemoveEmptyDirectoryOperation(expected_old=expected):
             return (
-                RollbackSpec(
+                PreparationSpec(
                     index,
                     PreparationRole.ROLLBACK,
                     "directory",
@@ -362,17 +352,17 @@ def _rollback_specs_for_operation(
     )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
 
 
-def _restore_spec(index: int, expected: FileState) -> tuple[RollbackSpec, ...]:
-    old = _old_file_state(expected)
+def _restore_spec(index: int, expected: FileState) -> tuple[PreparationSpec, ...]:
+    old = old_file_parts(expected)
     if old is None:  # pragma: no cover — plans only replace or delete present files
         return ()
     old_digest, old_mode = old
     return (
-        RollbackSpec(index, PreparationRole.ROLLBACK, "file", old_digest, old_mode),
+        PreparationSpec(index, PreparationRole.ROLLBACK, "file", old_digest, old_mode),
     )
 
 
-def derive_rollback_specs(plan: OperationPlan) -> tuple[RollbackSpec, ...]:
+def derive_rollback_specs(plan: OperationPlan) -> tuple[PreparationSpec, ...]:
     """Derive the rollback containers every operation needs to restore its old state.
 
     Replaced or deleted files restore their raw backup into a marked adjacent
@@ -388,18 +378,6 @@ def derive_rollback_specs(plan: OperationPlan) -> tuple[RollbackSpec, ...]:
     )
 
 
-def _old_file_state(expected: FileState) -> tuple[str, PosixMode] | None:
-    if not expected.present:
-        return None
-    identity = expected.identity
-    mode = expected.mode
-    if (
-        identity is None or mode is None
-    ):  # pragma: no cover — present states always carry both
-        return None  # pragma: no cover — present states always carry both
-    return identity.raw_sha256, mode
-
-
 def derive_rollback_preparations(
     plan: OperationPlan,
     transaction_id: str,
@@ -407,18 +385,9 @@ def derive_rollback_preparations(
 ) -> tuple[PreparationIdentity, ...]:
     """Derive one journaled rollback-container identity per restoring operation."""
 
-    specs = derive_rollback_specs(plan)
-    if len(ownership_tokens) != len(specs):
-        raise ValueError("one ownership token is required per rollback preparation")
-    return tuple(
-        derive_preparation_identity(
-            transaction_id,
-            spec.operation_index,
-            spec.role,
-            token,
-            expected_kind=spec.expected_kind,
-            expected_raw_sha256=spec.expected_raw_sha256,
-            expected_mode=spec.expected_mode,
-        )
-        for spec, token in zip(specs, ownership_tokens, strict=True)
+    return derive_identities(
+        derive_rollback_specs(plan),
+        transaction_id,
+        ownership_tokens,
+        subject="rollback preparation",
     )

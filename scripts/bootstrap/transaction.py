@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal, assert_never
+from typing import assert_never
 
 from scripts.bootstrap.blobs import VerifiedBlobStore
 from scripts.bootstrap.errors import (
@@ -48,13 +48,15 @@ from scripts.bootstrap.identity import (
     FileState,
     PosixMode,
     TreeEntry,
+    old_file_parts,
 )
 from scripts.bootstrap.journal import (
     JournalEnvelope,
     JournalTarget,
     PreparationIdentity,
     PreparationRole,
-    derive_preparation_identity,
+    PreparationSpec,
+    derive_identities,
 )
 from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.plan_digest import build_receipt
@@ -425,17 +427,6 @@ class CleanupCursor:
             raise TypeError("cleanup cursor must be non-negative")
 
 
-@dataclass(frozen=True, slots=True)
-class PreparationSpec:
-    """The journaled shape of one reserved stage or backup location."""
-
-    operation_index: int
-    role: PreparationRole
-    expected_kind: Literal["file", "directory"]
-    expected_raw_sha256: str | None
-    expected_mode: PosixMode
-
-
 def _preparation_specs_for_operation(
     operation: FileOperation | DirectoryOperation, index: int
 ) -> tuple[PreparationSpec, ...]:
@@ -453,7 +444,7 @@ def _preparation_specs_for_operation(
                 ),
             )
         case ReplaceFileOperation(expected_old=expected, planned_new=planned):
-            old = _old_file_state(expected)
+            old = old_file_parts(expected)
             specs = [
                 PreparationSpec(
                     index,
@@ -472,7 +463,7 @@ def _preparation_specs_for_operation(
                 )
             return tuple(specs)
         case DeleteFileOperation(expected_old=expected):
-            old = _old_file_state(expected)
+            old = old_file_parts(expected)
             if old is None:  # pragma: no cover — plans only delete present files
                 return ()
             old_digest, old_mode = old
@@ -514,18 +505,6 @@ def derive_preparation_specs(plan: OperationPlan) -> tuple[PreparationSpec, ...]
     )
 
 
-def _old_file_state(expected: FileState) -> tuple[str, PosixMode] | None:
-    if not expected.present:
-        return None
-    identity = expected.identity
-    mode = expected.mode
-    if (
-        identity is None or mode is None
-    ):  # pragma: no cover — present states always carry both
-        return None  # pragma: no cover — present states always carry both
-    return identity.raw_sha256, mode
-
-
 def derive_preparations(
     plan: OperationPlan,
     transaction_id: str,
@@ -533,20 +512,11 @@ def derive_preparations(
 ) -> tuple[PreparationIdentity, ...]:
     """Derive one journaled preparation identity per reserved stage or backup."""
 
-    specs = derive_preparation_specs(plan)
-    if len(ownership_tokens) != len(specs):
-        raise ValueError("one ownership token is required per preparation")
-    return tuple(
-        derive_preparation_identity(
-            transaction_id,
-            spec.operation_index,
-            spec.role,
-            token,
-            expected_kind=spec.expected_kind,
-            expected_raw_sha256=spec.expected_raw_sha256,
-            expected_mode=spec.expected_mode,
-        )
-        for spec, token in zip(specs, ownership_tokens, strict=True)
+    return derive_identities(
+        derive_preparation_specs(plan),
+        transaction_id,
+        ownership_tokens,
+        subject="preparation",
     )
 
 

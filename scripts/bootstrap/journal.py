@@ -73,6 +73,17 @@ class PreparationRole(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class PreparationSpec:
+    """The journaled shape of one reserved stage, backup, or rollback container."""
+
+    operation_index: int
+    role: PreparationRole
+    expected_kind: Literal["file", "directory"]
+    expected_raw_sha256: str | None
+    expected_mode: PosixMode
+
+
+@dataclass(frozen=True, slots=True)
 class JournalTarget:
     """The journaled target binding: identity fields plus the binding digest."""
 
@@ -236,6 +247,31 @@ def derive_preparation_identity(
         expected_kind=expected_kind,
         expected_raw_sha256=expected_raw_sha256,
         expected_mode=expected_mode,
+    )
+
+
+def derive_identities(
+    specs: tuple[PreparationSpec, ...],
+    transaction_id: str,
+    ownership_tokens: tuple[bytes, ...],
+    *,
+    subject: str,
+) -> tuple[PreparationIdentity, ...]:
+    """Derive one journaled preparation identity per spec, one token each."""
+
+    if len(ownership_tokens) != len(specs):
+        raise ValueError(f"one ownership token is required per {subject}")
+    return tuple(
+        derive_preparation_identity(
+            transaction_id,
+            spec.operation_index,
+            spec.role,
+            token,
+            expected_kind=spec.expected_kind,
+            expected_raw_sha256=spec.expected_raw_sha256,
+            expected_mode=spec.expected_mode,
+        )
+        for spec, token in zip(specs, ownership_tokens, strict=True)
     )
 
 

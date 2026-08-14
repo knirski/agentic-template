@@ -44,6 +44,7 @@ from scripts.bootstrap.identity import (
     content_identity,
     directory_tree_hash,
     file_state_identity,
+    old_file_parts,
     sha256_hex,
     target_identity,
 )
@@ -51,6 +52,7 @@ from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.journal import (
     PreparationIdentity,
     PreparationRole,
+    PreparationSpec,
     decode_journal,
     encode_journal,
 )
@@ -117,7 +119,6 @@ from scripts.bootstrap.transaction import (
     PostStateObserved,
     PreparationCompleted,
     PreparationCursor,
-    PreparationSpec,
     Preparing,
     Releasing,
     Reobserved,
@@ -138,7 +139,6 @@ from scripts.bootstrap.transaction import (
     ValidatedLockedTransaction,
     VerifiedRestoredTransaction,
     Verifying,
-    _old_file_state,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     derive_cleanup,
     derive_preparation_specs,
     derive_preparations,
@@ -1480,7 +1480,7 @@ class TestContractGuards:
             _ = factory()
 
     def test_old_file_state_returns_none_for_absent_state(self) -> None:
-        assert _old_file_state(FileState(None, None)) is None
+        assert old_file_parts(FileState(None, None)) is None
 
     def test_compiled_transaction_rejects_bad_id_directly(self) -> None:
         plan, _, _ = _full_plan()
