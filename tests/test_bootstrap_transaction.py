@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import assert_never, cast
 
@@ -111,6 +112,7 @@ from scripts.bootstrap.transaction import (
     ObservedFileAbsent,
     OperationApplied,
     OperationCursor,
+    PersistJournal,
     PlannedTransaction,
     PostStateObserved,
     PreparationCompleted,
@@ -136,6 +138,7 @@ from scripts.bootstrap.transaction import (
     ValidatedLockedTransaction,
     VerifiedRestoredTransaction,
     Verifying,
+    _old_file_state,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     derive_cleanup,
     derive_preparation_specs,
     derive_preparations,
@@ -1386,6 +1389,121 @@ class TestMachineEffectFailures:
                 assert trace == (EffectRequestKind.ACQUIRE_LOCK,)
             case _:
                 raise AssertionError(f"expected Stopped, got {outcome!r}")
+
+
+class TestContractGuards:
+    @pytest.mark.parametrize(
+        "label, factory, match",
+        [
+            (
+                "persist-journal-request-phase",
+                lambda: PersistJournal("bad"),  # pyright: ignore[reportArgumentType]  intentional invalid-value negative test
+                "closed phase",
+            ),
+            (
+                "reobserved-snapshot",
+                lambda: Reobserved("bad"),  # pyright: ignore[reportArgumentType]  intentional invalid-value negative test
+                "target snapshot",
+            ),
+            (
+                "journal-persisted-phase",
+                lambda: JournalPersisted("bad"),  # pyright: ignore[reportArgumentType]  intentional invalid-value negative test
+                "closed phase",
+            ),
+            (
+                "preparation-completed-identity",
+                lambda: PreparationCompleted("bad"),  # pyright: ignore[reportArgumentType]  intentional invalid-value negative test
+                "identity",
+            ),
+            (
+                "operation-applied-index",
+                lambda: OperationApplied(-1, ObservedFileAbsent()),
+                "non-negative",
+            ),
+            (
+                "operation-applied-state",
+                lambda: OperationApplied(0, "bad"),  # pyright: ignore[reportArgumentType]  intentional invalid-value negative test
+                "closed path state",
+            ),
+            (
+                "post-state-observed-snapshot",
+                lambda: PostStateObserved("bad"),  # pyright: ignore[reportArgumentType]  intentional invalid-value negative test
+                "target snapshot",
+            ),
+            ("cleanup-completed-index", lambda: CleanupCompleted(-1), "non-negative"),
+            (
+                "rollback-step-index",
+                lambda: RollbackStepCompleted(-1, RollbackAlreadyRestored()),
+                "non-negative",
+            ),
+            (
+                "rollback-step-result",
+                lambda: RollbackStepCompleted(0, "bad"),  # pyright: ignore[reportArgumentType]  intentional invalid-value negative test
+                "closed result",
+            ),
+            (
+                "effect-failed-kind",
+                lambda: EffectFailed("bad", _EFFECT_ERRORS[0]),  # pyright: ignore[reportArgumentType]  intentional invalid-value negative test
+                "closed request kind",
+            ),
+            (
+                "effect-failed-error",
+                lambda: EffectFailed(EffectRequestKind.ACQUIRE_LOCK, "bad"),  # pyright: ignore[reportArgumentType]  intentional invalid-value negative test
+                "closed effect error",
+            ),
+            (
+                "observed-effect-observation",
+                lambda: ObservedEffect("bad"),  # pyright: ignore[reportArgumentType]  intentional invalid-value negative test
+                "closed observation",
+            ),
+            ("preparation-cursor", lambda: PreparationCursor(-1), "non-negative"),
+            ("operation-cursor", lambda: OperationCursor(-1), "non-negative"),
+            ("rollback-cursor", lambda: RollbackCursor(-1), "non-negative"),
+            ("cleanup-cursor", lambda: CleanupCursor(-1), "non-negative"),
+        ],
+    )
+    def test_contract_guards_reject_invalid_payloads(
+        self, label: str, factory: Callable[[], object], match: str
+    ) -> None:
+        del label
+        with pytest.raises(TypeError, match=match):
+            _ = factory()
+
+    def test_old_file_state_returns_none_for_absent_state(self) -> None:
+        assert _old_file_state(FileState(None, None)) is None
+
+    def test_compiled_transaction_rejects_bad_id_directly(self) -> None:
+        plan, _, _ = _full_plan()
+        compiled = _compiled(plan)
+        with pytest.raises(TypeError, match="transaction id"):
+            _ = CompiledTransaction(
+                plan,
+                ExpectedGatePass(readiness=evaluate_readiness()),
+                "zz" * 32,
+                compiled.preparations,
+            )
+
+    def test_compiled_transaction_rejects_mismatched_identity_directly(self) -> None:
+        plan, _, _ = _full_plan()
+        compiled = _compiled(plan)
+        original = compiled.preparations[0]
+        mismatched = PreparationIdentity(
+            transaction_id=original.transaction_id,
+            operation_index=original.operation_index,
+            role=original.role,
+            ownership_token_sha256=original.ownership_token_sha256,
+            expected_kind=original.expected_kind,
+            expected_raw_sha256=original.expected_raw_sha256,
+            expected_mode=PosixMode.EXECUTABLE,
+        )
+        preparations = (mismatched, *compiled.preparations[1:])
+        with pytest.raises(TypeError, match="preparation identity"):
+            _ = CompiledTransaction(
+                plan,
+                ExpectedGatePass(readiness=evaluate_readiness()),
+                TRANSACTION_ID,
+                preparations,
+            )
 
 
 class TestMachineDegenerate:
