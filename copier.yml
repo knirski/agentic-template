@@ -3,6 +3,9 @@ answers_file: .copier-answers.yml
 # Copier excludes the finite template-maintenance artifact set declared by
 # .agentic-template/source-ownership.json and the cleanup-control inventory
 # itself; generated projects keep every other generated-lifecycle source path.
+# Seed-once files ship in the copied project so bootstrap can recognize the
+# scaffold and install the adopter-owned content; Copier's merge and conflict
+# handling preserves adopter edits during updates.
 _exclude:
   - .agentic-template/maintenance-artifacts.json
   - .github/workflows/copier-smoke.yml
