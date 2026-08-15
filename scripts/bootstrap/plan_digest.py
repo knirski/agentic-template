@@ -8,6 +8,7 @@ and the same digest.  No receipt contains adopter, legal, generated, or backup b
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal, assert_never, cast, get_args, get_type_hints
@@ -532,6 +533,46 @@ def _reconstruct_path(
     return Ok(path)
 
 
+def _reconstruct_file_identity(
+    document: dict[str, object],
+    subject: str,
+    *,
+    mode_valid: Callable[[int], bool],
+) -> Result[tuple[FileContentIdentity, int], ReceiptError]:
+    """Decode and validate the file-identity fields shared by state documents.
+
+    Each caller supplies its own mode bound (plain POSIX mode range vs the
+    install-mode vocabulary) and keeps its own key-set and extra-field checks.
+    """
+
+    kind = document.get("kind")
+    mode = document.get("mode")
+    size = document.get("size")
+    normalized = document.get("normalized_sha256")
+    raw = document.get("raw_sha256")
+    if (
+        kind not in ("text", "binary")
+        or type(mode) is not int
+        or not mode_valid(mode)
+        or not is_sha256(normalized)
+        or not is_sha256(raw)
+        or not isinstance(size, int)
+        or size < 0
+    ):
+        return Err(_receipt_error(subject))
+    return Ok(
+        (
+            FileContentIdentity(
+                kind=kind,
+                normalized_sha256=normalized,
+                raw_sha256=raw,
+                size=size,
+            ),
+            mode,
+        )
+    )
+
+
 def _reconstruct_observed_state(value: object) -> Result[FileState, ReceiptError]:
     if value is None:
         return Ok(FileState(None, None))
@@ -546,32 +587,16 @@ def _reconstruct_observed_state(value: object) -> Result[FileState, ReceiptError
         "size",
     }:
         return Err(_receipt_error("operation.expected_old"))
-    kind = document.get("kind")
-    mode = document.get("mode")
-    size = document.get("size")
-    normalized = document.get("normalized_sha256")
-    raw = document.get("raw_sha256")
-    if (
-        kind not in ("text", "binary")
-        or type(mode) is not int
-        or not 0 <= mode <= 0o7777
-        or not is_sha256(normalized)
-        or not is_sha256(raw)
-        or not isinstance(size, int)
-        or size < 0
+    match _reconstruct_file_identity(
+        document,
+        "operation.expected_old",
+        mode_valid=lambda mode: 0 <= mode <= 0o7777,
     ):
-        return Err(_receipt_error("operation.expected_old"))
-    return Ok(
-        FileState(
-            identity=FileContentIdentity(
-                kind=kind,
-                normalized_sha256=normalized,
-                raw_sha256=raw,
-                size=size,
-            ),
-            mode=PosixMode(mode),
-        )
-    )
+        case Err(error):
+            return Err(error)
+        case Ok((identity, mode)):
+            pass
+    return Ok(FileState(identity, PosixMode(mode)))
 
 
 def _reconstruct_planned_new(value: object) -> Result[PlannedFilePresent, ReceiptError]:
@@ -583,31 +608,21 @@ def _reconstruct_planned_new(value: object) -> Result[PlannedFilePresent, Receip
         {"kind", "mode", "normalized_sha256", "raw_sha256", "size", "content_id"},
     ):
         return Err(_receipt_error("operation.planned_new"))
-    kind = document.get("kind")
-    mode = document.get("mode")
-    size = document.get("size")
-    normalized = document.get("normalized_sha256")
-    raw = document.get("raw_sha256")
-    content_id = document.get("content_id")
-    if (
-        kind not in ("text", "binary")
-        or type(mode) is not int
-        or mode not in INSTALL_MODES
-        or not is_sha256(normalized)
-        or not is_sha256(raw)
-        or not isinstance(size, int)
-        or size < 0
-        or not is_sha256(content_id)
+    match _reconstruct_file_identity(
+        document,
+        "operation.planned_new",
+        mode_valid=lambda mode: mode in INSTALL_MODES,
     ):
+        case Err(error):
+            return Err(error)
+        case Ok((identity, mode)):
+            pass
+    content_id = document.get("content_id")
+    if not is_sha256(content_id):
         return Err(_receipt_error("operation.planned_new"))
     return Ok(
         PlannedFilePresent(
-            identity=FileContentIdentity(
-                kind=kind,
-                normalized_sha256=normalized,
-                raw_sha256=raw,
-                size=size,
-            ),
+            identity=identity,
             mode=PosixMode(mode),
             content_id=ContentId(content_id),
         )
