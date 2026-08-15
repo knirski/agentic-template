@@ -11,6 +11,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT))
 
 from scripts.bootstrap import template_contract  # noqa: E402
+from scripts.bootstrap.entrypoint import reject_arguments  # noqa: E402
 
 
 def validate_contract(
@@ -29,8 +30,7 @@ def validate_contract(
 
 
 def main(argv: list[str]) -> int:
-    if argv:
-        print("usage: scripts/validate_template.py", file=sys.stderr)
+    if reject_arguments(argv, "scripts/validate_template.py") is not None:
         return 2
     skill_paths = sorted((ROOT / ".agents" / "skills").glob("*/SKILL.md"))
     skill_texts = tuple(

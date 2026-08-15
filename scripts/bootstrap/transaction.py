@@ -27,7 +27,6 @@ the pure snapshot verifications that gate them.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal, assert_never
@@ -78,8 +77,8 @@ from scripts.bootstrap.planner import (
 )
 from scripts.bootstrap.rollback import derive_rollback_specs
 from scripts.bootstrap.values import JournalPhase
+from scripts.bootstrap.vocabulary import TRANSACTION_ID
 
-_TRANSACTION_HEX = re.compile(r"[0-9a-f]{64}\Z")
 _REVALIDATION_SUBJECT = "re-observed target differs from the planned preconditions"
 
 
@@ -605,7 +604,7 @@ class CompiledTransaction:
     preparations: tuple[PreparationIdentity, ...]
 
     def __post_init__(self) -> None:
-        if _TRANSACTION_HEX.fullmatch(self.transaction_id) is None:
+        if TRANSACTION_ID.fullmatch(self.transaction_id) is None:
             raise TypeError("transaction id must be 256-bit lowercase hex")
         specs = derive_preparation_specs(self.plan)
         if len(self.preparations) != len(specs):

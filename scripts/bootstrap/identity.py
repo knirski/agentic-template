@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import ClassVar, Final, Literal, TypedDict
 
 from scripts.bootstrap.canonical_json import canonical_json
-from scripts.bootstrap.paths import RepoPath, normalize_text
+from scripts.bootstrap.paths import RepoPath, normalize_text, path_byte_key
 
 
 class PosixMode(int):
@@ -144,22 +144,42 @@ def file_state_identity(
     return FileState(identity=content_identity(data, text=text), mode=mode)
 
 
+def old_file_parts(state: FileState) -> tuple[str, PosixMode] | None:
+    """Return the raw digest and mode of a present file state, else ``None``."""
+
+    if not state.present:
+        return None
+    identity = state.identity
+    mode = state.mode
+    if (
+        identity is None or mode is None
+    ):  # pragma: no cover — present states always carry both
+        return None  # pragma: no cover — present states always carry both
+    return identity.raw_sha256, mode
+
+
+def file_state_document(state: FileState) -> dict[str, object] | None:
+    """The canonical file-state document shared by hashes and plan receipts."""
+
+    if not state.present or state.identity is None or state.mode is None:
+        return None
+    identity = state.identity
+    return {
+        "kind": identity.kind,
+        "mode": state.mode.value,
+        "normalized_sha256": identity.normalized_sha256,
+        "raw_sha256": identity.raw_sha256,
+        "size": identity.size,
+    }
+
+
 def file_state_hash(kind: bytes, state: FileState) -> str:
     if not state.present:
         return tagged_digest(kind + b"/absent", b"")
-    identity = state.identity
-    if identity is None:  # pragma: no cover - present files always carry an identity
+    document = file_state_document(state)
+    if document is None:  # pragma: no cover - present files always carry an identity
         raise ValueError("a present file state must carry an identity")
-    payload = canonical_json(
-        {
-            "kind": identity.kind,
-            "mode": state.mode.value if state.mode is not None else None,
-            "normalized_sha256": identity.normalized_sha256,
-            "raw_sha256": identity.raw_sha256,
-            "size": identity.size,
-        }
-    )
-    return tagged_digest(kind + b"/file", payload)
+    return tagged_digest(kind + b"/file", canonical_json(document))
 
 
 def _entry_kind_name(entry: TreeEntry) -> str:
@@ -195,7 +215,7 @@ def directory_tree_hash(kind: bytes, state: DirectoryState | None) -> str:
     sorted_entries = sorted(
         state.entries,
         key=lambda entry: (
-            entry.path.value.encode("utf-8"),
+            path_byte_key(entry.path),
             _entry_kind_name(entry),
         ),
     )
@@ -248,7 +268,7 @@ def tree_hash(
     kind: bytes,
     entries: tuple[tuple[RepoPath, bytes, PosixMode], ...],
 ) -> str:
-    sorted_entries = sorted(entries, key=lambda item: item[0].value.encode("utf-8"))
+    sorted_entries = sorted(entries, key=lambda item: path_byte_key(item[0]))
     seen_paths: set[str] = set()
     for path, _, _ in sorted_entries:
         if path.value in seen_paths:

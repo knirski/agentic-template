@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import cast
+
+from scripts.bootstrap.result import Err, Ok, Result
 
 MAX_SAFE_INTEGER = 2**53
 MAX_NESTING_DEPTH = 128
@@ -89,11 +91,49 @@ def decode_json(data: bytes) -> StrictJsonValue:
 
     try:
         decoded = _loads(data.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+    except (
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ValueError,
+        RecursionError,
+    ) as error:
         raise ValueError("invalid strict JSON") from error
-    value = _materialize(decoded)
-    _validate(value)
+    try:
+        value = _materialize(decoded)
+    except RecursionError as error:
+        raise ValueError("invalid strict JSON") from error
+    try:
+        _validate(value)
+    except RecursionError as error:
+        raise ValueError("invalid strict JSON") from error
     return cast(StrictJsonValue, value)
+
+
+def decode_object[ErrorT](
+    data: bytes,
+    *,
+    error: Callable[[str], ErrorT],
+    max_bytes: int | None = None,
+    allowed_keys: frozenset[str] | None = None,
+) -> Result[dict[str, StrictJsonValue], ErrorT]:
+    """Strictly decode one bounded document into a mapping of the closed key set.
+
+    ``error`` receives exactly one of the reasons ``"size"`` (only with
+    ``max_bytes``), ``"json"``, or ``"document"`` so callers map the shared
+    skeleton onto their own error vocabulary.
+    """
+
+    if max_bytes is not None and len(data) > max_bytes:
+        return Err(error("size"))
+    try:
+        value = decode_json(data)
+    except ValueError:
+        return Err(error("json"))
+    if not isinstance(value, dict):
+        return Err(error("document"))
+    if allowed_keys is not None and set(value) != set(allowed_keys):
+        return Err(error("document"))
+    return Ok(value)
 
 
 def canonical_json(value: object) -> bytes:

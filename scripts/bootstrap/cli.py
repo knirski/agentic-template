@@ -16,7 +16,6 @@ import contextlib
 import os
 import shutil
 import stat
-import subprocess
 import sys
 import tempfile
 from collections.abc import Callable, Mapping
@@ -57,9 +56,6 @@ from scripts.bootstrap.errors import (
     InternalCode,
     ObservationError,
     ObservationErrorKind,
-    ProcessError,
-    ProcessErrorKind,
-    SignalNumber,
     TransactionError,
     TransactionErrorKind,
     TransactionPrimitive,
@@ -68,7 +64,6 @@ from scripts.bootstrap.errors import (
     UsageError,
     UsageErrorKind,
     sanitize_errno,
-    sanitize_process_error,
 )
 from scripts.bootstrap.errors import (
     InternalFailure as CoreInternalFailure,
@@ -85,6 +80,7 @@ from scripts.bootstrap.fs_effects import (
     read_file_bounded,
     walk_no_follow,
     write_all,
+    write_file_exclusive,
 )
 from scripts.bootstrap.git_state import (
     ResolvedGitWorktree,
@@ -188,6 +184,13 @@ from scripts.bootstrap.planner import (
     apply_plan,
     compile_initial_plan,
     evaluate_expected,
+)
+from scripts.bootstrap.process_effects import (
+    Launched,
+    LaunchFailed,
+    TimedOut,
+    run_captured,
+    signalled,
 )
 from scripts.bootstrap.readiness import (
     Finding,
@@ -1972,49 +1975,11 @@ def _write_file_exclusive(
         case Ok(parent_fd):
             pass
     try:
-        try:
-            fd = os.open(
-                name,
-                os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
-                mode,
-                dir_fd=parent_fd,
-            )
-        except FileExistsError:
-            return _err_effect(_invalid_state(os.fsdecode(name)))
-        except OSError as error:
-            return Err(
-                TransactionError.primitive_failed(
-                    TransactionPrimitive.WRITE_FILE,
-                    sanitize_errno(error),
-                    os.fsdecode(name),
-                )
-            )
-        try:
-            try:
-                # The open mode is umask-masked; pin the exact plan mode so
-                # installed and backup modes never depend on the shell umask.
-                os.fchmod(fd, mode)
-            except OSError as error:
-                return Err(
-                    TransactionError.primitive_failed(
-                        TransactionPrimitive.WRITE_FILE,
-                        sanitize_errno(error),
-                        os.fsdecode(name),
-                    )
-                )
-            match write_all(fd, content):
-                case Err(error):
-                    return _err_effect(error)
-                case Ok(_):
-                    pass
-            match fsync_file(fd):
-                case Err(error):
-                    return _err_effect(error)
-                case Ok(_):
-                    pass
-        finally:
-            os.close(fd)
-        return Ok(None)
+        match write_file_exclusive(parent_fd, name, content, mode):
+            case Err(error):
+                return _err_effect(error)
+            case Ok(_):
+                return Ok(None)
     finally:
         os.close(parent_fd)
 
@@ -3857,33 +3822,22 @@ def _run_hook(worktree: ResolvedGitWorktree) -> HookEvidence:
     """Attempt the adopter hook once; evidence is bounded and never replayed."""
 
     hook_abs = os.fsdecode(worktree.root_abs) + "/" + HOOK_PATH.value
-    try:
-        process = subprocess.run(
-            [hook_abs],
-            cwd=os.fsdecode(worktree.root_abs),
-            capture_output=True,
-            timeout=_HOOK_TIMEOUT_SECONDS,
-            check=False,
-        )
-    except FileNotFoundError:
-        return HookLaunchFailed(ProcessError(ProcessErrorKind.EXECUTABLE_NOT_FOUND))
-    except PermissionError:
-        return HookLaunchFailed(
-            ProcessError(ProcessErrorKind.EXECUTE_PERMISSION_DENIED)
-        )
-    except subprocess.TimeoutExpired:
-        return HookExited(124)  # the bounded-timeout marker, matching timeout(1)
-    except OSError as error:
-        return HookLaunchFailed(sanitize_process_error(error))
-    stdout = process.stdout[:_HOOK_STREAM_BOUND] if process.stdout else b""
-    stderr = process.stderr[:_HOOK_STREAM_BOUND] if process.stderr else b""
-    if process.returncode is not None and process.returncode < 0:  # pyright: ignore[reportUnnecessaryComparison] — deliberate runtime contract check
-        match SignalNumber.from_int(-process.returncode):
-            case Ok(signal):
-                return HookSignalled(signal, stdout, stderr)
-            case Err(_):
-                return HookExited(process.returncode, stdout, stderr)
-    return HookExited(process.returncode or 0, stdout, stderr)
+    match run_captured(
+        [hook_abs],
+        cwd=os.fsdecode(worktree.root_abs),
+        timeout=_HOOK_TIMEOUT_SECONDS,
+        stream_bound=_HOOK_STREAM_BOUND,
+    ):
+        case LaunchFailed(process_error=process_error):
+            return HookLaunchFailed(process_error)
+        case TimedOut():
+            return HookExited(124)  # the bounded-timeout marker, matching timeout(1)
+        case Launched(returncode=returncode, stdout=stdout, stderr=stderr):
+            pass
+    signal = signalled(returncode)
+    if signal is not None:
+        return HookSignalled(signal, stdout, stderr)
+    return HookExited(returncode, stdout, stderr)
 
 
 def _not_ready_diagnostics(

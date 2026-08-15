@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from scripts.bootstrap.errors import InputError, InputErrorKind
@@ -11,6 +12,18 @@ from scripts.bootstrap.result import Err, Ok, Result
 @dataclass(frozen=True, slots=True, order=True)
 class RepoPath:
     value: str
+
+
+def path_byte_key(path: RepoPath) -> bytes:
+    """The byte-order key every repository-relative ordering uses."""
+
+    return path.value.encode("utf-8")
+
+
+def sorted_paths(paths: Iterable[RepoPath]) -> tuple[RepoPath, ...]:
+    """Sort repository paths by their UTF-8 byte order."""
+
+    return tuple(sorted(paths, key=path_byte_key))
 
 
 def parse_path(value: str) -> Result[RepoPath, InputError]:

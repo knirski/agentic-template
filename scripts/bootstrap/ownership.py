@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from scripts.bootstrap.paths import RepoPath
+from scripts.bootstrap.paths import RepoPath, path_byte_key, sorted_paths
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.state import CleanupContract, CleanupContractMismatch
 
@@ -10,7 +10,7 @@ __all__ = ["CleanupContract", "CleanupContractMismatch", "validate_cleanup_contr
 
 
 def _sorted_unique(paths: tuple[RepoPath, ...]) -> tuple[RepoPath, ...]:
-    return tuple(sorted(set(paths), key=lambda path: path.value.encode("utf-8")))
+    return sorted_paths(set(paths))
 
 
 def validate_cleanup_contract(
@@ -26,7 +26,7 @@ def validate_cleanup_contract(
         paths = tuple(
             sorted(
                 (set(lifecycle) & set(cleanup)) | (set(cleanup) ^ set(observed)),
-                key=lambda path: path.value.encode("utf-8"),
+                key=path_byte_key,
             )
         )
         return Err(CleanupContractMismatch(paths))

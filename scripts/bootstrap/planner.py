@@ -52,7 +52,7 @@ from scripts.bootstrap.manifest import (
     path_within_limits,
 )
 from scripts.bootstrap.ownership import validate_cleanup_contract
-from scripts.bootstrap.paths import RepoPath, parse_path
+from scripts.bootstrap.paths import RepoPath, parse_path, sorted_paths
 from scripts.bootstrap.readiness import Finding, MechanicalReadinessResult, SubjectPath
 from scripts.bootstrap.render import (
     ManagedRender,
@@ -366,10 +366,6 @@ def _invariant_error(
     return PlanInvariantError(kind, subject)
 
 
-def _sorted_paths(paths: tuple[RepoPath, ...]) -> tuple[RepoPath, ...]:
-    return tuple(sorted(paths, key=lambda path: path.value.encode("utf-8")))
-
-
 def _parent_paths(path: RepoPath) -> tuple[RepoPath, ...]:
     parts = path.value.split("/")
     return tuple(RepoPath("/".join(parts[:index])) for index in range(1, len(parts)))
@@ -457,11 +453,11 @@ def _validate_snapshot(snapshot: TargetSnapshot) -> Result[None, CompileError]:
             )
         seen.add(entry.path.value)
         lowered.add(entry.path.value.lower())
-    if _sorted_paths(tuple(entry.path for entry in snapshot.files)) != tuple(
+    if sorted_paths(tuple(entry.path for entry in snapshot.files)) != tuple(
         entry.path for entry in snapshot.files
     ):
         return Err(_compile_error(CompileErrorKind.INVALID_TARGET, "files"))
-    if _sorted_paths(tuple(entry.path for entry in snapshot.directories)) != tuple(
+    if sorted_paths(tuple(entry.path for entry in snapshot.directories)) != tuple(
         entry.path for entry in snapshot.directories
     ):
         return Err(_compile_error(CompileErrorKind.INVALID_TARGET, "directories"))
@@ -473,7 +469,7 @@ def _validate_seed_inputs(
     blobs: VerifiedBlobStore,
     limits: ResourceLimits,
 ) -> Result[None, CompileError]:
-    if _sorted_paths(tuple(seed.path for seed in seed_once)) != tuple(
+    if sorted_paths(tuple(seed.path for seed in seed_once)) != tuple(
         seed.path for seed in seed_once
     ):
         return Err(_compile_error(CompileErrorKind.INVALID_TARGET, "seed_once"))
@@ -541,7 +537,7 @@ def _validate_managed(
                 return Err(
                     _compile_error(CompileErrorKind.INVALID_TARGET, file.path.value)
                 )
-    if _sorted_paths(tuple(file.path for file in managed)) != tuple(
+    if sorted_paths(tuple(file.path for file in managed)) != tuple(
         file.path for file in managed
     ):
         return Err(_compile_error(CompileErrorKind.INVALID_TARGET, "managed"))
@@ -616,8 +612,8 @@ def _maintenance_record(
                 return Err(
                     _compile_error(CompileErrorKind.INVALID_MAINTENANCE, "retain")
                 )
-            declared = _sorted_paths(cleanup.cleanup_paths)
-            if _sorted_paths(paths) != declared:
+            declared = sorted_paths(cleanup.cleanup_paths)
+            if sorted_paths(paths) != declared:
                 return Err(
                     _compile_error(
                         CompileErrorKind.INVALID_MAINTENANCE, "retained_paths"
@@ -784,7 +780,7 @@ def _cleanup_operations(
     tuple[tuple[DeleteFileOperation, ...], tuple[RemoveEmptyDirectoryOperation, ...]],
     CompileError,
 ]:
-    observed_cleanup = _sorted_paths(
+    observed_cleanup = sorted_paths(
         tuple(
             path
             for path in cleanup.cleanup_paths

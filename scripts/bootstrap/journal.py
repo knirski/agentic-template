@@ -21,27 +21,23 @@ from typing import Literal
 from scripts.bootstrap.canonical_json import (
     StrictJsonValue,
     canonical_json,
-    decode_json,
+    decode_object,
 )
 from scripts.bootstrap.errors import (
     InternalFailure,
     ObservationError,
     ObservationErrorKind,
     TransactionError,
-    TransactionErrorKind,
-    TransactionPrimitive,
-    sanitize_errno,
 )
 from scripts.bootstrap.fs_effects import (
     ChildEntry,
     ChildKind,
+    atomic_replace_file,
     classify_child,
-    fsync_directory,
-    fsync_file,
     list_directory_entries,
     map_observation_error,
     read_file_bounded,
-    write_all,
+    write_file_exclusive,
 )
 from scripts.bootstrap.identity import (
     PosixMode,
@@ -63,11 +59,10 @@ from scripts.bootstrap.state import (
     ValidatedJournal,
 )
 from scripts.bootstrap.values import DEFAULT_LIMITS, JournalPhase, ResourceLimits
+from scripts.bootstrap.vocabulary import is_sha256
 
 JOURNAL_SCHEMA_VERSION = 1
-_TRANSACTION_HEX = re.compile(r"[0-9a-f]{64}\Z")
 _ROOT_HEX = re.compile(r"(?:[0-9a-f]{2})+\Z")
-_O_PENDING = os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW | os.O_CLOEXEC
 _O_READ = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
 
 
@@ -75,10 +70,6 @@ class PreparationRole(StrEnum):
     STAGE = "stage"
     BACKUP = "backup"
     ROLLBACK = "rollback"
-
-
-def _hex64(value: object) -> bool:
-    return isinstance(value, str) and _TRANSACTION_HEX.fullmatch(value) is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,7 +93,7 @@ class JournalTarget:
             raise TypeError("journal target device and inode must be non-negative")
         if self.device > 2**53 - 1 or self.inode > 2**53 - 1:
             raise TypeError("journal target device and inode exceed the JSON domain")
-        if not _hex64(self.digest):
+        if not is_sha256(self.digest):
             raise TypeError("journal target digest must be 256-bit lowercase hex")
         expected = target_identity(root, device=self.device, inode=self.inode)
         if self.digest != expected.digest:
@@ -136,18 +127,18 @@ class PreparationIdentity:
     expected_mode: PosixMode
 
     def __post_init__(self) -> None:
-        if not _hex64(self.transaction_id):
+        if not is_sha256(self.transaction_id):
             raise TypeError("preparation transaction id must be 256-bit lowercase hex")
         if type(self.operation_index) is not int or self.operation_index < 0:
             raise TypeError("preparation operation index must be non-negative")
         if not isinstance(self.role, PreparationRole):  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
             raise TypeError("preparation requires a closed role")
-        if not _hex64(self.ownership_token_sha256):
+        if not is_sha256(self.ownership_token_sha256):
             raise TypeError("preparation token hash must be 256-bit lowercase hex")
         if self.expected_kind not in ("file", "directory"):
             raise TypeError("preparation requires a closed expected kind")
         if self.expected_kind == "file":
-            if not _hex64(self.expected_raw_sha256):
+            if not is_sha256(self.expected_raw_sha256):
                 raise TypeError("file preparation requires a raw digest")
         elif self.expected_raw_sha256 is not None:
             raise TypeError("directory preparation cannot carry a raw digest")
@@ -191,7 +182,7 @@ class JournalEnvelope:
             raise TypeError("journal requires a target binding")
         if not isinstance(self.phase, JournalPhase):  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
             raise TypeError("journal requires a closed phase")
-        if not _hex64(self.transaction_id):
+        if not is_sha256(self.transaction_id):
             raise TypeError("journal requires a 256-bit lowercase transaction id")
         if not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
             self.preparations, tuple
@@ -303,7 +294,7 @@ def _decode_target(value: StrictJsonValue) -> Result[JournalTarget, InvalidJourn
         return _invalid("journal target device and inode must be integers")
     if device < 0 or inode < 0:
         return _invalid("journal target device and inode must be non-negative")
-    if not isinstance(digest, str) or not _hex64(digest):
+    if not isinstance(digest, str) or not is_sha256(digest):
         return _invalid("journal target digest must be 256-bit lowercase hex")
     try:
         return Ok(
@@ -329,7 +320,7 @@ def _decode_preparation(
     if declared_transaction != transaction_id:
         return _invalid("every preparation must belong to the journal transaction")
     token_hash = value.get("ownership_token_sha256")
-    if not isinstance(token_hash, str) or not _hex64(token_hash):
+    if not isinstance(token_hash, str) or not is_sha256(token_hash):
         return _invalid("journal preparation token hash must be 256-bit lowercase hex")
     operation_index = value.get("operation_index")
     if type(operation_index) is not int or operation_index < 0:
@@ -338,7 +329,7 @@ def _decode_preparation(
     expected_raw_sha256 = value.get("expected_raw_sha256")
     match expected_kind:
         case "file":
-            if not isinstance(expected_raw_sha256, str) or not _hex64(
+            if not isinstance(expected_raw_sha256, str) or not is_sha256(
                 expected_raw_sha256
             ):
                 return _invalid("file preparation requires a raw digest")
@@ -375,12 +366,19 @@ def _decode_preparation(
 def decode_journal(data: bytes) -> Result[JournalEnvelope, InvalidJournal]:
     """Strictly decode and validate one authoritative journal record."""
 
-    try:
-        decoded = decode_json(data)
-    except ValueError as error:
-        return _invalid(str(error))
-    if not isinstance(decoded, dict):
-        return _invalid("journal must be a JSON object")
+    def _reason(reason: str) -> InvalidJournal:
+        return InvalidJournal(
+            {
+                "json": "invalid strict JSON",
+                "document": "journal must be a JSON object",
+            }[reason]
+        )
+
+    match decode_object(data, error=_reason):
+        case Err(error):
+            return Err(error)
+        case Ok(decoded):
+            pass
     if (
         type(decoded.get("schema_version")) is not int
         or decoded.get("schema_version") != JOURNAL_SCHEMA_VERSION
@@ -390,7 +388,7 @@ def decode_journal(data: bytes) -> Result[JournalEnvelope, InvalidJournal]:
     if not isinstance(operation, str) or not operation:
         return _invalid("journal requires a non-empty operation")
     transaction_id = decoded.get("transaction_id")
-    if not isinstance(transaction_id, str) or not _hex64(transaction_id):
+    if not isinstance(transaction_id, str) or not is_sha256(transaction_id):
         return _invalid("journal requires a 256-bit lowercase transaction id")
     phase_value = decoded.get("phase")
     if not isinstance(phase_value, str):
@@ -452,56 +450,20 @@ def persist_journal(
     """
 
     data = encode_journal(envelope)
-    try:
-        fd = os.open("journal.pending", _O_PENDING, 0o600, dir_fd=state_root_fd)
-    except FileExistsError:
-        return Err(
-            TransactionError(
-                TransactionErrorKind.INVALID_STATE_ROOT,
-                subject="journal.pending exists; only recover may discard it",
-            )
-        )
-    except OSError as error:
-        return Err(
-            TransactionError.primitive_failed(
-                TransactionPrimitive.WRITE_FILE,
-                sanitize_errno(error),
-                "journal.pending",
-            )
-        )
-    try:
-        match write_all(fd, data):
-            case Err(error):
-                return Err(error)
-            case Ok(_):
-                pass
-        match fsync_file(fd):
-            case Err(error):
-                return Err(error)
-            case Ok(_):
-                pass
-    finally:
-        os.close(fd)
-    try:
-        os.replace(
-            "journal.pending",
-            "journal.json",
-            src_dir_fd=state_root_fd,
-            dst_dir_fd=state_root_fd,
-        )
-    except OSError as error:
-        return Err(
-            TransactionError(
-                TransactionErrorKind.ATOMIC_REPLACE_FAILED,
-                errno_class=sanitize_errno(error),
-                subject="journal",
-            )
-        )
-    match fsync_directory(state_root_fd):
+    match write_file_exclusive(
+        state_root_fd,
+        b"journal.pending",
+        data,
+        0o600,
+        exists_subject="journal.pending exists; only recover may discard it",
+    ):
         case Err(error):
             return Err(error)
         case Ok(_):
-            return Ok(None)
+            pass
+    return atomic_replace_file(
+        state_root_fd, state_root_fd, b"journal.pending", b"journal.json", "journal"
+    )
 
 
 @dataclass(frozen=True, slots=True)

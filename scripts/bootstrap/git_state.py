@@ -16,20 +16,24 @@ import errno
 import os
 import posixpath
 import stat
-import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import cast
 
 from scripts.bootstrap.errors import (
     InternalCode,
     InternalFailure,
     ObservationError,
     ObservationErrorKind,
-    SignalNumber,
 )
 from scripts.bootstrap.fs_effects import walk_no_follow
 from scripts.bootstrap.identity import TargetIdentity, target_identity
+from scripts.bootstrap.process_effects import (
+    Launched,
+    LaunchFailed,
+    TimedOut,
+    run_captured,
+    signalled,
+)
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.state import TargetReason, UnsupportedGitTarget
 
@@ -72,49 +76,40 @@ def run_git(
 ]:
     """Run one bounded git command; every ordinary exit is a result value."""
 
-    try:
-        process = subprocess.run(
-            ["git", *args],
-            cwd=cwd,
-            env=env,
-            capture_output=True,
-            check=False,
-            timeout=timeout,
-        )
-    except (FileNotFoundError, NotADirectoryError) as error:
-        return Err(UnsupportedGitTarget(_launch_target_reason(error, cwd)))
-    except PermissionError as error:
-        return Err(UnsupportedGitTarget(_launch_target_reason(error, cwd)))
-    except subprocess.TimeoutExpired:
-        return Err(UnsupportedGitTarget(TargetReason.NOT_WORKTREE))
-    if process.returncode < 0:
-        match SignalNumber.from_int(-process.returncode):
-            case Ok(signal):
+    match run_captured(["git", *args], cwd=cwd, env=env, timeout=timeout):
+        case LaunchFailed(filename=filename):
+            return Err(UnsupportedGitTarget(_launch_target_reason(filename, cwd)))
+        case TimedOut():
+            return Err(UnsupportedGitTarget(TargetReason.NOT_WORKTREE))
+        case Launched(returncode=returncode, stdout=stdout, stderr=stderr):
+            pass
+    if returncode < 0:
+        match signalled(returncode):
+            case signal if signal is not None:
                 return Err(
                     ObservationError(
                         ObservationErrorKind.PROCESS_SIGNALLED,
                         signal=signal,
                     )
                 )
-            case Err(_):
+            case _:
                 return Err(InternalFailure(InternalCode.IMPOSSIBLE_STATE))
     return Ok(
         GitCommandResult(
-            returncode=process.returncode,
-            stdout=process.stdout,
-            stderr=process.stderr,
+            returncode=returncode,
+            stdout=stdout,
+            stderr=stderr,
         )
     )
 
 
-def _launch_target_reason(error: OSError, cwd: bytes) -> TargetReason:
+def _launch_target_reason(filename: str | bytes | None, cwd: bytes) -> TargetReason:
     """Classify a git launch failure by the path that failed to resolve.
 
     A missing or non-directory working directory is a target problem; a
     missing or non-executable ``git`` executable is an environment problem.
     """
 
-    filename = cast(str | bytes | None, error.filename)
     if filename is not None and os.fsdecode(filename) == os.fsdecode(cwd):
         return TargetReason.NOT_WORKTREE
     return TargetReason.GIT_UNAVAILABLE
