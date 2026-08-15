@@ -13,7 +13,7 @@ import contextlib
 import os
 import shutil
 import stat
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from typing import cast
 
@@ -329,6 +329,22 @@ def _open_directory_abs(directory: bytes) -> Result[int, TransactionError]:
         )
 
 
+@contextlib.contextmanager
+def _worktree_root_fd(
+    resources: TransactionResources,
+) -> Generator[int]:
+    """Yield one symlink-rejecting descriptor on the worktree root, always closed."""
+
+    fd = os.open(
+        resources.worktree.root_abs,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+    )
+    try:
+        yield fd
+    finally:
+        os.close(fd)
+
+
 def _write_file_exclusive(
     directory: bytes, name: bytes, content: bytes, mode: int
 ) -> Result[None, EffectError]:
@@ -604,6 +620,33 @@ def _write_stage_marker(
     return _write_file_exclusive(stage_dir, os.fsencode(_MARKER_NAME), marker, 0o600)
 
 
+def _create_marked_stage(
+    resources: TransactionResources,
+    operation: FileOperation | DirectoryOperation,
+    transaction_id: str,
+    operation_index: int,
+    *,
+    identity: PreparationIdentity,
+    token: bytes,
+    rollback: bool = False,
+) -> Result[bytes, EffectError]:
+    """Reserve one stage directory exclusively and write its ownership marker."""
+
+    match _mkdir_stage_dir(
+        resources, operation, transaction_id, operation_index, rollback=rollback
+    ):
+        case Err(error):
+            return Err(error)
+        case Ok(stage_dir):
+            pass
+    match _write_stage_marker(stage_dir, identity=identity, token=token):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
+    return Ok(stage_dir)
+
+
 def _read_stage_marker(
     stage_dir: bytes,
 ) -> Result[tuple[str, int, str, str] | None, EffectError]:
@@ -767,11 +810,7 @@ def _observe_path_state(
 ) -> Result[ObservedPathState, EffectError]:
     """Observe one post-operation path state for the machine's ``OperationApplied``."""
 
-    root_fd = os.open(
-        resources.worktree.root_abs,
-        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-    )
-    try:
+    with _worktree_root_fd(resources) as root_fd:
         if directory:
             components = tuple(os.fsencode(part) for part in path.value.split("/"))
             opened_new = bool(components)
@@ -807,8 +846,6 @@ def _observe_path_state(
         return Ok(
             ObservedFilePresent(_observed_identity(content, mode), mode, device, inode)
         )
-    finally:
-        os.close(root_fd)
 
 
 def capture_plan_snapshot(
@@ -819,11 +856,7 @@ def capture_plan_snapshot(
 ]:
     """Capture exactly the plan's referenced paths from the live target."""
 
-    root_fd = os.open(
-        resources.worktree.root_abs,
-        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-    )
-    try:
+    with _worktree_root_fd(resources) as root_fd:
         file_paths, dir_paths = plan_snapshot_paths(plan)
         observed_files: list[ObservedFileEntry] = []
         for path in sorted(file_paths, key=lambda p: p.value.encode("utf-8")):
@@ -870,8 +903,6 @@ def capture_plan_snapshot(
                 os.close(fd)
             observed_dirs.append(ObservedDirectoryEntry(path, state))
         return Ok(TargetSnapshot(tuple(observed_files), tuple(observed_dirs)))
-    finally:
-        os.close(root_fd)
 
 
 def _execute_prepare_one(
@@ -888,20 +919,17 @@ def _execute_prepare_one(
                 content = plan.blob_store.get(operation.planned_new.content_id)
                 if content is None:
                     return _err_effect(_invalid_state("stage blob is missing"))
-                match _mkdir_stage_dir(
+                match _create_marked_stage(
                     resources,
                     operation,
                     compiled.transaction_id,
                     identity.operation_index,
+                    identity=identity,
+                    token=token,
                 ):
                     case Err(error):
                         return _err_effect(error)
                     case Ok(stage_dir):
-                        pass
-                match _write_stage_marker(stage_dir, identity=identity, token=token):
-                    case Err(error):
-                        return _err_effect(error)
-                    case Ok(_):
                         pass
                 match _write_file_exclusive(
                     stage_dir,
@@ -915,20 +943,17 @@ def _execute_prepare_one(
                         pass
                 return _fsync_dir_abs(stage_dir)
             if isinstance(operation, CreateTreeOperation):
-                match _mkdir_stage_dir(
+                match _create_marked_stage(
                     resources,
                     operation,
                     compiled.transaction_id,
                     identity.operation_index,
+                    identity=identity,
+                    token=token,
                 ):
                     case Err(error):
                         return _err_effect(error)
                     case Ok(stage_dir):
-                        pass
-                match _write_stage_marker(stage_dir, identity=identity, token=token):
-                    case Err(error):
-                        return _err_effect(error)
-                    case Ok(_):
                         pass
                 match _mkdir_exclusive(stage_dir, os.fsencode(_PAYLOAD_NAME), 0o755):
                     case Err(error):
@@ -1029,18 +1054,13 @@ def _execute_prepare_one(
                 return _err_effect(
                     _invalid_state("backup requires a replace or delete operation")
                 )
-            root_fd = os.open(
-                resources.worktree.root_abs,
-                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-            )
-            try:
+
+            with _worktree_root_fd(resources) as root_fd:
                 match _read_file_state_at(root_fd, operation.path, resources.limits):
                     case Err(error):
                         return _err_effect(error)
                     case Ok(observed):
                         pass
-            finally:
-                os.close(root_fd)
             if observed is None:
                 return _err_effect(_precondition_changed(operation.path.value))
             content, mode, _device, _inode = observed
@@ -1096,18 +1116,13 @@ def _verify_old_file(
     operation: FileOperation,
     resources: TransactionResources,
 ) -> Result[None, EffectError]:
-    root_fd = os.open(
-        resources.worktree.root_abs,
-        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-    )
-    try:
+
+    with _worktree_root_fd(resources) as root_fd:
         match _read_file_state_at(root_fd, operation.path, resources.limits):
             case Err(error):
                 return _err_effect(error)
             case Ok(observed):
                 pass
-    finally:
-        os.close(root_fd)
     expected = operation.expected_old
     if isinstance(operation, CreateFileOperation):
         if observed is not None:
@@ -1126,11 +1141,8 @@ def _execute_apply_one(
     compiled: CompiledTransaction,
     resources: TransactionResources,
 ) -> Result[ObservedPathState, EffectError]:
-    root_fd = os.open(
-        resources.worktree.root_abs,
-        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-    )
-    try:
+
+    with _worktree_root_fd(resources) as root_fd:
         match operation:
             case CreateFileOperation() | ReplaceFileOperation():
                 match _open_parent(root_fd, operation.path):
@@ -1328,8 +1340,6 @@ def _execute_apply_one(
                     case Ok(_):
                         pass
                 return _observe_path_state(resources, operation.path, directory=True)
-    finally:
-        os.close(root_fd)
     return _err_effect(  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
         _invalid_state("unknown operation")
     )
@@ -1362,18 +1372,12 @@ def _execute_rollback_file(
     RollbackAlreadyRestored | RollbackRestoredNow, EffectError | TransitionError
 ]:
 
-    root_fd = os.open(
-        resources.worktree.root_abs,
-        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-    )
-    try:
+    with _worktree_root_fd(resources) as root_fd:
         match _read_file_state_at(root_fd, operation.path, resources.limits):
             case Err(error):
                 return _rollback_error(error)
             case Ok(observed):
                 pass
-    finally:
-        os.close(root_fd)
     current = (
         FileState(None, None)
         if observed is None
@@ -1393,11 +1397,7 @@ def _execute_rollback_file(
                 )
             )
     if isinstance(operation, CreateFileOperation):
-        root_fd = os.open(
-            resources.worktree.root_abs,
-            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-        )
-        try:
+        with _worktree_root_fd(resources) as root_fd:
             match _open_parent(root_fd, operation.path):
                 case Err(error):
                     return _rollback_error(error)
@@ -1416,8 +1416,6 @@ def _execute_rollback_file(
                     )
             finally:
                 os.close(parent_fd)
-        finally:
-            os.close(root_fd)
         return Ok(RollbackRestoredNow())
     # Replace/Delete: restore the verified raw backup through a marked adjacent
     # rollback container so the final rename is atomic on the same filesystem.
@@ -1459,25 +1457,18 @@ def _execute_rollback_file(
     if spec_index < 0 or spec_index >= len(resources.rollback_preparations):
         return _rollback_error(_invalid_state("rollback container identity is missing"))
     rollback_identity = resources.rollback_preparations[spec_index]
-    match _mkdir_stage_dir(
+    match _create_marked_stage(
         resources,
         operation,
         compiled.transaction_id,
         compiled.plan.ordered_operations.index(operation),
+        identity=rollback_identity,
+        token=resources.rollback_tokens[spec_index],
         rollback=True,
     ):
         case Err(error):
             return _rollback_error(error)
         case Ok(container):
-            pass
-    match _write_stage_marker(
-        container,
-        identity=rollback_identity,
-        token=resources.rollback_tokens[spec_index],
-    ):
-        case Err(error):
-            return _rollback_error(error)
-        case Ok(_):
             pass
     match _write_file_exclusive(
         container, os.fsencode(_PAYLOAD_NAME), backup_bytes, backup_mode.value
@@ -1486,11 +1477,8 @@ def _execute_rollback_file(
             return _rollback_error(error)
         case Ok(_):
             pass
-    root_fd = os.open(
-        resources.worktree.root_abs,
-        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-    )
-    try:
+
+    with _worktree_root_fd(resources) as root_fd:
         match _open_parent(root_fd, operation.path):
             case Err(error):
                 return _rollback_error(error)
@@ -1522,8 +1510,6 @@ def _execute_rollback_file(
                 os.close(container_fd)
         finally:
             os.close(parent_fd)
-    finally:
-        os.close(root_fd)
     return Ok(RollbackRestoredNow())
 
 
@@ -1537,11 +1523,8 @@ def _execute_rollback_directory(
     path = (
         operation.root if isinstance(operation, CreateTreeOperation) else operation.path
     )
-    root_fd = os.open(
-        resources.worktree.root_abs,
-        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-    )
-    try:
+
+    with _worktree_root_fd(resources) as root_fd:
         components = tuple(os.fsencode(part) for part in path.value.split("/"))
         match walk_no_follow(root_fd, components, allow_absent_final=True):
             case Err(error):
@@ -1558,8 +1541,6 @@ def _execute_rollback_directory(
                         current = state
             finally:
                 os.close(fd)
-    finally:
-        os.close(root_fd)
     match rollback_directory_step(operation, current):
         case AlreadyRestored():
             return Ok(RollbackAlreadyRestored())
@@ -1577,27 +1558,21 @@ def _execute_rollback_directory(
     if spec_index < 0 or spec_index >= len(resources.rollback_preparations):
         return _rollback_error(_invalid_state("rollback container identity is missing"))
     rollback_identity = resources.rollback_preparations[spec_index]
-    match _mkdir_stage_dir(
-        resources, operation, compiled.transaction_id, index, rollback=True
+    match _create_marked_stage(
+        resources,
+        operation,
+        compiled.transaction_id,
+        index,
+        identity=rollback_identity,
+        token=resources.rollback_tokens[spec_index],
+        rollback=True,
     ):
         case Err(error):
             return _rollback_error(error)
         case Ok(container):
             pass
-    match _write_stage_marker(
-        container,
-        identity=rollback_identity,
-        token=resources.rollback_tokens[spec_index],
-    ):
-        case Err(error):
-            return _rollback_error(error)
-        case Ok(_):
-            pass
-    root_fd = os.open(
-        resources.worktree.root_abs,
-        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
-    )
-    try:
+
+    with _worktree_root_fd(resources) as root_fd:
         match _open_parent(root_fd, path):
             case Err(error):
                 return _rollback_error(error)
@@ -1677,8 +1652,6 @@ def _execute_rollback_directory(
                 os.close(container_fd)
         finally:
             os.close(parent_fd)
-    finally:
-        os.close(root_fd)
     return Ok(RollbackRestoredNow())
 
 
