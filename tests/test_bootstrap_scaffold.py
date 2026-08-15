@@ -19,7 +19,6 @@ from scripts.bootstrap.scaffold import (
     MAINTENANCE_INVENTORY_PATH,
     SEED_ONCE_PATHS,
     SOURCE_OWNERSHIP_SCHEMA_VERSION,
-    SOURCE_OWNERSHIP_PATH,
     CleanupEntryObservation,
     classify_cleanup,
     decode_cleanup_inventory,
@@ -292,17 +291,13 @@ class SourceOwnershipTests(unittest.TestCase):
 class CleanupClassificationTests(unittest.TestCase):
     def test_absent_inventory_is_no_cleanup(self) -> None:
         self.assertIsInstance(
-            classify_cleanup(
-                inventory=None, observed={}, declared_cleanup_paths=()
-            ),
+            classify_cleanup(inventory=None, observed={}, declared_cleanup_paths=()),
             NoSnapshotCleanup,
         )
 
     def test_invalid_inventory_is_a_mismatch(self) -> None:
         self.assertIsInstance(
-            classify_cleanup(
-                inventory=b"{", observed={}, declared_cleanup_paths=()
-            ),
+            classify_cleanup(inventory=b"{", observed={}, declared_cleanup_paths=()),
             CleanupContractMismatch,
         )
 

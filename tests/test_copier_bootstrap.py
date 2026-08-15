@@ -10,7 +10,6 @@ all-scaffold bundles through the generated project's own CLI entry point.
 from __future__ import annotations
 
 import shutil
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -19,9 +18,10 @@ VERSION = "9.17.0"
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from test_github_template_readiness import (  # noqa: E402
+from tests.test_github_template_readiness import (  # noqa: E402
     CLEANUP_PATHS,
     SCAFFOLD_CONTRIBUTING,
+    SCAFFOLD_SECURITY,
     _scaffold_hook,
     _write_bundle,
     run,
@@ -57,7 +57,9 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    with tempfile.TemporaryDirectory(prefix="agentic-template-copier-bootstrap.") as raw:
+    with tempfile.TemporaryDirectory(
+        prefix="agentic-template-copier-bootstrap."
+    ) as raw:
         workspace = Path(raw)
         source, project = workspace / "source", workspace / "project"
         _ = shutil.copytree(
@@ -67,13 +69,16 @@ def main() -> int:
         )
         record = workspace / "hook-runs"
         _ = record.write_text("", encoding="utf-8")
-        # Overlay the seed-once scaffold the source does not ship yet.
+        # Overlay the seed-once scaffold the source does not ship yet: the
+        # extensionless hook and CONTRIBUTING.md are absent from the source,
+        # and its real SECURITY.md is not marker-bearing placeholder content.
         hook = source / "scripts/validate-project"
         _ = hook.write_text(_scaffold_hook(record), encoding="utf-8")
         hook.chmod(0o755)
         _ = (source / "CONTRIBUTING.md").write_text(
             SCAFFOLD_CONTRIBUTING, encoding="utf-8"
         )
+        _ = (source / "SECURITY.md").write_text(SCAFFOLD_SECURITY, encoding="utf-8")
         git = ["git", "-C", str(source)]
         for args in (
             ("init", "--initial-branch=main"),
@@ -105,11 +110,18 @@ def main() -> int:
         # template-maintenance artifact set.
         for relative in RETAINED_COPIER_PATHS:
             if not (project / relative).is_file():
-                print(f"Copier output missing retained path: {relative}", file=sys.stderr)
+                print(
+                    f"Copier output missing retained path: {relative}", file=sys.stderr
+                )
                 return 1
-        for relative in (*CLEANUP_PATHS, ".agentic-template/maintenance-artifacts.json"):
+        for relative in (
+            *CLEANUP_PATHS,
+            ".agentic-template/maintenance-artifacts.json",
+        ):
             if (project / relative).exists():
-                print(f"Copier output leaked maintainer path: {relative}", file=sys.stderr)
+                print(
+                    f"Copier output leaked maintainer path: {relative}", file=sys.stderr
+                )
                 return 1
         for args in (
             ("init", "--initial-branch=main"),
@@ -118,7 +130,7 @@ def main() -> int:
             ("add", "."),
             ("commit", "-m", "generated project"),
         ):
-            _ = run(["git", "-C", str(project)] + list(args))
+            _ = run(["git", "-C", str(project), *list(args)])
         bundle = _write_bundle(workspace, supplied=True, record=record)
         applied = run(
             [
@@ -162,7 +174,7 @@ def main() -> int:
             ("add", "."),
             ("commit", "-m", "generated project"),
         ):
-            _ = run(["git", "-C", str(second)] + list(args))
+            _ = run(["git", "-C", str(second), *list(args)])
         scaffold_bundle = _write_bundle(
             workspace, supplied=False, record=record, name="bundle-scaffold"
         )

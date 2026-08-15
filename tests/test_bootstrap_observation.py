@@ -592,14 +592,18 @@ def _inventory_bytes(
     entries = [
         {
             "path": path.value,
-            "kind": (kinds or {}).get(path.value, ("directory", sha256_hex(b"tree")))[0],
-            "sha256": (kinds or {}).get(path.value, ("directory", sha256_hex(b"tree")))[1],
+            "kind": (kinds or {}).get(path.value, ("directory", sha256_hex(b"tree")))[
+                0
+            ],
+            "sha256": (kinds or {}).get(path.value, ("directory", sha256_hex(b"tree")))[
+                1
+            ],
         }
         for path in paths
     ]
-    return json.dumps(
-        {"schema_version": 1, "entries": entries}, sort_keys=True
-    ).encode("utf-8")
+    return json.dumps({"schema_version": 1, "entries": entries}, sort_keys=True).encode(
+        "utf-8"
+    )
 
 
 def _ownership_bytes(paths: tuple[RepoPath, ...]) -> bytes:

@@ -115,11 +115,14 @@ wiring.
 
 ## Releases
 
-After Python source, delivery-contract, project-validation, and workflow-lint checks succeed, the template runs
+After the project-validation and delivery-contract checks succeed, the template runs
 semantic-release for pushes to `main` and manual CI dispatches from `main`. Releases are serialized,
 and Conventional Commit messages determine the next version, release notes, Git tag, and GitHub
 Release. Generated projects own their product-specific commands through `scripts/validate_project.py`;
-every release-critical validation job must be added to the `release` job's `needs`.
+every release-critical validation job must be added to the `release` job's `needs`. Maintainer-only
+source checks (locked uv sync, Python source checks, and actionlint) run in the separate
+source-maintainer workflow that Copier excludes and GitHub snapshots clean up, so generated projects
+do not require the template's source toolchain.
 
 ## Scope
 

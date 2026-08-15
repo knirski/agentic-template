@@ -175,7 +175,7 @@ def decode_source_ownership(
 
     try:
         value = decode_json(data)
-    except (ValueError, RecursionError):
+    except ValueError, RecursionError:
         return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
     if not isinstance(value, dict) or set(value) != {
         "schema_version",

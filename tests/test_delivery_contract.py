@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / ".github/workflows/ci.yml"
+MAINTAINER_WORKFLOW = ROOT / ".github/workflows/template-ci.yml"
 RELEASE = ROOT / ".github/workflows/semantic-release.yml"
 
 
@@ -18,9 +19,10 @@ def fail(message: str) -> None:
 
 def main() -> int:
     workflow = WORKFLOW.read_text(encoding="utf-8")
+    maintainer = MAINTAINER_WORKFLOW.read_text(encoding="utf-8")
     release = RELEASE.read_text(encoding="utf-8")
     project_job = workflow.split("  project-validation:\n", 1)[-1].split(
-        "\n  workflow-lint:\n", 1
+        "\n  delivery-contract:\n", 1
     )[0]
     release_job = workflow.split("\n  release:\n", 1)[-1]
     if "name: Project validation" not in workflow:
@@ -32,11 +34,6 @@ def main() -> int:
         fail(
             "generated mode must invoke uv run --no-project --python 3.14 scripts/validate_repository.py"
         )
-    if (
-        "uv run --no-project --python 3.14 tests/test_project_readiness.py"
-        not in project_job
-    ):
-        fail("source mode must run readiness fixtures")
     if "AGENTIC_TEMPLATE_SOURCE_REPOSITORY: knirski/agentic-template" not in workflow:
         fail("source identity constant is missing")
     if (
@@ -69,13 +66,14 @@ def main() -> int:
     ):
         # The reusable release workflow is gated by the caller's release needs.
         fail("release graph must depend on project-validation")
-    if (
-        "needs: [python-source, delivery-contract, project-validation, workflow-lint]"
-        not in workflow
-    ):
-        fail("release job must require project-validation")
+    if "needs: [project-validation, delivery-contract]" not in workflow:
+        fail("release job must require project-validation and delivery-contract")
     if re.search(r"if:.*always\(\)", release_job):
         fail("release job must not bypass failed dependencies")
+    if "test_project_readiness.py" not in maintainer or (
+        "test_repository_validation.py" not in maintainer
+    ):
+        fail("source-mode readiness fixtures must run in the maintainer workflow")
     print("delivery contract: ok")
     return 0
 

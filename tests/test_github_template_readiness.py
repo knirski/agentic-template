@@ -61,6 +61,9 @@ SUPPLIED_CONTRIBUTING = "# Contributing\n\nWelcome.\n"
 SCAFFOLD_CONTRIBUTING = (
     "# Contributing\n\n<!-- agentic-template:placeholder:contributing -->\n"
 )
+SCAFFOLD_SECURITY = (
+    "# Security Policy\n\n<!-- agentic-template:placeholder:security -->\n"
+)
 SCAFFOLD_HOOK_TEMPLATE = (
     "#!/bin/sh\n"
     "# agentic-template:unconfigured:validate-project\n"
@@ -106,8 +109,7 @@ def run(
 def _tracked_files() -> list[str]:
     return [
         entry
-        for entry in run(["git", "-C", str(ROOT), "ls-files", "-z"])
-        .stdout.split("\0")
+        for entry in run(["git", "-C", str(ROOT), "ls-files", "-z"]).stdout.split("\0")
         if entry
     ]
 
@@ -275,10 +277,22 @@ class GitHubBootstrapTests(unittest.TestCase):
         _ = (project / "CONTRIBUTING.md").write_text(
             SCAFFOLD_CONTRIBUTING, encoding="utf-8"
         )
+        # The scaffold slot contract requires marker-bearing placeholder
+        # content; the source's real SECURITY.md is not a placeholder.
+        _ = (project / "SECURITY.md").write_text(SCAFFOLD_SECURITY, encoding="utf-8")
         for args in (
             ("init", "-q", "-b", "main"),
             ("add", "-A"),
-            ("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "scaffold"),
+            (
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-q",
+                "-m",
+                "scaffold",
+            ),
         ):
             result = run(["git", "-C", str(project), *args])
             if result.returncode:
@@ -309,9 +323,7 @@ class GitHubBootstrapTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(len(record.read_text(encoding="utf-8").splitlines()), 1)
         self.assertTrue((project / ".agentic-template/project.json").is_file())
-        self.assertEqual(
-            (project / "docs/prd.md").read_text(encoding="utf-8"), PRD
-        )
+        self.assertEqual((project / "docs/prd.md").read_text(encoding="utf-8"), PRD)
         self.assertEqual((project / "README.md").read_text(encoding="utf-8"), README)
         for relative in CLEANUP_PATHS:
             with self.subTest(path=relative):
@@ -484,9 +496,7 @@ def expected_cleanup_inventory() -> dict[str, object]:
     for raw in CLEANUP_PATHS:
         path = ROOT / raw
         if path.is_file():
-            entries.append(
-                {"path": raw, "kind": "file", "sha256": _sha256_file(path)}
-            )
+            entries.append({"path": raw, "kind": "file", "sha256": _sha256_file(path)})
             continue
         prefix = raw + "/"
         children = [entry for entry in tracked if entry.startswith(prefix)]

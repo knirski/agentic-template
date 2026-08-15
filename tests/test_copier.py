@@ -124,7 +124,6 @@ def main() -> int:
             _ = handle.write("\nLocal project customization.\n")
         with project_hook.open("a", encoding="utf-8") as handle:
             _ = handle.write("\n# local hook customization\n")
-        expected_hook_text = project_hook.read_text(encoding="utf-8")
         _ = run(
             [
                 *project_git,
@@ -148,7 +147,8 @@ def main() -> int:
             print(result.stdout + result.stderr, file=sys.stderr)
             return 1
         if (
-            hook_text != expected_hook_text
+            # The hook is generated-lifecycle source: Copier owns its updates.
+            "# template hook update" not in hook_text
             or "Copier smoke-test marker."
             not in (project / "NOTICE.md").read_text(encoding="utf-8")
             or "Local project customization."
