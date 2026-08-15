@@ -9,6 +9,7 @@ checks, and state-root durability and evidence preservation.
 from __future__ import annotations
 
 import dataclasses
+import errno
 import hashlib
 import json
 import os
@@ -20,6 +21,7 @@ import tempfile
 import time
 import unittest
 from typing import Literal, TextIO, cast
+from unittest.mock import patch
 
 from hypothesis import given
 from hypothesis import strategies as st
@@ -45,6 +47,7 @@ from scripts.bootstrap.fs_effects import (
     fsync_file,
     list_directory_entries,
     map_observation_error,
+    mkdir_parents_0755,
     open_regular_no_follow,
     read_file_bounded,
     walk_no_follow,
@@ -157,6 +160,36 @@ class FsEffectsTests(unittest.TestCase):
         # ObservationError kind.
         mapped = map_observation_error(OSError("no errno attached"), "subject")
         self.assertIsInstance(mapped, InternalFailure)
+
+    def test_mkdir_parents_creates_prefixes_and_returns_leaf_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = _ok(mkdir_parents_0755(os.fsencode(tmp), (b"a", b"b", b"leaf")))
+            self.assertEqual(os.fsdecode(parent), os.path.join(tmp, "a", "b"))
+            self.assertTrue(os.path.isdir(os.path.join(tmp, "a", "b")))
+            self.assertEqual(
+                stat.S_IMODE(os.stat(os.path.join(tmp, "a", "b")).st_mode), 0o755
+            )
+            self.assertFalse(os.path.exists(os.path.join(tmp, "a", "b", "leaf")))
+
+    def test_mkdir_parents_tolerates_existing_prefixes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "a"))
+            parent = _ok(mkdir_parents_0755(os.fsencode(tmp), (b"a", b"b", b"leaf")))
+            self.assertEqual(os.fsdecode(parent), os.path.join(tmp, "a", "b"))
+
+    def test_mkdir_parents_rejects_oversized_components(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            error = _err(mkdir_parents_0755(os.fsencode(tmp), (b"x" * 300, b"leaf")))
+            self.assertEqual(error.primitive, TransactionPrimitive.CREATE_DIRECTORY)
+
+    def test_mkdir_parents_maps_chmod_failure_to_create_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch(
+                "scripts.bootstrap.fs_effects.os.chmod",
+                side_effect=OSError(errno.EPERM, "permission denied"),
+            ):
+                error = _err(mkdir_parents_0755(os.fsencode(tmp), (b"a", b"leaf")))
+            self.assertEqual(error.primitive, TransactionPrimitive.CREATE_DIRECTORY)
 
     def test_stat_error_without_errno_is_internal_failure(self) -> None:
         # Same guarantee for the git-state stat path: an errno-less OSError

@@ -9,23 +9,29 @@ post-lock revalidation.
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import cast, override
+from unittest.mock import patch
 
 from scripts.bootstrap.canonical_json import canonical_json
 from scripts.bootstrap.cli import (
     ParsedCommand,
+    _init_failure,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     execute_command,
     main,
     parse_argv,
 )
+from scripts.bootstrap.diagnostics import RecoveryFailure
+from scripts.bootstrap.errors import ErrnoClass, TransactionError, TransactionPrimitive
 from scripts.bootstrap.identity import PosixMode, TargetIdentity
 from scripts.bootstrap.journal import (
     JournalEnvelope,
@@ -444,6 +450,106 @@ class CliFamilyTests(unittest.TestCase):
             ]
         )
         self.assertEqual(_exit_code(occupied), 1)
+
+    def test_init_materializes_file_content(self) -> None:
+        parent = Path(self.tmp.name) / "second"
+        parent.mkdir()
+        bundle = BundleDir(parent, all_scaffold=False)
+        output = Path(self.tmp.name) / "out-content"
+        result = self.run_cli(
+            [
+                "init",
+                "--from",
+                str(bundle.root / "bootstrap.json"),
+                "--output",
+                str(output),
+            ]
+        )
+        self.assertEqual(_exit_code(result), 0)
+        expected = {
+            "README.md": SUPPLIED_README,
+            "docs/prd.md": SUPPLIED_PRD,
+            "SECURITY.md": SUPPLIED_SECURITY,
+            "CONTRIBUTING.md": SUPPLIED_CONTRIBUTING,
+            "scripts/validate-project": SUPPLIED_HOOK,
+        }
+        for relative, content in expected.items():
+            target = output / relative
+            self.assertTrue(target.is_file(), relative)
+            self.assertEqual(target.read_text(encoding="utf-8"), content)
+        self.assertEqual(stat.S_IMODE((output / "docs").stat().st_mode), 0o755)
+
+    def test_init_failure_maps_oserror_to_closed_outcome(self) -> None:
+        result = _init_failure(
+            TransactionPrimitive.REMOVE_DIRECTORY,
+            OSError(errno.ENOENT, "not a directory"),
+            "subject",
+        )
+        self.assertEqual(result.command, "init")
+        self.assertIsInstance(result.outcome, RecoveryFailure)
+        self.assertEqual(_exit_code(result), 2)
+
+    def test_init_maps_mkdir_failure_to_closed_outcome(self) -> None:
+        parent = Path(self.tmp.name) / "third"
+        parent.mkdir()
+        bundle = BundleDir(parent, all_scaffold=False)
+        output = Path(self.tmp.name) / "out-mkdir"
+        error = TransactionError.primitive_failed(
+            TransactionPrimitive.CREATE_DIRECTORY, ErrnoClass.NO_SPACE, "stage"
+        )
+        with patch(
+            "scripts.bootstrap.cli.mkdir_parents_0755",
+            return_value=Err(error),
+        ):
+            result = self.run_cli(
+                [
+                    "init",
+                    "--from",
+                    str(bundle.root / "bootstrap.json"),
+                    "--output",
+                    str(output),
+                ]
+            )
+        self.assertEqual(_exit_code(result), 2)
+
+    def test_init_maps_rmdir_failure_to_closed_outcome(self) -> None:
+        parent = Path(self.tmp.name) / "fourth"
+        parent.mkdir()
+        bundle = BundleDir(parent, all_scaffold=False)
+        output = Path(self.tmp.name) / "out-rmdir"
+        target = Path(self.tmp.name) / "out-rmdir-target"
+        target.mkdir()
+        output.symlink_to(target, target_is_directory=True)
+        result = self.run_cli(
+            [
+                "init",
+                "--from",
+                str(bundle.root / "bootstrap.json"),
+                "--output",
+                str(output),
+            ]
+        )
+        self.assertEqual(_exit_code(result), 2)
+
+    def test_init_maps_rename_failure_to_closed_outcome(self) -> None:
+        parent = Path(self.tmp.name) / "fifth"
+        parent.mkdir()
+        bundle = BundleDir(parent, all_scaffold=False)
+        output = Path(self.tmp.name) / "out-rename"
+        with patch(
+            "scripts.bootstrap.cli.os.rename",
+            side_effect=OSError(errno.EXDEV, "cross-device link"),
+        ):
+            result = self.run_cli(
+                [
+                    "init",
+                    "--from",
+                    str(bundle.root / "bootstrap.json"),
+                    "--output",
+                    str(output),
+                ]
+            )
+        self.assertEqual(_exit_code(result), 2)
 
     def test_init_rejects_reserved_markers(self) -> None:
         parent = Path(self.tmp.name)
