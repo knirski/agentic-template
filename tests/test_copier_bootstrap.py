@@ -18,13 +18,13 @@ VERSION = "9.17.0"
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tests.test_github_template_readiness import (  # noqa: E402
+from tests.fixtures import (  # noqa: E402
     CLEANUP_PATHS,
     SCAFFOLD_CONTRIBUTING,
     SCAFFOLD_SECURITY,
-    _scaffold_hook,
-    _write_bundle,
     run,
+    scaffold_hook,
+    write_bundle,
 )
 
 RETAINED_COPIER_PATHS = (
@@ -40,13 +40,13 @@ RETAINED_COPIER_PATHS = (
 
 
 def copier_command() -> list[str] | None:
+    """The pinned Copier command, preferring a matching system install."""
     copier = shutil.which("copier")
-    command = [copier] if copier else ["uvx", "--from", f"copier=={VERSION}", "copier"]
-    if copier and run([*command, "--version"]).stdout.strip() != f"copier {VERSION}":
-        return None
-    if not copier and not shutil.which("uvx"):
-        return None
-    return command
+    if copier and run([copier, "--version"]).stdout.strip() == f"copier {VERSION}":
+        return [copier]
+    if shutil.which("uvx"):
+        return ["uvx", "--from", f"copier=={VERSION}", "copier"]
+    return None
 
 
 def main() -> int:
@@ -65,7 +65,18 @@ def main() -> int:
         _ = shutil.copytree(
             ROOT,
             source,
-            ignore=shutil.ignore_patterns(".git", "__pycache__", ".direnv", "result"),
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".direnv",
+                "__pycache__",
+                "result",
+                ".venv",
+                ".hypothesis",
+                ".pytest_cache",
+                ".ruff_cache",
+                ".mypy_cache",
+                ".coverage",
+            ),
         )
         record = workspace / "hook-runs"
         _ = record.write_text("", encoding="utf-8")
@@ -73,7 +84,7 @@ def main() -> int:
         # extensionless hook and CONTRIBUTING.md are absent from the source,
         # and its real SECURITY.md is not marker-bearing placeholder content.
         hook = source / "scripts/validate-project"
-        _ = hook.write_text(_scaffold_hook(record), encoding="utf-8")
+        _ = hook.write_text(scaffold_hook(record), encoding="utf-8")
         hook.chmod(0o755)
         _ = (source / "CONTRIBUTING.md").write_text(
             SCAFFOLD_CONTRIBUTING, encoding="utf-8"
@@ -131,7 +142,7 @@ def main() -> int:
             ("commit", "-m", "generated project"),
         ):
             _ = run(["git", "-C", str(project), *list(args)])
-        bundle = _write_bundle(workspace, supplied=True, record=record)
+        bundle = write_bundle(workspace, supplied=True, record=record)
         applied = run(
             [
                 sys.executable,
@@ -175,7 +186,7 @@ def main() -> int:
             ("commit", "-m", "generated project"),
         ):
             _ = run(["git", "-C", str(second), *list(args)])
-        scaffold_bundle = _write_bundle(
+        scaffold_bundle = write_bundle(
             workspace, supplied=False, record=record, name="bundle-scaffold"
         )
         scaffolded = run(
@@ -198,7 +209,7 @@ def main() -> int:
             print("Copier scaffold apply left no manifest", file=sys.stderr)
             return 1
         if len(record.read_text(encoding="utf-8").splitlines()) != 2:
-            print("Copier scaffold apply hook count != 1", file=sys.stderr)
+            print("Copier scaffold apply hook count != 2", file=sys.stderr)
             return 1
     print("copier bootstrap contract: ok")
     return 0

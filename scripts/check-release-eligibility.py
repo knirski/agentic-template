@@ -10,8 +10,12 @@ publishing step can gate on ``steps.release-eligibility.outputs.eligible``.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
+
+_REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_GH_TIMEOUT_SECONDS = 30
 
 
 def main() -> int:
@@ -24,13 +28,30 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
-    result = subprocess.run(
-        ["gh", "api", f"repos/{repository}/git/ref/heads/main", "--jq", ".object.sha"],
-        env={**os.environ, "GH_TOKEN": token},
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    if _REPOSITORY_PATTERN.fullmatch(repository) is None:
+        print(
+            f"GITHUB_REPOSITORY is not an owner/repository pair: {repository!r}",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        result = subprocess.run(
+            [
+                "gh",
+                "api",
+                f"repos/{repository}/git/ref/heads/main",
+                "--jq",
+                ".object.sha",
+            ],
+            env={**os.environ, "GH_TOKEN": token},
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_GH_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        print(f"gh api failed: {error}", file=sys.stderr)
+        return 2
     if result.returncode != 0:
         print(f"gh api failed: {result.stderr.strip()}", file=sys.stderr)
         return 2
@@ -39,8 +60,7 @@ def main() -> int:
         print("Release eligible.")
     else:
         print(
-            "Skipping release because this validated commit is no longer the "
-            "main branch tip."
+            "Skipping release because this validated commit is no longer the main branch tip."
         )
     output = os.environ.get("GITHUB_OUTPUT", "")
     if output:

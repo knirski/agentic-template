@@ -589,18 +589,10 @@ def _inventory_bytes(
     *,
     kinds: dict[str, tuple[str, str]] | None = None,
 ) -> bytes:
-    entries = [
-        {
-            "path": path.value,
-            "kind": (kinds or {}).get(path.value, ("directory", sha256_hex(b"tree")))[
-                0
-            ],
-            "sha256": (kinds or {}).get(path.value, ("directory", sha256_hex(b"tree")))[
-                1
-            ],
-        }
-        for path in paths
-    ]
+    entries: list[dict[str, str]] = []
+    for path in paths:
+        kind, sha256 = (kinds or {}).get(path.value, ("directory", sha256_hex(b"tree")))
+        entries.append({"path": path.value, "kind": kind, "sha256": sha256})
     return json.dumps({"schema_version": 1, "entries": entries}, sort_keys=True).encode(
         "utf-8"
     )
@@ -729,7 +721,9 @@ class ObservationShellContractTests(unittest.TestCase):
             case Ok(_):
                 self.fail("expected CLEANUP_CONTRACT_INVALID")
 
-    def test_retained_cleanup_contract_prefers_the_source_ownership(self) -> None:
+    def test_retained_cleanup_contract_falls_back_to_inventory_when_ownership_is_corrupt(
+        self,
+    ) -> None:
         pass_ = self._pass(
             (
                 CapturedFile(
@@ -746,6 +740,51 @@ class ObservationShellContractTests(unittest.TestCase):
                     contract.cleanup_paths,
                     (MAINTENANCE_INVENTORY_PATH, RepoPath("tests")),
                 )
+            case Err(error):
+                self.fail(f"expected retention, got {error}")
+
+    def test_retained_cleanup_contract_prefers_the_source_ownership(self) -> None:
+        pass_ = self._pass(
+            (
+                CapturedFile(
+                    MAINTENANCE_INVENTORY_PATH,
+                    _inventory_bytes((RepoPath("tests"),)),
+                    PosixMode.FILE,
+                ),
+                CapturedFile(
+                    SOURCE_OWNERSHIP_PATH,
+                    _ownership_bytes((RepoPath("a.txt"),)),
+                    PosixMode.FILE,
+                ),
+            )
+        )
+        match _retained_cleanup_contract(pass_):
+            case Ok(contract):
+                self.assertEqual(
+                    contract.cleanup_paths,
+                    (MAINTENANCE_INVENTORY_PATH, RepoPath("a.txt")),
+                )
+            case Err(error):
+                self.fail(f"expected retention, got {error}")
+
+    def test_retained_cleanup_contract_honors_a_valid_empty_declaration(self) -> None:
+        pass_ = self._pass(
+            (
+                CapturedFile(
+                    MAINTENANCE_INVENTORY_PATH,
+                    _inventory_bytes((RepoPath("tests"),)),
+                    PosixMode.FILE,
+                ),
+                CapturedFile(
+                    SOURCE_OWNERSHIP_PATH,
+                    _ownership_bytes(()),
+                    PosixMode.FILE,
+                ),
+            )
+        )
+        match _retained_cleanup_contract(pass_):
+            case Ok(contract):
+                self.assertEqual(contract.cleanup_paths, (MAINTENANCE_INVENTORY_PATH,))
             case Err(error):
                 self.fail(f"expected retention, got {error}")
 

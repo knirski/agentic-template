@@ -23,11 +23,11 @@ def run(
 
 def main() -> int:
     copier = shutil.which("copier")
-    command = [copier] if copier else ["uvx", "--from", f"copier=={VERSION}", "copier"]
-    if copier and run([*command, "--version"]).stdout.strip() != f"copier {VERSION}":
-        print(f"Copier {VERSION} is required", file=sys.stderr)
-        return 1
-    if not copier and not shutil.which("uvx"):
+    if copier and run([copier, "--version"]).stdout.strip() == f"copier {VERSION}":
+        command = [copier]
+    elif shutil.which("uvx"):
+        command = ["uvx", "--from", f"copier=={VERSION}", "copier"]
+    else:
         print(
             "Copier is required; install it with: uv tool install copier",
             file=sys.stderr,
@@ -39,7 +39,18 @@ def main() -> int:
         _ = shutil.copytree(
             ROOT,
             source,
-            ignore=shutil.ignore_patterns(".git", "__pycache__", ".direnv", "result"),
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".direnv",
+                "__pycache__",
+                "result",
+                ".venv",
+                ".hypothesis",
+                ".pytest_cache",
+                ".ruff_cache",
+                ".mypy_cache",
+                ".coverage",
+            ),
         )
         git = ["git", "-C", str(source)]
         for args in (
@@ -147,7 +158,10 @@ def main() -> int:
             print(result.stdout + result.stderr, file=sys.stderr)
             return 1
         if (
-            # The hook is generated-lifecycle source: Copier owns its updates.
+            # Until T20 ships the extensionless seed-once hook, the .py hook
+            # rides in the Copier copy; updates must still deliver template
+            # hook changes, with Copier's conflict markers preserving local
+            # edits (never a silent skip).
             "# template hook update" not in hook_text
             or "Copier smoke-test marker."
             not in (project / "NOTICE.md").read_text(encoding="utf-8")

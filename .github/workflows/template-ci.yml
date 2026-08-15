@@ -79,3 +79,18 @@ jobs:
           persist-credentials: false
       - name: Run actionlint
         uses: docker://docker.io/rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 # 1.7.7
+
+  release:
+    name: Semantic Release
+    # The source repo releases only after its maintainer check suite passes;
+    # generated projects use the portable gate in ci.yml instead.
+    if: >
+      github.repository == 'knirski/agentic-template' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: [python-source, source-fixtures, workflow-lint]
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    uses: ./.github/workflows/semantic-release.yml

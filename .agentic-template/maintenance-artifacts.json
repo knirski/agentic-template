@@ -13,7 +13,7 @@
     {
       "kind": "file",
       "path": ".github/workflows/template-ci.yml",
-      "sha256": "3705666afc0520da528a30cb72c11ba4244515f2544760458bed58fcce2be8e7"
+      "sha256": "cedd61d16d1f8b67dfa11db9e2434a3253eca2155344cc01886384cc084c980d"
     },
     {
       "kind": "file",
@@ -23,7 +23,7 @@
     {
       "kind": "directory",
       "path": "docs/specs",
-      "sha256": "daf94221c4181e01ecb3cf87e0e0d66ba886447f04aede9cab2754aa594a8e97"
+      "sha256": "856bd91654fc22041faa077a5f5a8e390834113d4311238ffd04af926d82eb7f"
     },
     {
       "kind": "file",
@@ -43,7 +43,7 @@
     {
       "kind": "directory",
       "path": "tests",
-      "sha256": "06d0a93037b60f79ec1a9da10da8c9d6637001e0d217a1d9ea9d207f415a05a6"
+      "sha256": "2b4b2c716374ed30cdbc71a781ac1ac7058c154840788d352d64b68d15fd81e6"
     },
     {
       "kind": "file",

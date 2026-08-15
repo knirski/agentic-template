@@ -50,8 +50,13 @@ jobs:
 
   release:
     name: Semantic Release
+    # The template source releases through the gated maintainer workflow
+    # (template-ci.yml); generated projects keep this portable gate.
+    if: >
+      github.repository != 'knirski/agentic-template' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [project-validation, delivery-contract]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: write
       pull-requests: write

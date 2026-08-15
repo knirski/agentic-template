@@ -16,11 +16,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from scripts.bootstrap.canonical_json import decode_json
+from scripts.bootstrap.canonical_json import StrictJsonValue, decode_json
 from scripts.bootstrap.identity import directory_tree_hash
 from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.manifest import MANIFEST_PATH
-from scripts.bootstrap.paths import RepoPath, parse_path
+from scripts.bootstrap.paths import RepoPath, parse_path, sorted_paths
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.state import (
     CleanupContract,
@@ -120,19 +120,41 @@ def recognize_generation(
     return None
 
 
+def _decode_document(
+    data: bytes,
+    *,
+    document_path: RepoPath,
+    schema_version: int,
+    keys: frozenset[str],
+) -> Result[dict[str, StrictJsonValue], CleanupContractMismatch]:
+    """Decode one strict declaration document: exact keys, exact schema version."""
+
+    try:
+        value = decode_json(data)
+    except ValueError, RecursionError:
+        return Err(CleanupContractMismatch((document_path,)))
+    if not isinstance(value, dict) or set(value) != set(keys):
+        return Err(CleanupContractMismatch((document_path,)))
+    if value.get("schema_version") != schema_version:
+        return Err(CleanupContractMismatch((document_path,)))
+    return Ok(value)
+
+
 def decode_cleanup_inventory(
     data: bytes,
 ) -> Result[CleanupInventory, CleanupContractMismatch]:
     """Strictly decode the maintenance inventory into sorted, disjoint entries."""
 
-    try:
-        value = decode_json(data)
-    except ValueError, RecursionError:
-        return Err(CleanupContractMismatch((MAINTENANCE_INVENTORY_PATH,)))
-    if not isinstance(value, dict) or set(value) != {"schema_version", "entries"}:
-        return Err(CleanupContractMismatch((MAINTENANCE_INVENTORY_PATH,)))
-    if value.get("schema_version") != CLEANUP_SCHEMA_VERSION:
-        return Err(CleanupContractMismatch((MAINTENANCE_INVENTORY_PATH,)))
+    match _decode_document(
+        data,
+        document_path=MAINTENANCE_INVENTORY_PATH,
+        schema_version=CLEANUP_SCHEMA_VERSION,
+        keys=frozenset({"schema_version", "entries"}),
+    ):
+        case Err(mismatch):
+            return Err(mismatch)
+        case Ok(value):
+            pass
     raw_entries = value.get("entries")
     if not isinstance(raw_entries, list):
         return Err(CleanupContractMismatch((MAINTENANCE_INVENTORY_PATH,)))
@@ -173,17 +195,16 @@ def decode_source_ownership(
 ) -> Result[SourceOwnership, CleanupContractMismatch]:
     """Strictly decode the source-ownership declaration into sorted, unique paths."""
 
-    try:
-        value = decode_json(data)
-    except ValueError, RecursionError:
-        return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
-    if not isinstance(value, dict) or set(value) != {
-        "schema_version",
-        "snapshot_cleanup_paths",
-    }:
-        return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
-    if value.get("schema_version") != SOURCE_OWNERSHIP_SCHEMA_VERSION:
-        return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
+    match _decode_document(
+        data,
+        document_path=SOURCE_OWNERSHIP_PATH,
+        schema_version=SOURCE_OWNERSHIP_SCHEMA_VERSION,
+        keys=frozenset({"schema_version", "snapshot_cleanup_paths"}),
+    ):
+        case Err(mismatch):
+            return Err(mismatch)
+        case Ok(value):
+            pass
     raw_paths = value.get("snapshot_cleanup_paths")
     if not isinstance(raw_paths, list):
         return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
@@ -267,15 +288,10 @@ def classify_cleanup(
             return mismatch
         case Ok(decoded):
             pass
-    declared = _sorted_unique(declared_cleanup_paths)
-    inventory_paths = _sorted_unique(tuple(path for path, _, _ in decoded.entries))
+    declared = sorted_paths(declared_cleanup_paths)
+    inventory_paths = sorted_paths(tuple(path for path, _, _ in decoded.entries))
     if declared != inventory_paths:
-        differing = tuple(
-            sorted(
-                (set(declared) ^ set(inventory_paths)),
-                key=lambda path: path.value.encode("utf-8"),
-            )
-        )
+        differing = sorted_paths(set(declared) ^ set(inventory_paths))
         return CleanupContractMismatch(differing)
     mismatched: list[RepoPath] = []
     for path, kind, digest in decoded.entries:
@@ -297,10 +313,6 @@ def classify_cleanup(
         fingerprint=_cleanup_fingerprint(inventory),
     )
     return CleanupContractValid(contract)
-
-
-def _sorted_unique(paths: tuple[RepoPath, ...]) -> tuple[RepoPath, ...]:
-    return tuple(sorted(set(paths), key=lambda path: path.value.encode("utf-8")))
 
 
 def _cleanup_fingerprint(inventory: bytes) -> str:

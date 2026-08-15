@@ -70,10 +70,14 @@ def main() -> int:
         fail("release job must require project-validation and delivery-contract")
     if re.search(r"if:.*always\(\)", release_job):
         fail("release job must not bypass failed dependencies")
+    if "github.repository != 'knirski/agentic-template'" not in release_job:
+        fail("portable release must exclude the template source repository")
     if "test_project_readiness.py" not in maintainer or (
         "test_repository_validation.py" not in maintainer
     ):
         fail("source-mode readiness fixtures must run in the maintainer workflow")
+    if "needs: [python-source, source-fixtures, workflow-lint]" not in maintainer:
+        fail("source release must require the maintainer check suite")
     print("delivery contract: ok")
     return 0
 

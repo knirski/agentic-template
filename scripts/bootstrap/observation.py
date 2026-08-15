@@ -926,9 +926,9 @@ def _retained_cleanup_contract(  # pyright: ignore[reportUnusedFunction] — sha
 
     ``--leave-maintenance-artifacts`` skips every cleanup deletion.  The
     retained set is the fingerprinted source-ownership declaration's
-    snapshot-cleanup paths plus the inventory itself when present; a missing
-    or corrupt declaration falls back to the decoded inventory's declared
-    paths.
+    snapshot-cleanup paths plus the inventory itself; a missing or corrupt
+    declaration falls back to the decoded inventory's declared paths, while a
+    valid declaration is honored verbatim (including an empty path set).
     """
 
     inventory = next(
@@ -942,7 +942,7 @@ def _retained_cleanup_contract(  # pyright: ignore[reportUnusedFunction] — sha
                 "--leave-maintenance-artifacts requires a maintenance inventory",
             )
         )
-    declared: tuple[RepoPath, ...] = ()
+    declared: tuple[RepoPath, ...] | None = None
     ownership = next(
         (entry for entry in pass_.files if entry.path == SOURCE_OWNERSHIP_PATH),
         None,
@@ -953,10 +953,10 @@ def _retained_cleanup_contract(  # pyright: ignore[reportUnusedFunction] — sha
                 declared = decoded.snapshot_cleanup_paths
             case Err(_):
                 pass
-    if not declared:
+    if declared is None:
         match decode_cleanup_inventory(inventory.content):
             case Err(_):
-                pass
+                declared = ()
             case Ok(decoded):
                 declared = tuple(path for path, _kind, _digest in decoded.entries)
     retained = tuple(

@@ -14,75 +14,33 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import override
+from typing import TypedDict, cast, override
 
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-REQUIRED_GENERATED = {
-    "scripts/check_project_readiness.py",
-    "scripts/validate_project.py",
-    "scripts/validate_repository.py",
-    "scripts/validate_template.py",
-}
-PRD = """# Product
-## Problem
-Problem.
-## Goals
-Goals.
-## Non-goals
-No.
-## Users and workflows
-Users.
-## Requirements
-### REQ-001: Works
-Acceptance body.
-## Quality attributes
-Reliable.
-## Release criteria
-Green.
-## Open questions
-None.
-"""
-README = """# Product
-## Setup
-Setup.
-## Validation
-Run `python3 scripts/validate_repository.py`.
-"""
-SUPPLIED_SECURITY = "# Security\n\nReport privately.\n"
-SUPPLIED_CONTRIBUTING = "# Contributing\n\nWelcome.\n"
-SCAFFOLD_CONTRIBUTING = (
-    "# Contributing\n\n<!-- agentic-template:placeholder:contributing -->\n"
-)
-SCAFFOLD_SECURITY = (
-    "# Security Policy\n\n<!-- agentic-template:placeholder:security -->\n"
-)
-SCAFFOLD_HOOK_TEMPLATE = (
-    "#!/bin/sh\n"
-    "# agentic-template:unconfigured:validate-project\n"
-    "echo run >> {record}\n"
-    "exit 0\n"
+sys.path.insert(0, str(ROOT))
+
+from tests.fixtures import (  # noqa: E402
+    CLEANUP_PATHS,
+    PRD,
+    README,
+    SCAFFOLD_CONTRIBUTING,
+    SCAFFOLD_SECURITY,
+    copy_tracked,
+    run,
+    scaffold_hook,
+    tracked_files,
+    write_bundle,
 )
 
-CLEANUP_PATHS = (
-    ".github/workflows/copier-smoke.yml",
-    ".github/workflows/mutation.yml",
-    ".github/workflows/template-ci.yml",
-    ".python-version",
-    "docs/specs",
-    "flake.lock",
-    "flake.nix",
-    "pyproject.toml",
-    "tests",
-    "uv.lock",
-)
 RETAINED_PATHS = (
     ".agentic-template/source-ownership.json",
     "AGENTS.md",
@@ -97,88 +55,10 @@ MAINTENANCE_INVENTORY = ROOT / ".agentic-template/maintenance-artifacts.json"
 ADR_0001 = ROOT / "docs/adr/0001-use-copier-for-template-updates.md"
 WORKFLOWS = ROOT / ".github/workflows"
 
-
-def run(
-    command: list[str], cwd: Path | None = None, env: dict[str, str] | None = None
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        command, cwd=cwd, env=env, text=True, capture_output=True, check=False
-    )
-
-
-def _tracked_files() -> list[str]:
-    return [
-        entry
-        for entry in run(["git", "-C", str(ROOT), "ls-files", "-z"]).stdout.split("\0")
-        if entry
-    ]
-
-
-def _copy_tracked(root: Path) -> None:
-    root.mkdir()
-    for relative in sorted(_tracked_files()):
-        source = ROOT / relative
-        if not source.is_file():
-            continue
-        target = root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        _ = shutil.copy2(source, target)
-
-
-def _scaffold_hook(record: Path) -> str:
-    return SCAFFOLD_HOOK_TEMPLATE.format(record=record)
-
-
-def _write_bundle(
-    parent: Path,
-    *,
-    supplied: bool,
-    record: Path,
-    name: str = "bundle",
-) -> Path:
-    """Write a bootstrap answer bundle: supplied content or scaffold modes."""
-    bundle = parent / name
-    bundle.mkdir()
-    content_paths = {
-        "prd": "content/prd.md",
-        "readme": "content/readme.md",
-        "validation_hook": "content/validate-project",
-        "security_policy": "content/security.md",
-        "contributing": "content/contributing.md",
-    }
-    if supplied:
-        content_dir = bundle / "content"
-        content_dir.mkdir()
-        _ = (content_dir / "prd.md").write_text(PRD, encoding="utf-8")
-        _ = (content_dir / "readme.md").write_text(README, encoding="utf-8")
-        _ = (content_dir / "security.md").write_text(
-            SUPPLIED_SECURITY, encoding="utf-8"
-        )
-        _ = (content_dir / "contributing.md").write_text(
-            SUPPLIED_CONTRIBUTING, encoding="utf-8"
-        )
-        hook = content_dir / "validate-project"
-        _ = hook.write_text(
-            "#!/bin/sh\necho run >> " + str(record) + "\nexit 0\n", encoding="utf-8"
-        )
-        hook.chmod(0o755)
-    content: dict[str, object] = {}
-    for slot, relative in content_paths.items():
-        content[slot] = (
-            {"mode": "scaffold"} if not supplied else {"mode": "file", "path": relative}
-        )
-    document = {
-        "schema_version": 1,
-        "project": {"name": "example", "default_branch": "main"},
-        "profile": {"id": "portable"},
-        "content": content,
-        "licensing": {"mode": "retain-apache-2.0"},
-        "capability_settings": {},
-    }
-    _ = (bundle / "bootstrap.json").write_text(
-        json.dumps(document, sort_keys=True), encoding="utf-8"
-    )
-    return bundle
+# check-release-eligibility.py contract: the fake ``gh api`` reports these
+# well-formed but fictitious main-branch and stale-commit SHAs.
+MAIN_BRANCH_SHA = "ab" * 20
+STALE_COMMIT_SHA = "cd" * 20
 
 
 class GitHubSnapshot(unittest.TestCase):
@@ -190,7 +70,7 @@ class GitHubSnapshot(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.project = Path(self.tmp.name) / "project"
         if shutil.which("git"):
-            _copy_tracked(self.project)
+            copy_tracked(ROOT, self.project)
         else:
             _ = shutil.copytree(
                 ROOT,
@@ -268,11 +148,11 @@ class GitHubBootstrapTests(unittest.TestCase):
         """Copy the tracked source, overlay the seed-once scaffold, git-init."""
         parent = Path(self.tmp.name)
         project = parent / name
-        _copy_tracked(project)
+        copy_tracked(ROOT, project)
         record = parent / f"{name}-hook-runs"
         _ = record.write_text("", encoding="utf-8")
         hook = project / "scripts/validate-project"
-        _ = hook.write_text(_scaffold_hook(record), encoding="utf-8")
+        _ = hook.write_text(scaffold_hook(record), encoding="utf-8")
         hook.chmod(0o755)
         _ = (project / "CONTRIBUTING.md").write_text(
             SCAFFOLD_CONTRIBUTING, encoding="utf-8"
@@ -318,7 +198,7 @@ class GitHubBootstrapTests(unittest.TestCase):
 
     def test_supplied_apply_installs_and_cleans_the_snapshot(self) -> None:
         project, record = self._snapshot("supplied")
-        bundle = _write_bundle(Path(self.tmp.name), supplied=True, record=record)
+        bundle = write_bundle(Path(self.tmp.name), supplied=True, record=record)
         exit_code = self._apply(project, bundle)
         self.assertEqual(exit_code, 0)
         self.assertEqual(len(record.read_text(encoding="utf-8").splitlines()), 1)
@@ -340,7 +220,7 @@ class GitHubBootstrapTests(unittest.TestCase):
 
     def test_all_scaffold_apply_installs_exits_one_and_cleans(self) -> None:
         project, record = self._snapshot("scaffold")
-        bundle = _write_bundle(Path(self.tmp.name), supplied=False, record=record)
+        bundle = write_bundle(Path(self.tmp.name), supplied=False, record=record)
         # Scaffold slots remain unready: the install completes and the hook
         # runs once, but the command reports not-ready at exit 1.
         self.assertEqual(self._apply(project, bundle), 1)
@@ -352,7 +232,7 @@ class GitHubBootstrapTests(unittest.TestCase):
 
     def test_cleanup_mismatch_refuses_then_leave_retains(self) -> None:
         project, record = self._snapshot("mismatch")
-        bundle = _write_bundle(Path(self.tmp.name), supplied=False, record=record)
+        bundle = write_bundle(Path(self.tmp.name), supplied=False, record=record)
         damaged = project / "pyproject.toml"
         with damaged.open("a", encoding="utf-8") as handle:
             _ = handle.write("\n# local drift\n")
@@ -386,8 +266,8 @@ class GitHubBootstrapTests(unittest.TestCase):
     def test_apply_refuses_without_a_git_working_tree(self) -> None:
         parent = Path(self.tmp.name)
         project = parent / "plain"
-        _copy_tracked(project)
-        bundle = _write_bundle(parent, supplied=True, record=parent / "plain-runs")
+        copy_tracked(ROOT, project)
+        bundle = write_bundle(parent, supplied=True, record=parent / "plain-runs")
         result = run(
             [
                 sys.executable,
@@ -403,6 +283,38 @@ class GitHubBootstrapTests(unittest.TestCase):
         self.assertFalse((project / ".agentic-template/project.json").exists())
 
 
+class _InventoryEntry(TypedDict):
+    path: str
+    kind: str
+    sha256: str
+
+
+class _InventoryDocument(TypedDict):
+    schema_version: int
+    entries: list[_InventoryEntry]
+
+
+class _OwnershipDocument(TypedDict):
+    snapshot_cleanup_paths: list[str]
+
+
+# A shell-script reference inside a run command: ``.sh`` followed by a
+# separator or end of line.  ``${{ github.sha }}`` and similar expressions
+# contain ``.sh`` textually but never a script filename.
+_SHELL_SCRIPT_REFERENCE = re.compile(r"\.sh(?=[\s\"'#;]|$)")
+
+
+def _yaml_mapping(path: Path) -> object:
+    """Load a YAML document; callers cast the shape they expect."""
+    with path.open(encoding="utf-8") as handle:
+        return cast(object, yaml.safe_load(handle))
+
+
+def _json_mapping(path: Path) -> object:
+    """Load a JSON document; callers cast the shape they expect."""
+    return cast(object, json.loads(path.read_text(encoding="utf-8")))
+
+
 class SourceContractTests(unittest.TestCase):
     """T13 source declarations: ownership split, exclusions, and inventory."""
 
@@ -412,10 +324,9 @@ class SourceContractTests(unittest.TestCase):
         self.assertIn("bootstrap owns derived-output reconciliation", text)
 
     def test_copier_excludes_match_the_cleanup_inventory(self) -> None:
-        with open(ROOT / "copier.yml", encoding="utf-8") as handle:
-            config = yaml.safe_load(handle)
-        excludes = sorted(config["_exclude"])
-        inventory = json.loads(MAINTENANCE_INVENTORY.read_text(encoding="utf-8"))
+        config = cast(dict[str, object], _yaml_mapping(ROOT / "copier.yml"))
+        excludes = sorted(cast(list[str], config["_exclude"]))
+        inventory = cast(_InventoryDocument, _json_mapping(MAINTENANCE_INVENTORY))
         expected = sorted(
             [entry["path"] for entry in inventory["entries"]]
             + [".agentic-template/maintenance-artifacts.json"]
@@ -423,8 +334,8 @@ class SourceContractTests(unittest.TestCase):
         self.assertEqual(excludes, expected)
 
     def test_source_ownership_matches_the_cleanup_inventory(self) -> None:
-        ownership = json.loads(SOURCE_OWNERSHIP.read_text(encoding="utf-8"))
-        inventory = json.loads(MAINTENANCE_INVENTORY.read_text(encoding="utf-8"))
+        ownership = cast(_OwnershipDocument, _json_mapping(SOURCE_OWNERSHIP))
+        inventory = cast(_InventoryDocument, _json_mapping(MAINTENANCE_INVENTORY))
         self.assertEqual(
             ownership["snapshot_cleanup_paths"],
             sorted(entry["path"] for entry in inventory["entries"]),
@@ -432,7 +343,7 @@ class SourceContractTests(unittest.TestCase):
 
     def test_cleanup_inventory_matches_the_tracked_source(self) -> None:
         expected = expected_cleanup_inventory()
-        committed = json.loads(MAINTENANCE_INVENTORY.read_text(encoding="utf-8"))
+        committed = cast(_InventoryDocument, _json_mapping(MAINTENANCE_INVENTORY))
         self.assertEqual(
             committed,
             expected,
@@ -446,16 +357,24 @@ class SourceContractTests(unittest.TestCase):
             with self.subTest(workflow=workflow.name):
                 self.assertNotIn("shell: bash", text)
                 self.assertNotIn("shellcheck", text)
+                in_run_block = False
                 for line in text.splitlines():
                     if line.startswith("run:"):
-                        self.assertNotIn(".sh", line, line)
+                        in_run_block = True
+                    elif not (in_run_block and line.startswith(" ")):
+                        in_run_block = False
+                    if in_run_block:
+                        # Textual scan, never YAML parsing: run commands and
+                        # their multiline continuations carry no .sh scripts.
+                        self.assertNotRegex(line, _SHELL_SCRIPT_REFERENCE, line)
 
     def test_release_eligibility_script_contract(self) -> None:
         with tempfile.TemporaryDirectory(prefix="agentic-template-eligibility.") as raw:
             parent = Path(raw)
             fake_gh = parent / "gh"
             _ = fake_gh.write_text(
-                "#!/usr/bin/env python3\nprint('ab' * 20)\n", encoding="utf-8"
+                f"#!/usr/bin/env python3\nprint('{MAIN_BRANCH_SHA}')\n",
+                encoding="utf-8",
             )
             fake_gh.chmod(0o755)
             output = parent / "output.txt"
@@ -465,14 +384,14 @@ class SourceContractTests(unittest.TestCase):
                 "PATH": str(parent) + os.pathsep + os.environ.get("PATH", ""),
                 "GH_TOKEN": "token",
                 "GITHUB_REPOSITORY": "owner/repo",
-                "GITHUB_SHA": "ab" * 20,
+                "GITHUB_SHA": MAIN_BRANCH_SHA,
                 "GITHUB_OUTPUT": str(output),
             }
             script = str(ROOT / "scripts/check-release-eligibility.py")
             eligible = run([sys.executable, script], env=env)
             self.assertEqual(eligible.returncode, 0, eligible.stderr)
             self.assertIn("eligible=true", output.read_text(encoding="utf-8"))
-            env["GITHUB_SHA"] = "cd" * 20
+            env["GITHUB_SHA"] = STALE_COMMIT_SHA
             stale = run([sys.executable, script], env=env)
             self.assertEqual(stale.returncode, 0, stale.stderr)
             self.assertIn("eligible=false", output.read_text(encoding="utf-8"))
@@ -491,7 +410,7 @@ def expected_cleanup_inventory() -> dict[str, object]:
     from scripts.bootstrap.paths import RepoPath
     from scripts.bootstrap.scaffold import cleanup_directory_digest
 
-    tracked = _tracked_files()
+    tracked = tracked_files(ROOT)
     entries: list[dict[str, str]] = []
     for raw in CLEANUP_PATHS:
         path = ROOT / raw
