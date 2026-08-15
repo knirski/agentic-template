@@ -79,8 +79,8 @@ def _parse(argv: list[str]) -> ParsedCommand:
 
 
 def _exit_code(result: CommandResult) -> int:
-    from scripts.bootstrap.presentation import (  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
-        _family_exit_code,
+    from scripts.bootstrap.presentation import (
+        _family_exit_code,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     )
 
     return _family_exit_code(result.command, result.outcome)

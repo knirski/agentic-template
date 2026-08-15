@@ -551,7 +551,7 @@ class ResolvedShellTarget:
     remotes: tuple[str, ...] = ()
 
 
-def _template_root() -> str:
+def _template_root() -> str:  # pyright: ignore[reportUnusedFunction] — shared template-root helper, imported by the cli shell
     return str(Path(__file__).resolve().parents[2])
 
 
@@ -898,7 +898,7 @@ def _cleanup_observation(
     return classify_cleanup(inventory=inventory_file.content, observed=observed)
 
 
-def _retained_cleanup_contract(
+def _retained_cleanup_contract(  # pyright: ignore[reportUnusedFunction] — shared cleanup-contract helper, imported by the cli shell
     pass_: ProjectObservationPass,
 ) -> Result[CleanupContract, ContractError]:
     """Derive the retention contract for a cleanup inventory that no longer matches.

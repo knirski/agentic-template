@@ -101,7 +101,10 @@ from scripts.bootstrap.planner import (
     ReplaceFileOperation,
     TargetSnapshot,
 )
-from scripts.bootstrap.presentation import CommandResult, _result
+from scripts.bootstrap.presentation import (
+    CommandResult,
+    _result,  # pyright: ignore[reportPrivateUsage]  shared result constructor with the presentation layer
+)
 from scripts.bootstrap.readiness import MechanicalReadinessResult
 from scripts.bootstrap.recovery import (
     CleanupMissing,
@@ -2146,7 +2149,7 @@ _MARKER_NAME = "marker"
 _PAYLOAD_NAME = "payload"
 
 
-def _execute_recover(
+def _execute_recover(  # pyright: ignore[reportUnusedFunction] — shared recovery executor, imported by the cli shell
     target: str | None,
     intent: Intent,
     *,

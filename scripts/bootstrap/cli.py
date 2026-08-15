@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Literal, NoReturn, cast, override
 
 from scripts.bootstrap.bundles import (
-    _BUNDLE_FILE,
+    _BUNDLE_FILE,  # pyright: ignore[reportPrivateUsage]  shared bundle-path constant with the init executor
     HOOK_PATH,
     compile_initial_install,
     decode_bundle_input,
@@ -141,10 +141,10 @@ from scripts.bootstrap.presentation import (
     Change,
     CommandResult,
     PresentationOptions,
-    _color_enabled,
-    _family_exit_code,
-    _render_next_action,
-    _result,
+    _color_enabled,  # pyright: ignore[reportPrivateUsage]  shared color-resolution helper with the presentation layer
+    _family_exit_code,  # pyright: ignore[reportPrivateUsage]  shared exit-code helper with the presentation layer
+    _render_next_action,  # pyright: ignore[reportPrivateUsage]  shared next-action renderer with the presentation layer
+    _result,  # pyright: ignore[reportPrivateUsage]  shared result constructor with the presentation layer
     render_json,
     render_text,
 )
@@ -184,11 +184,11 @@ from scripts.bootstrap.transaction import (
 )
 from scripts.bootstrap.transaction_machine import (
     TransactionResources,
-    _execute_recover,
-    _fsync_dir_abs,
-    _hook_not_attempted_reason,
-    _observed_identity,
-    _write_file_exclusive,
+    _execute_recover,  # pyright: ignore[reportPrivateUsage]  shared recovery executor with the machine
+    _fsync_dir_abs,  # pyright: ignore[reportPrivateUsage]  shared fsync helper with the machine
+    _hook_not_attempted_reason,  # pyright: ignore[reportPrivateUsage]  shared hook-reason helper with the machine
+    _observed_identity,  # pyright: ignore[reportPrivateUsage]  shared identity helper with the machine
+    _write_file_exclusive,  # pyright: ignore[reportPrivateUsage]  shared exclusive-write helper with the machine
     run_transaction_machine,
 )
 from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits

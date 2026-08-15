@@ -68,7 +68,7 @@ class CommandResult:
     findings: tuple[Finding, ...]
 
 
-def _result(
+def _result(  # pyright: ignore[reportUnusedFunction] — shared result constructor, imported by the cli and machine shells
     command: str,
     outcome: CommandOutcome,
     *,
@@ -316,7 +316,9 @@ def render_text(
     return "\n".join(lines)
 
 
-def _color_enabled(presentation: PresentationOptions) -> bool:
+def _color_enabled(  # pyright: ignore[reportUnusedFunction] — shared color-resolution helper, imported by the cli shell
+    presentation: PresentationOptions,
+) -> bool:
     """Resolve the text-presentation color request against the terminal."""
 
     match presentation.color:
