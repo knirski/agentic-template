@@ -2791,6 +2791,14 @@ The licensing and provenance audit gates every licensing mode and precedes batch
 proposed `LICENSES/Apache-2.0.txt` or `NOTICE.md` layout, this design must be amended and reconfirmed
 before licence-writing implementation proceeds.
 
+Seed-once exclusion gate (recorded from T13): the generation-paths section says Copier excludes
+seed-once output, but bootstrap reads scaffold bytes from the generated project's own seed files, so
+excluding them today would break Copier scaffold recognition and all-scaffold installs. Once the
+template ships seed-once scaffold content at distinct generated-lifecycle blob paths (render-source
+work), Copier must exclude the seed-once root paths and bootstrap must read the scaffold from the
+blob paths; until then the seed-once files ship in the Copier copy and Copier's merge/conflict
+handling preserves adopter edits.
+
 ## References
 
 - `docs/prd.md`; `CONTEXT.md`; `docs/project-readiness.md`
