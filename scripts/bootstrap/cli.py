@@ -66,6 +66,7 @@ from scripts.bootstrap.errors import (
 )
 from scripts.bootstrap.fs_effects import (
     fsync_file,
+    mkdir_parents_0755,
     write_all,
 )
 from scripts.bootstrap.git_state import (
@@ -1051,6 +1052,19 @@ def _write_receipt_exclusive(
     return Ok(None)
 
 
+def _init_failure(
+    primitive: TransactionPrimitive, error: OSError, subject: str
+) -> CommandResult:
+    """Map one init-effect OSError into the closed init outcome."""
+
+    return _result(
+        "init",
+        outcome_for_error(
+            TransactionError.primitive_failed(primitive, sanitize_errno(error), subject)
+        ),
+    )
+
+
 def _execute_init(
     parsed: ParsedCommand,
 ) -> CommandResult:
@@ -1103,41 +1117,16 @@ def _execute_init(
         for path, (content, _kind) in sorted(
             decoded.content.items(), key=lambda item: item[0].value.encode()
         ):
-            target_parent = stage
-            for component in path.value.split("/")[:-1]:
-                target_parent = os.path.join(target_parent, component)
-                try:
-                    os.mkdir(target_parent, 0o755)
-                except FileExistsError:
+            match mkdir_parents_0755(
+                os.fsencode(stage),
+                tuple(os.fsencode(part) for part in path.value.split("/")),
+            ):
+                case Err(error):
+                    return _result("init", outcome_for_error(error))
+                case Ok(target_parent):
                     pass
-                except OSError as error:
-                    return _result(
-                        "init",
-                        outcome_for_error(
-                            TransactionError.primitive_failed(
-                                TransactionPrimitive.CREATE_DIRECTORY,
-                                sanitize_errno(error),
-                                component,
-                            )
-                        ),
-                    )
-                try:
-                    # mkdir modes are umask-masked; the bundle layout keeps
-                    # its deterministic 0755 directories.
-                    os.chmod(target_parent, 0o755, follow_symlinks=False)
-                except OSError as error:
-                    return _result(
-                        "init",
-                        outcome_for_error(
-                            TransactionError.primitive_failed(
-                                TransactionPrimitive.CREATE_DIRECTORY,
-                                sanitize_errno(error),
-                                component,
-                            )
-                        ),
-                    )
             match _write_file_exclusive(
-                os.fsencode(target_parent),
+                target_parent,
                 os.fsencode(path.value.split("/")[-1]),
                 content,
                 0o644,
@@ -1156,29 +1145,13 @@ def _execute_init(
             try:
                 os.rmdir(absolute)
             except OSError as error:
-                return _result(
-                    "init",
-                    outcome_for_error(
-                        TransactionError.primitive_failed(
-                            TransactionPrimitive.REMOVE_DIRECTORY,
-                            sanitize_errno(error),
-                            absolute,
-                        )
-                    ),
+                return _init_failure(
+                    TransactionPrimitive.REMOVE_DIRECTORY, error, absolute
                 )
         try:
             os.rename(stage, absolute)
         except OSError as error:
-            return _result(
-                "init",
-                outcome_for_error(
-                    TransactionError.primitive_failed(
-                        TransactionPrimitive.REPLACE_PATH,
-                        sanitize_errno(error),
-                        absolute,
-                    )
-                ),
-            )
+            return _init_failure(TransactionPrimitive.REPLACE_PATH, error, absolute)
         return _result(
             "init",
             Succeeded(hook_evidence=NotAttempted(_hook_not_attempted_reason("init"))),

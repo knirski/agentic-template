@@ -11,10 +11,12 @@ model that drives every machine constructor.
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import assert_never, cast
+from unittest.mock import patch
 
 import pytest
 from hypothesis import settings
@@ -34,6 +36,7 @@ from scripts.bootstrap.errors import (
     TransitionError,
     TransitionErrorKind,
 )
+from scripts.bootstrap.git_state import ResolvedGitWorktree
 from scripts.bootstrap.identity import (
     DirectoryEntry,
     DirectoryState,
@@ -150,6 +153,10 @@ from scripts.bootstrap.transaction import (
     snapshot_matches_candidate,
     snapshot_matches_preconditions,
     step_transaction,
+)
+from scripts.bootstrap.transaction_machine import (
+    TransactionResources,
+    _execute_prepare_one,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
 )
 from scripts.bootstrap.values import JournalPhase
 
@@ -1399,6 +1406,37 @@ class TestMachineEffectFailures:
                 assert trace == (EffectRequestKind.ACQUIRE_LOCK,)
             case _:
                 raise AssertionError(f"expected Stopped, got {outcome!r}")
+
+    def test_tree_stage_maps_mkdir_failure_to_effect_error(self) -> None:
+        plan, _, _ = _full_plan()
+        tokens = tuple(
+            os.urandom(32) for _ in range(len(derive_preparation_specs(plan)))
+        )
+        compiled = _compiled(plan, tokens=tokens)
+        tree_identity = next(
+            identity
+            for identity in compiled.preparations
+            if identity.operation_index == 3 and identity.role is PreparationRole.STAGE
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            resources = TransactionResources(
+                worktree=ResolvedGitWorktree(
+                    root_abs=os.fsencode(tmp),
+                    git_dir_abs=os.fsencode(os.path.join(tmp, ".git")),
+                    state_root_abs=os.fsencode(os.path.join(tmp, "agentic-template")),
+                    target=TARGET,
+                ),
+                ownership_tokens=tokens,
+            )
+            error = TransactionError.primitive_failed(
+                TransactionPrimitive.CREATE_DIRECTORY, ErrnoClass.NO_SPACE, "payload"
+            )
+            with patch(
+                "scripts.bootstrap.transaction_machine.mkdir_parents_0755",
+                return_value=Err(error),
+            ):
+                result = _execute_prepare_one(tree_identity, compiled, resources)
+        assert result == Err(error)
 
 
 class TestContractGuards:

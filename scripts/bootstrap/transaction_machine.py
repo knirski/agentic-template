@@ -51,6 +51,7 @@ from scripts.bootstrap.fs_effects import (
     fsync_directory,
     list_directory_entries,
     map_observation_error,
+    mkdir_parents_0755,
     open_regular_no_follow,
     read_file_bounded,
     walk_no_follow,
@@ -964,33 +965,13 @@ def _execute_prepare_one(
                 for entry in operation.planned_new.entries:
                     relative = entry.path.value[len(operation.root.value) + 1 :]
                     parts = relative.split("/")
-                    parent = payload
-                    for component in parts[:-1]:
-                        parent = os.path.join(parent, os.fsencode(component))
-                        try:
-                            os.mkdir(parent, 0o755)
-                        except FileExistsError:
+                    match mkdir_parents_0755(
+                        payload, tuple(os.fsencode(part) for part in parts)
+                    ):
+                        case Err(error):
+                            return _err_effect(error)
+                        case Ok(parent):
                             pass
-                        except OSError as error:
-                            return Err(
-                                TransactionError.primitive_failed(
-                                    TransactionPrimitive.CREATE_DIRECTORY,
-                                    sanitize_errno(error),
-                                    os.fsdecode(parent),
-                                )
-                            )
-                        try:
-                            # mkdir modes are umask-masked; tree directories
-                            # keep their planned mode exactly.
-                            os.chmod(parent, 0o755, follow_symlinks=False)
-                        except OSError as error:
-                            return Err(
-                                TransactionError.primitive_failed(
-                                    TransactionPrimitive.CREATE_DIRECTORY,
-                                    sanitize_errno(error),
-                                    os.fsdecode(parent),
-                                )
-                            )
                     match entry:
                         case PlannedFileEntry(
                             path=entry_path, mode=mode, content_id=content_id
