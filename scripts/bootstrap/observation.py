@@ -9,26 +9,62 @@ populated facts record.
 
 from __future__ import annotations
 
+import os
 import re
+import stat
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
-from typing import assert_never
+from pathlib import Path
+from typing import assert_never, cast
 from urllib.parse import urlsplit
 
-from scripts.bootstrap.errors import ObservationError, ObservationErrorKind
-from scripts.bootstrap.identity import PosixMode, TargetIdentity, content_identity
+from scripts.bootstrap.errors import (
+    CommandError,
+    ContractError,
+    ContractErrorKind,
+    InternalCode,
+    ObservationError,
+    ObservationErrorKind,
+)
+from scripts.bootstrap.errors import (
+    InternalFailure as CoreInternalFailure,
+)
+from scripts.bootstrap.fs_effects import map_observation_error, walk_no_follow
+from scripts.bootstrap.git_state import (
+    ResolvedGitWorktree,
+    resolve_git_worktree,
+    run_git,
+)
+from scripts.bootstrap.identity import (
+    PosixMode,
+    TargetIdentity,
+    content_identity,
+    sha256_hex,
+    tagged_digest,
+)
 from scripts.bootstrap.intents import GenerationPath
-from scripts.bootstrap.journal import StateRootSnapshot
+from scripts.bootstrap.journal import (
+    StateRootSnapshot,
+    capture_state_root,
+    classify_state_root,
+)
 from scripts.bootstrap.manifest import (
+    MANIFEST_PATH,
     CandidateManifest,
     ManagedInventoryEntry,
     decode_manifest,
 )
-from scripts.bootstrap.paths import RepoPath, sorted_paths
+from scripts.bootstrap.paths import RepoPath, parse_path, sorted_paths
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.scaffold import (
     COPIER_ANSWERS_PATH,
+    MAINTENANCE_INVENTORY_PATH,
     SEED_ONCE_PATHS,
+    SEED_ONCE_SLOTS,
+    CleanupEntryObservation,
+    classify_cleanup,
+    cleanup_directory_digest,
+    decode_cleanup_inventory,
     recognize_generation,
 )
 from scripts.bootstrap.source_baseline import (
@@ -37,6 +73,7 @@ from scripts.bootstrap.source_baseline import (
 )
 from scripts.bootstrap.state import (
     CanonicalTemplateSource,
+    CleanupContract,
     CleanupObservation,
     ClosureError,
     CopierCondition,
@@ -91,6 +128,8 @@ from scripts.bootstrap.state import (
     ValidatedJournal,
     WorktreeContext,
 )
+from scripts.bootstrap.state import UnsupportedGitTarget as GitUnsupportedTarget
+from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
 
 _CANONICAL_REMOTE = "github.com/knirski/agentic-template"
 _SCP_REMOTE = re.compile(r"^(?:[^@]+@)?(?P<host>[^:/]+):(?P<path>.+)$")
@@ -501,3 +540,528 @@ def _snapshot_condition(
     return SnapshotSourceChanged(
         delta, SnapshotRepair(baseline.snapshot_commit, delta.paths), managed
     )
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedShellTarget:
+    """Resolution facts for one verified target."""
+
+    environment: TargetEnvironment
+    worktree: ResolvedGitWorktree | None = None
+    remotes: tuple[str, ...] = ()
+
+
+def _template_root() -> str:  # pyright: ignore[reportUnusedFunction] — shared template-root helper, imported by the cli shell
+    return str(Path(__file__).resolve().parents[2])
+
+
+def _remotes_for(worktree: ResolvedGitWorktree) -> tuple[str, ...]:
+    match run_git(("remote", "--verbose"), cwd=worktree.root_abs):
+        case Ok(result) if result.returncode == 0:
+            pass
+        case _:
+            # A failed git command may carry partial output; never parse it.
+            return ()
+    urls: list[str] = []
+    for line in result.stdout.decode("utf-8", "replace").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        parts = stripped.split()
+        if len(parts) >= 2:
+            urls.append(parts[1])
+    return tuple(sorted(set(urls)))
+
+
+def resolve_shell_target(
+    target: str | None,
+    *,
+    cwd: str,
+) -> Result[ResolvedShellTarget, ObservationError | CoreInternalFailure]:
+    """Resolve the verified absolute worktree target and its protection."""
+
+    root_abs = os.path.abspath(target if target is not None else cwd)
+    match resolve_git_worktree(os.fsencode(root_abs)):
+        case Err(error):
+            return Err(error)
+        case Ok(resolution):
+            if isinstance(resolution, GitUnsupportedTarget):
+                return Ok(
+                    ResolvedShellTarget(
+                        environment=UnsupportedGitTarget(resolution.reason)
+                    )
+                )
+            worktree = resolution
+    remotes = _remotes_for(worktree)
+    protection = target_protection_for_remotes(remotes)
+    from scripts.bootstrap.state import SupportedWorktree, WorktreeContext
+
+    return Ok(
+        ResolvedShellTarget(
+            environment=SupportedWorktree(
+                WorktreeContext(
+                    target=worktree.target,
+                    state_root=RepoPath("agentic-template"),
+                    protection=protection,
+                )
+            ),
+            worktree=worktree,
+            remotes=remotes,
+        )
+    )
+
+
+def _open_state_root(
+    state_root_abs: bytes,
+) -> Result[int | None, ObservationError | CoreInternalFailure]:
+    root_fd = os.open(b"/", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        components = tuple(part for part in state_root_abs.split(b"/") if part)
+        match walk_no_follow(root_fd, components, allow_absent_final=True):
+            case Err(error):
+                return Err(error)
+            case Ok(fd):
+                return Ok(fd)
+    finally:
+        os.close(root_fd)
+
+
+def _empty_state_root_snapshot(target: TargetIdentity) -> StateRootSnapshot:
+    return StateRootSnapshot(
+        target=target,
+        entries=(),
+        journal=None,
+        journal_irregular=False,
+        pending=None,
+        pending_irregular=False,
+    )
+
+
+def _capture_tree(
+    root_abs: bytes,
+    git_dir_abs: bytes,
+    limits: ResourceLimits,
+) -> Result[
+    tuple[tuple[CapturedFile, ...], tuple[CapturedDirectory, ...]],
+    ObservationError | CoreInternalFailure,
+]:
+    """Capture every non-administrative path: sorted, bounded, symlink-rejecting."""
+
+    files: list[CapturedFile] = []
+    directories: list[CapturedDirectory] = []
+    total_bytes = 0
+    git_dir = os.fsdecode(git_dir_abs)
+
+    def visit(
+        directory: str, relative: str
+    ) -> Result[None, ObservationError | CoreInternalFailure]:
+        nonlocal total_bytes
+        try:
+            with os.scandir(directory) as iterator:
+                names = sorted(entry.name for entry in iterator)
+        except OSError as error:
+            return Err(map_observation_error(error, relative or "."))
+        for name in names:
+            child_abs = os.path.join(directory, name)
+            child_rel = f"{relative}/{name}" if relative else name
+            if child_abs == git_dir or child_abs.startswith(git_dir + os.sep):
+                continue
+            try:
+                info = os.stat(child_abs, follow_symlinks=False)
+            except OSError as error:
+                return Err(map_observation_error(error, child_rel))
+            if stat.S_ISLNK(info.st_mode):
+                return Err(
+                    ObservationError(
+                        ObservationErrorKind.SYMLINK_ENCOUNTERED, child_rel
+                    )
+                )
+            if stat.S_ISDIR(info.st_mode):
+                if len(directories) + len(files) >= limits.max_paths:
+                    return Err(
+                        ObservationError(
+                            ObservationErrorKind.OBSERVATION_LIMIT_EXCEEDED, "paths"
+                        )
+                    )
+                match parse_path(child_rel):
+                    case Err(_):
+                        return Err(
+                            ObservationError(
+                                ObservationErrorKind.OBSERVATION_LIMIT_EXCEEDED,
+                                child_rel,
+                            )
+                        )
+                    case Ok(path):
+                        pass
+                directories.append(
+                    CapturedDirectory(path, PosixMode(info.st_mode & 0o7777))
+                )
+                match visit(child_abs, child_rel):
+                    case Err(error):
+                        return Err(error)
+                    case Ok(_):
+                        pass
+                continue
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                return Err(
+                    ObservationError(
+                        ObservationErrorKind.PATH_MISSING,
+                        f"{child_rel} is not a regular file",
+                    )
+                )
+            if len(directories) + len(files) >= limits.max_paths:
+                return Err(
+                    ObservationError(
+                        ObservationErrorKind.OBSERVATION_LIMIT_EXCEEDED, "paths"
+                    )
+                )
+            if info.st_size > limits.max_file_bytes:
+                return Err(
+                    ObservationError(
+                        ObservationErrorKind.OBSERVATION_LIMIT_EXCEEDED, child_rel
+                    )
+                )
+            total_bytes += info.st_size
+            if total_bytes > limits.max_unique_bytes:
+                return Err(
+                    ObservationError(
+                        ObservationErrorKind.OBSERVATION_LIMIT_EXCEEDED, "unique_bytes"
+                    )
+                )
+            try:
+                with open(child_abs, "rb") as handle:
+                    content = handle.read()
+            except OSError as error:
+                return Err(map_observation_error(error, child_rel))
+            match parse_path(child_rel):
+                case Err(_):
+                    return Err(
+                        ObservationError(
+                            ObservationErrorKind.OBSERVATION_LIMIT_EXCEEDED, child_rel
+                        )
+                    )
+                case Ok(path):
+                    pass
+            files.append(CapturedFile(path, content, PosixMode(info.st_mode & 0o7777)))
+        return Ok(None)
+
+    match visit(os.fsdecode(root_abs), ""):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
+    files.sort(key=lambda entry: entry.path.value.encode("utf-8"))
+    directories.sort(key=lambda entry: entry.path.value.encode("utf-8"))
+    return Ok((tuple(files), tuple(directories)))
+
+
+def capture_project_pass(
+    resolved: ResolvedShellTarget,
+    *,
+    limits: ResourceLimits,
+) -> Result[ProjectObservationPass, ObservationError | CoreInternalFailure]:
+    """Capture one complete bounded observation pass for a supported worktree."""
+
+    worktree = resolved.worktree
+    if worktree is None:
+        return Err(CoreInternalFailure(InternalCode.IMPOSSIBLE_STATE))
+    match _open_state_root(worktree.state_root_abs):
+        case Err(error):
+            return Err(error)
+        case Ok(fd):
+            pass
+    if fd is None:
+        state_root = _empty_state_root_snapshot(worktree.target)
+    else:
+        try:
+            match capture_state_root(fd, worktree.target, limits=limits):
+                case Err(error):
+                    return Err(error)
+                case Ok(captured):
+                    state_root = captured
+        finally:
+            os.close(fd)
+    match _capture_tree(worktree.root_abs, worktree.git_dir_abs, limits):
+        case Err(error):
+            return Err(error)
+        case Ok((files, directories)):
+            pass
+    return Ok(
+        ProjectObservationPass(
+            target=worktree.target,
+            remotes=resolved.remotes,
+            state_root=state_root,
+            files=files,
+            directories=directories,
+        )
+    )
+
+
+def _collect_pass(
+    resolved: ResolvedShellTarget,
+    limits: ResourceLimits,
+) -> Callable[[], StableRawProjectObservation]:
+    def collect() -> StableRawProjectObservation:
+        match capture_project_pass(resolved, limits=limits):
+            case Err(error):
+                raise _PassCaptureFailed(error)
+            case Ok(pass_):
+                return StableRawProjectObservation(pass_, b"")
+
+    return collect
+
+
+class _PassCaptureFailed(Exception):
+    error: ObservationError | CoreInternalFailure
+
+    def __init__(self, error: ObservationError | CoreInternalFailure) -> None:
+        super().__init__(
+            str(getattr(error, "kind", None) or getattr(error, "code", None) or "error")
+        )
+        self.error = error
+
+
+@dataclass(frozen=True, slots=True)
+class SystemObservation:
+    """One closed system observation: environment, journal, project, and state."""
+
+    environment: TargetEnvironment
+    pass_: ProjectObservationPass | None
+    system: SystemState
+
+
+def _scaffold_bytes(template_root: str) -> dict[RepoPath, bytes]:
+    """Load the template package's seed-once scaffold content, bounded."""
+
+    scaffold: dict[RepoPath, bytes] = {}
+    for path in SEED_ONCE_SLOTS.values():
+        absolute = os.path.join(template_root, path.value)
+        try:
+            with open(absolute, "rb") as handle:
+                content = handle.read()
+        except OSError:
+            continue
+        if len(content) <= DEFAULT_LIMITS.max_file_bytes:
+            scaffold[path] = content
+    return scaffold
+
+
+def _cleanup_observation(
+    files: Mapping[RepoPath, CapturedFile],
+    directories: Mapping[RepoPath, CapturedDirectory],
+) -> CleanupObservation:
+    """Classify the snapshot maintenance inventory against observed paths."""
+
+    from scripts.bootstrap.state import NoSnapshotCleanup
+
+    inventory_file = files.get(MAINTENANCE_INVENTORY_PATH)
+    if inventory_file is None:
+        return NoSnapshotCleanup()
+    match decode_cleanup_inventory(inventory_file.content):
+        case Err(mismatch):
+            return mismatch
+        case Ok(inventory):
+            pass
+    observed: dict[RepoPath, CleanupEntryObservation] = {}
+    for path, kind, _digest in inventory.entries:
+        if kind == "file":
+            entry = files.get(path)
+            observed[path] = CleanupEntryObservation(
+                path=path,
+                present=entry is not None,
+                kind="file" if entry is not None else None,
+                sha256=(sha256_hex(entry.content) if entry is not None else None),
+            )
+        else:
+            if path not in directories:
+                observed[path] = CleanupEntryObservation(path, False)
+                continue
+            prefix = path.value + "/"
+            child_files = tuple(
+                (entry.path, entry.content, entry.mode.value)
+                for entry in files.values()
+                if entry.path.value.startswith(prefix)
+            )
+            child_dirs = tuple(
+                (entry.path, entry.mode.value)
+                for entry in directories.values()
+                if entry.path.value.startswith(prefix)
+            )
+            observed[path] = CleanupEntryObservation(
+                path=path,
+                present=True,
+                kind="directory",
+                sha256=cleanup_directory_digest(
+                    path, files=child_files, directories=child_dirs
+                ),
+            )
+    return classify_cleanup(inventory=inventory_file.content, observed=observed)
+
+
+def _retained_cleanup_contract(  # pyright: ignore[reportUnusedFunction] — shared cleanup-contract helper, imported by the cli shell
+    pass_: ProjectObservationPass,
+) -> Result[CleanupContract, ContractError]:
+    """Derive the retention contract for a cleanup inventory that no longer matches.
+
+    ``--leave-maintenance-artifacts`` skips every cleanup deletion.  Until the
+    fingerprinted source-ownership declaration lands, the retained set is the
+    decoded inventory's declared paths plus the inventory itself when present.
+    """
+
+    inventory = next(
+        (entry for entry in pass_.files if entry.path == MAINTENANCE_INVENTORY_PATH),
+        None,
+    )
+    if inventory is None:
+        return Err(
+            ContractError(
+                ContractErrorKind.CLEANUP_CONTRACT_INVALID,
+                "--leave-maintenance-artifacts requires a maintenance inventory",
+            )
+        )
+    match decode_cleanup_inventory(inventory.content):
+        case Err(_):
+            declared: tuple[RepoPath, ...] = ()
+        case Ok(decoded):
+            declared = tuple(path for path, _kind, _digest in decoded.entries)
+    retained = tuple(
+        sorted(
+            (*declared, MAINTENANCE_INVENTORY_PATH),
+            key=lambda path: path.value.encode("utf-8"),
+        )
+    )
+    return Ok(
+        CleanupContract(
+            lifecycle_paths=(),
+            cleanup_paths=retained,
+            fingerprint=tagged_digest(b"cleanup-inventory", inventory.content),
+        )
+    )
+
+
+def _snapshot_evidence(
+    worktree: ResolvedGitWorktree,
+) -> tuple[Callable[[], bool], Callable[[RepoPath], bytes | None]]:
+    """Lazy Git-backed snapshot-repair evidence providers."""
+
+    commit_cache: str | None = None
+    reachable_cache: bool | None = None
+
+    def recorded_commit() -> str | None:
+        nonlocal commit_cache
+        if commit_cache is None:
+            match run_git(("rev-parse", "HEAD"), cwd=worktree.root_abs):
+                case Ok(result) if result.returncode == 0:
+                    commit_cache = result.stdout.decode("ascii", "replace").strip()
+                case _:
+                    commit_cache = ""
+        return commit_cache or None
+
+    def reachable() -> bool:
+        nonlocal reachable_cache
+        if reachable_cache is None:
+            commit = recorded_commit()
+            if commit is None:
+                reachable_cache = False
+            else:
+                match run_git(
+                    ("rev-parse", "--verify", f"{commit}^{{commit}}"),
+                    cwd=worktree.root_abs,
+                ):
+                    case Ok(result):
+                        reachable_cache = result.returncode == 0
+                    case Err(_):
+                        reachable_cache = False
+        return reachable_cache
+
+    def path_bytes(path: RepoPath) -> bytes | None:
+        commit = recorded_commit()
+        if commit is None:
+            return None
+        match run_git(("show", f"{commit}:{path.value}"), cwd=worktree.root_abs):
+            case Ok(result) if result.returncode == 0:
+                if len(result.stdout) <= DEFAULT_LIMITS.max_file_bytes:
+                    return result.stdout
+            case _:
+                pass
+        return None
+
+    return reachable, path_bytes
+
+
+def observe_system(
+    resolved: ResolvedShellTarget,
+    *,
+    coherent: bool,
+    template_root: str,
+    limits: ResourceLimits,
+) -> Result[SystemObservation, CommandError]:
+    """Capture one (or a coherent pair of) pass and assemble the closed state."""
+
+    from scripts.bootstrap.state import SupportedWorktree
+
+    environment = resolved.environment
+    match environment:
+        case UnsupportedGitTarget():
+            return Ok(
+                SystemObservation(
+                    environment=environment,
+                    pass_=None,
+                    system=TargetUnavailable(environment),
+                )
+            )
+        case SupportedWorktree():
+            pass
+    try:
+        if coherent:
+            match collect_coherent_observation(_collect_pass(resolved, limits)):
+                case Err(error):
+                    return Err(error)
+                case Ok(observed):
+                    pass_ = cast(ProjectObservationPass, observed.semantic_identity)
+        else:
+            match capture_project_pass(resolved, limits=limits):
+                case Err(error):
+                    return Err(error)
+                case Ok(captured):
+                    pass_ = captured
+    except _PassCaptureFailed as failed:
+        return Err(failed.error)
+    journal = classify_state_root(pass_.state_root)
+    files = {entry.path: entry for entry in pass_.files}
+    directories = {entry.path: entry for entry in pass_.directories}
+    project: ProjectObservation | None = None
+    if isinstance(journal, NoJournal):
+        worktree = resolved.worktree
+        assert worktree is not None  # supported environments always carry one
+        reachable, path_bytes = _snapshot_evidence(worktree)
+        project = classify_project_observation(
+            copier_answers=(
+                files[COPIER_ANSWERS_PATH].content
+                if COPIER_ANSWERS_PATH in files
+                else None
+            ),
+            manifest=(files[MANIFEST_PATH].content if MANIFEST_PATH in files else None),
+            files=files,
+            directories=directories,
+            scaffold=_scaffold_bytes(template_root),
+            cleanup=_cleanup_observation(files, directories),
+            snapshot_commit_reachable=reachable,
+            path_bytes_at_commit=path_bytes,
+        )
+    from scripts.bootstrap.state import SupportedWorktree as _SupportedWorktree
+
+    state_root = (
+        environment.context.state_root
+        if isinstance(  # pyright: ignore[reportUnnecessaryIsInstance] — deliberate runtime contract check
+            environment, _SupportedWorktree
+        )
+        else RepoPath("agentic-template")
+    )
+    system = build_system_state(
+        environment=environment,
+        journal=journal,
+        project=project,
+        state_root=state_root,
+    )
+    return Ok(SystemObservation(environment=environment, pass_=pass_, system=system))

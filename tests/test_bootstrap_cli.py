@@ -21,13 +21,10 @@ from typing import cast, override
 
 from scripts.bootstrap.canonical_json import canonical_json
 from scripts.bootstrap.cli import (
-    CommandResult,
     ParsedCommand,
     execute_command,
     main,
     parse_argv,
-    render_json,
-    render_text,
 )
 from scripts.bootstrap.identity import PosixMode, TargetIdentity
 from scripts.bootstrap.journal import (
@@ -39,6 +36,11 @@ from scripts.bootstrap.journal import (
     new_transaction_id,
 )
 from scripts.bootstrap.plan_digest import PlanReceipt, reconstruct_plan
+from scripts.bootstrap.presentation import (
+    CommandResult,
+    render_json,
+    render_text,
+)
 from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.transaction import derive_preparation_specs, derive_preparations
 from scripts.bootstrap.values import JournalPhase
@@ -77,7 +79,7 @@ def _parse(argv: list[str]) -> ParsedCommand:
 
 
 def _exit_code(result: CommandResult) -> int:
-    from scripts.bootstrap.cli import (
+    from scripts.bootstrap.presentation import (
         _family_exit_code,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     )
 

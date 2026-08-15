@@ -2,13 +2,20 @@
 
 Covers T12 observation classification: ``build_system_state`` closed-state assembly,
 ``classify_existing_project`` topology/closure/generation classification, and the
-pass-shape contract of ``ProjectObservationPass``.
+pass-shape contract of ``ProjectObservationPass``.  Also pins the shell-side cleanup
+classification and git-evidence contracts directly (they are only exercised
+through the CLI happy path otherwise).
 """
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import tempfile
 import unittest
 
+from scripts.bootstrap.git_state import ResolvedGitWorktree
 from scripts.bootstrap.identity import (
     PosixMode,
     content_identity,
@@ -34,17 +41,23 @@ from scripts.bootstrap.observation import (
     CapturedDirectory,
     CapturedFile,
     ProjectObservationPass,
+    _cleanup_observation,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
+    _retained_cleanup_contract,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
+    _snapshot_evidence,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     build_system_state,
     classify_existing_project,
 )
 from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.result import Err, Ok
+from scripts.bootstrap.scaffold import MAINTENANCE_INVENTORY_PATH
 from scripts.bootstrap.source_baseline import (
     CopierSourceBaseline,
     GitHubSourceBaseline,
     LifecycleSourceEntry,
 )
 from scripts.bootstrap.state import (
+    CleanupContractMismatch,
+    CleanupContractValid,
     CopierConflicted,
     CopierExistingProject,
     CopierSourceChanged,
@@ -566,6 +579,152 @@ class SystemStateAssemblyTests(unittest.TestCase):
         _ = ProjectObservationPass(
             TARGET, (), _state_root_snapshot(), files, directories
         )
+
+
+class ObservationShellContractTests(unittest.TestCase):
+    """In-process contracts for the shell-side cleanup and git-evidence helpers.
+
+    The CLI end-to-end suite reaches these helpers only through success paths;
+    these tests pin the bounded rejection and repair branches directly.
+    """
+
+    @staticmethod
+    def _pass(
+        files: tuple[CapturedFile, ...] = (),
+        directories: tuple[CapturedDirectory, ...] = (),
+    ) -> ProjectObservationPass:
+        return ProjectObservationPass(
+            TARGET, (), _state_root_snapshot(), files, directories
+        )
+
+    def test_cleanup_observation_rejects_invalid_inventories(self) -> None:
+        inventory = CapturedFile(
+            MAINTENANCE_INVENTORY_PATH, b"not json", PosixMode.FILE
+        )
+        result = _cleanup_observation({inventory.path: inventory}, {})
+        self.assertIsInstance(result, CleanupContractMismatch)
+
+    def test_cleanup_observation_verifies_present_file_entries(self) -> None:
+        content = b"tests content"
+        inventory = CapturedFile(
+            MAINTENANCE_INVENTORY_PATH,
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "entries": [
+                        {
+                            "path": "tests",
+                            "kind": "file",
+                            "sha256": sha256_hex(content),
+                        },
+                    ],
+                },
+                sort_keys=True,
+            ).encode("utf-8"),
+            PosixMode.FILE,
+        )
+        observed = _cleanup_observation(
+            {
+                inventory.path: inventory,
+                RepoPath("tests"): CapturedFile(
+                    RepoPath("tests"), content, PosixMode.FILE
+                ),
+            },
+            {},
+        )
+        self.assertIsInstance(observed, CleanupContractValid)
+
+    def test_cleanup_observation_reports_missing_directory_entries(self) -> None:
+        inventory = CapturedFile(
+            MAINTENANCE_INVENTORY_PATH,
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "entries": [
+                        {
+                            "path": "vendor",
+                            "kind": "directory",
+                            "sha256": sha256_hex(b"tree"),
+                        },
+                    ],
+                },
+                sort_keys=True,
+            ).encode("utf-8"),
+            PosixMode.FILE,
+        )
+        observed = _cleanup_observation({inventory.path: inventory}, {})
+        self.assertIsInstance(observed, CleanupContractMismatch)
+
+    def test_retained_cleanup_contract_requires_an_inventory(self) -> None:
+        match _retained_cleanup_contract(self._pass()):
+            case Err(error):
+                self.assertEqual(error.kind.value, "cleanup_contract_invalid")
+            case Ok(_):
+                self.fail("expected CLEANUP_CONTRACT_INVALID")
+
+    def test_retained_cleanup_contract_tolerates_invalid_inventories(self) -> None:
+        pass_ = self._pass(
+            (CapturedFile(MAINTENANCE_INVENTORY_PATH, b"not json", PosixMode.FILE),)
+        )
+        match _retained_cleanup_contract(pass_):
+            case Ok(contract):
+                self.assertEqual(contract.cleanup_paths, (MAINTENANCE_INVENTORY_PATH,))
+            case Err(error):
+                self.fail(f"expected retention, got {error}")
+
+    @staticmethod
+    def _git_worktree(parent: str) -> ResolvedGitWorktree:
+        root = os.path.join(parent, "repo")
+        os.mkdir(root)
+        with open(os.path.join(root, "file.txt"), "w", encoding="utf-8") as handle:
+            _ = handle.write("hello\n")
+        _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
+        _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        _ = subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-q",
+                "-m",
+                "init",
+            ],
+            cwd=root,
+            check=True,
+        )
+        return ResolvedGitWorktree(
+            root_abs=os.fsencode(root),
+            git_dir_abs=os.fsencode(os.path.join(root, ".git")),
+            state_root_abs=os.fsencode(os.path.join(root, "agentic-template")),
+            target=TARGET,
+        )
+
+    def test_snapshot_evidence_reads_committed_content(self) -> None:
+        tmp = tempfile.mkdtemp()
+        reachable, path_bytes = _snapshot_evidence(self._git_worktree(tmp))
+        self.assertTrue(reachable())
+        self.assertEqual(path_bytes(RepoPath("file.txt")), b"hello\n")
+        self.assertIsNone(path_bytes(RepoPath("missing.txt")))
+
+    def test_snapshot_evidence_handles_unborn_heads(self) -> None:
+        tmp = tempfile.mkdtemp()
+        root = os.path.join(tmp, "repo")
+        os.mkdir(root)
+        with open(os.path.join(root, "file.txt"), "w", encoding="utf-8") as handle:
+            _ = handle.write("hello\n")
+        _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
+        worktree = ResolvedGitWorktree(
+            root_abs=os.fsencode(root),
+            git_dir_abs=os.fsencode(os.path.join(root, ".git")),
+            state_root_abs=os.fsencode(os.path.join(root, "agentic-template")),
+            target=TARGET,
+        )
+        reachable, path_bytes = _snapshot_evidence(worktree)
+        self.assertFalse(reachable())
+        self.assertIsNone(path_bytes(RepoPath("file.txt")))
 
 
 if __name__ == "__main__":
