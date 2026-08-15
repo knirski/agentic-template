@@ -98,7 +98,11 @@ source before committing:
 ```console
 git add -A
 uv run python -c "import json, sys; sys.path.insert(0, '.'); from tests.test_github_template_readiness import expected_cleanup_inventory; open('.agentic-template/maintenance-artifacts.json', 'w', encoding='utf-8').write(json.dumps(expected_cleanup_inventory(), sort_keys=True, indent=2) + chr(10))"
+git add .agentic-template/maintenance-artifacts.json
 ```
+
+The final ``git add`` re-stages the rewritten inventory; without it the commit
+would record the pre-regeneration bytes.
 
 `test_cleanup_inventory_matches_the_tracked_source` fails on a stale inventory, so the fixture
 suites catch a forgotten regeneration.

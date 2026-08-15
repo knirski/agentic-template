@@ -323,8 +323,9 @@ def _inventory_document(fixture: ScaffoldFixture) -> dict[str, object]:
 
 def _directory_digest(fixture: ScaffoldFixture) -> str:
     # The declared digest must equal what the shell observes over the fixture
-    # copy (tracked files only, real modes), never the live source tree with
-    # its untracked caches.
+    # copy (tracked files only, canonical modes), never the live source tree
+    # with its untracked caches.  Modes mirror the observer: 0o644 plus the
+    # executable bit for files, 0o755 for directories.
     from scripts.bootstrap.paths import RepoPath
     from scripts.bootstrap.scaffold import cleanup_directory_digest
 
@@ -335,11 +336,13 @@ def _directory_digest(fixture: ScaffoldFixture) -> str:
         for name in sorted(names):
             path = Path(current) / name
             relative = RepoPath(path.relative_to(fixture.root).as_posix())
-            files.append((relative, path.read_bytes(), path.stat().st_mode & 0o7777))
+            files.append(
+                (relative, path.read_bytes(), 0o644 | (path.stat().st_mode & 0o100))
+            )
         for name in sorted(dirs):
             path = Path(current) / name
             relative = RepoPath(path.relative_to(fixture.root).as_posix())
-            directories.append((relative, path.stat().st_mode & 0o7777))
+            directories.append((relative, 0o755))
     return cleanup_directory_digest(
         RepoPath("tests"), files=tuple(files), directories=tuple(directories)
     )
