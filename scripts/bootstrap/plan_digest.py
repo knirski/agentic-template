@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal, assert_never, cast
+from typing import Literal, assert_never, cast, get_args, get_type_hints
 
 from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
 from scripts.bootstrap.canonical_json import (
@@ -54,7 +54,7 @@ from scripts.bootstrap.planner import (
     RemoveEmptyDirectoryOperation,
     ReplaceFileOperation,
 )
-from scripts.bootstrap.readiness import Finding, Repository, SubjectPath
+from scripts.bootstrap.readiness import Finding, Repository, Severity, SubjectPath
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.source_baseline import (
     CopierSourceBaseline,
@@ -65,10 +65,12 @@ from scripts.bootstrap.source_baseline import (
 from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
 from scripts.bootstrap.vocabulary import COMMIT_SHA, SHA256, is_sha256
 
-_GENERATION_PATHS = frozenset({"github", "copier"})
-_READINESS_RULES = frozenset({"initial-equality", "no-worse-blocking"})
-_OPERATIONS = frozenset({"initial", "add", "restore", "reconcile"})
-_SEVERITIES = frozenset({"blocking", "informational"})
+_GENERATION_PATHS = frozenset(path.value for path in GenerationPath)
+_READINESS_RULES = frozenset(rule.value for rule in ReadinessRule)
+_OPERATIONS = frozenset(get_args(get_type_hints(GateSpecification)["operation"]))
+_SEVERITIES = frozenset(
+    get_args(Severity.__value__)  # pyright: ignore[reportAny] — PEP 695 alias value; the closed set is pinned by the receipt round-trip tests
+)
 
 type PlanReceipt = dict[str, object]
 

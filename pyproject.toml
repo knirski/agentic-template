@@ -50,5 +50,5 @@ pytest_add_cli_args_test_selection = [
     "tests/test_bootstrap_decisions.py",
     "tests/test_script_cores.py",
     "-k",
-    "not test_accumulate_preserves_arbitrary_success_order and not test_canonical_json_round_trips_arbitrary_strict_values",
+    "not test_canonical_json_round_trips_arbitrary_strict_values",
 ]

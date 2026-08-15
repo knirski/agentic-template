@@ -13,25 +13,6 @@ if TYPE_CHECKING:
     from scripts.bootstrap.readiness import MechanicalReadinessResult
 
 
-@dataclass(frozen=True)
-class Finding:
-    code: str
-    path: Path
-    message: str
-    next_action: str
-
-    def identity(self) -> tuple[str, str, str, str]:
-        return (self.code, self.path.as_posix(), self.path.as_posix(), self.code)
-
-    @property
-    def severity(self) -> str:
-        return "blocking"
-
-    def render(self, root: Path | None = None) -> str:
-        root = root or ROOT
-        return f"{self.code}: {self.path.relative_to(root)}: {self.message}; next: {self.next_action}"
-
-
 ROOT = Path(__file__).resolve().parent.parent
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT))
@@ -39,11 +20,8 @@ sys.path.insert(0, str(ROOT))
 from scripts.bootstrap.entrypoint import reject_arguments  # noqa: E402
 from scripts.bootstrap.presentation import render_text  # noqa: E402
 from scripts.bootstrap.readiness import (  # noqa: E402
-    Finding as CoreFinding,
-)
-from scripts.bootstrap.readiness import (  # noqa: E402
+    Finding,
     MechanicalReadinessResult,
-    SubjectPath,
 )
 
 PRD = ROOT / "docs" / "prd.md"
@@ -414,14 +392,11 @@ def mechanical_readiness(
     return MechanicalReadinessResult(
         1,
         tuple(
-            CoreFinding(
-                code=finding.code,
-                subject_at=SubjectPath(finding.path.relative_to(ROOT).as_posix()),
-                subject=finding.path.relative_to(ROOT).as_posix(),
-                rule=finding.code,
-                severity="blocking",
-                message=finding.message,
-                next_action=finding.next_action,
+            Finding(
+                finding.code,
+                finding.path.relative_to(ROOT),
+                finding.message,
+                finding.next_action,
             )
             for finding in findings
         ),

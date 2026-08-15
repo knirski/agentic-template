@@ -34,7 +34,7 @@ class MutationTestingContractTests(unittest.TestCase):
             "tests/test_script_cores.py", config["pytest_add_cli_args_test_selection"]
         )
         self.assertIn(
-            "not test_accumulate_preserves_arbitrary_success_order and not test_canonical_json_round_trips_arbitrary_strict_values",
+            "not test_canonical_json_round_trips_arbitrary_strict_values",
             config["pytest_add_cli_args_test_selection"],
         )
 

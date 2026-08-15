@@ -16,7 +16,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, cast
 
 from scripts.bootstrap.canonical_json import (
     StrictJsonValue,
@@ -282,23 +282,18 @@ def _invalid[ValueT](reason: str) -> Result[ValueT, InvalidJournal]:
 
 
 def _decode_target(value: StrictJsonValue) -> Result[JournalTarget, InvalidJournal]:
+    """Decode a journal target; the closed constructor validates every field."""
+
     if not isinstance(value, dict):
         return _invalid("journal target must be an object")
-    root = value.get("root")
-    device = value.get("device")
-    inode = value.get("inode")
-    digest = value.get("digest")
-    if not isinstance(root, str) or not root:
-        return _invalid("journal target root must be non-empty hex")
-    if type(device) is not int or type(inode) is not int:
-        return _invalid("journal target device and inode must be integers")
-    if device < 0 or inode < 0:
-        return _invalid("journal target device and inode must be non-negative")
-    if not isinstance(digest, str) or not is_sha256(digest):
-        return _invalid("journal target digest must be 256-bit lowercase hex")
     try:
         return Ok(
-            JournalTarget(root_hex=root, device=device, inode=inode, digest=digest)
+            JournalTarget(
+                root_hex=cast(str, value.get("root")),
+                device=cast(int, value.get("device")),
+                inode=cast(int, value.get("inode")),
+                digest=cast(str, value.get("digest")),
+            )
         )
     except TypeError as error:
         return _invalid(str(error))
@@ -307,6 +302,12 @@ def _decode_target(value: StrictJsonValue) -> Result[JournalTarget, InvalidJourn
 def _decode_preparation(
     value: StrictJsonValue, transaction_id: str
 ) -> Result[PreparationIdentity, InvalidJournal]:
+    """Decode one journaled preparation; the constructor validates every field.
+
+    The role string and the cross-record transaction binding cannot be
+    constructor checks and stay explicit here.
+    """
+
     if not isinstance(value, dict):
         return _invalid("journal preparation must be an object")
     role_value = value.get("role")
@@ -316,50 +317,27 @@ def _decode_preparation(
         role = PreparationRole(role_value)
     except ValueError:
         return _invalid("journal preparation requires a closed role")
-    declared_transaction = value.get("transaction_id")
-    if declared_transaction != transaction_id:
+    if value.get("transaction_id") != transaction_id:
         return _invalid("every preparation must belong to the journal transaction")
-    token_hash = value.get("ownership_token_sha256")
-    if not isinstance(token_hash, str) or not is_sha256(token_hash):
-        return _invalid("journal preparation token hash must be 256-bit lowercase hex")
-    operation_index = value.get("operation_index")
-    if type(operation_index) is not int or operation_index < 0:
-        return _invalid("journal preparation requires a non-negative integer index")
-    expected_kind = value.get("expected_kind")
-    expected_raw_sha256 = value.get("expected_raw_sha256")
-    match expected_kind:
-        case "file":
-            if not isinstance(expected_raw_sha256, str) or not is_sha256(
-                expected_raw_sha256
-            ):
-                return _invalid("file preparation requires a raw digest")
-            raw_digest: str | None = expected_raw_sha256
-        case "directory":
-            if expected_raw_sha256 is not None:
-                return _invalid("directory preparation cannot carry a raw digest")
-            raw_digest = None
-        case _:
-            return _invalid("journal preparation requires a closed expected kind")
-    expected_mode = value.get("expected_mode")
-    if type(expected_mode) is not int:
-        return _invalid("journal preparation requires an integer mode")
     try:
-        mode = PosixMode(expected_mode)
-    except ValueError:
+        expected_mode = PosixMode(cast(int, value.get("expected_mode")))
+    except TypeError, ValueError:
         return _invalid("journal preparation mode is outside the POSIX domain")
     try:
         return Ok(
             PreparationIdentity(
                 transaction_id=transaction_id,
-                operation_index=operation_index,
+                operation_index=cast(int, value.get("operation_index")),
                 role=role,
-                ownership_token_sha256=token_hash,
-                expected_kind=expected_kind,
-                expected_raw_sha256=raw_digest,
-                expected_mode=mode,
+                ownership_token_sha256=cast(str, value.get("ownership_token_sha256")),
+                expected_kind=cast(
+                    Literal["file", "directory"], value.get("expected_kind")
+                ),
+                expected_raw_sha256=cast(str | None, value.get("expected_raw_sha256")),
+                expected_mode=expected_mode,
             )
         )
-    except TypeError as error:  # pragma: no cover  defensive — every preparation field is validated above, so the frozen constructor cannot fail
+    except TypeError as error:
         return _invalid(f"journal preparation is invalid: {error}")
 
 
