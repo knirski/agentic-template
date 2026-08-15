@@ -21,7 +21,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import TypedDict, cast, override
+from types import ModuleType, SimpleNamespace
+from typing import Protocol, TypedDict, cast, override
+from unittest.mock import patch
 
 import yaml
 
@@ -397,6 +399,107 @@ class SourceContractTests(unittest.TestCase):
             self.assertIn("eligible=false", output.read_text(encoding="utf-8"))
             missing = run([sys.executable, script], env={**env, "GITHUB_SHA": ""})
             self.assertEqual(missing.returncode, 2, missing.stdout + missing.stderr)
+
+
+class _EligibilityScript(Protocol):
+    """The importable surface of scripts/check-release-eligibility.py."""
+
+    subprocess: ModuleType
+
+    def main(self) -> int: ...
+
+
+def _load_eligibility_script() -> _EligibilityScript:
+    """Load the hyphenated eligibility script under an importable name."""
+
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "check_release_eligibility", ROOT / "scripts/check-release-eligibility.py"
+    )
+    if spec is None or spec.loader is None:
+        raise AssertionError("cannot load scripts/check-release-eligibility.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return cast(_EligibilityScript, cast(object, module))
+
+
+class EligibilityScriptBranchTests(unittest.TestCase):
+    """In-process branch coverage for the release-eligibility script.
+
+    The subprocess contract test above drives the real executable with a fake
+    ``gh`` binary; pytest-cov cannot measure that child process, so this suite
+    also exercises ``main()`` in-process to keep the hardened branches
+    counted by the coverage gate.
+    """
+
+    script: _EligibilityScript  # pyright: ignore[reportUninitializedInstanceVariable]  initialized in unittest setUp lifecycle
+
+    @override
+    def setUp(self) -> None:
+        self.script = _load_eligibility_script()
+
+    def _run(
+        self,
+        *,
+        gh: SimpleNamespace | None = None,
+        error: Exception | None = None,
+        **env: str,
+    ) -> int:
+        if (gh is None) == (error is None):
+            raise AssertionError("pass exactly one of gh or error")
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "GITHUB_REPOSITORY": "owner/repo",
+                    "GITHUB_SHA": MAIN_BRANCH_SHA,
+                    "GH_TOKEN": "token",
+                    **env,
+                },
+            ),
+            patch.object(
+                self.script.subprocess,
+                "run",
+                return_value=gh if gh is not None else None,
+                side_effect=error,
+            ),
+        ):
+            return self.script.main()
+
+    def test_eligible_when_the_validated_commit_is_the_main_tip(self) -> None:
+        gh = SimpleNamespace(returncode=0, stdout=MAIN_BRANCH_SHA, stderr="")
+        with tempfile.TemporaryDirectory(prefix="agentic-template-eligibility.") as raw:
+            output = Path(raw) / "output.txt"
+            _ = output.write_text("", encoding="utf-8")
+            self.assertEqual(self._run(gh=gh, GITHUB_OUTPUT=str(output)), 0)
+            self.assertEqual(output.read_text(encoding="utf-8"), "eligible=true\n")
+
+    def test_stale_commit_is_not_eligible(self) -> None:
+        gh = SimpleNamespace(returncode=0, stdout=MAIN_BRANCH_SHA, stderr="")
+        self.assertEqual(self._run(gh=gh, GITHUB_SHA=STALE_COMMIT_SHA), 0)
+
+    def test_missing_environment_is_a_usage_error(self) -> None:
+        gh = SimpleNamespace(returncode=0, stdout=MAIN_BRANCH_SHA, stderr="")
+        self.assertEqual(self._run(gh=gh, GITHUB_SHA=""), 2)
+
+    def test_rejects_a_malformed_repository_name(self) -> None:
+        gh = SimpleNamespace(returncode=0, stdout=MAIN_BRANCH_SHA, stderr="")
+        self.assertEqual(
+            self._run(gh=gh, GITHUB_REPOSITORY="not an owner/repository pair"), 2
+        )
+
+    def test_gh_api_failure_is_a_usage_error(self) -> None:
+        gh = SimpleNamespace(returncode=1, stdout="", stderr="boom")
+        self.assertEqual(self._run(gh=gh), 2)
+
+    def test_gh_timeout_is_a_usage_error(self) -> None:
+        self.assertEqual(
+            self._run(error=subprocess.TimeoutExpired("gh", timeout=30)), 2
+        )
+
+    def test_missing_gh_binary_is_a_usage_error(self) -> None:
+        self.assertEqual(self._run(error=OSError("no such file: gh")), 2)
 
 
 def expected_cleanup_inventory() -> dict[str, object]:
