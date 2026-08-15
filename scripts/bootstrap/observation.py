@@ -894,13 +894,17 @@ def _cleanup_observation(
                 observed[path] = CleanupEntryObservation(path, False)
                 continue
             prefix = path.value + "/"
+            # Git checkouts mask modes with the umask, so digest canonical
+            # modes: an unchanged snapshot must verify under any environment.
+            # Files keep only the executable bit over the 0o644 base;
+            # directories are always 0o755.
             child_files = tuple(
-                (entry.path, entry.content, entry.mode.value)
+                (entry.path, entry.content, 0o644 | (entry.mode.value & 0o100))
                 for entry in files.values()
                 if entry.path.value.startswith(prefix)
             )
             child_dirs = tuple(
-                (entry.path, entry.mode.value)
+                (entry.path, 0o755)
                 for entry in directories.values()
                 if entry.path.value.startswith(prefix)
             )

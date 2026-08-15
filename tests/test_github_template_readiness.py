@@ -303,7 +303,7 @@ class _OwnershipDocument(TypedDict):
 # A shell-script reference inside a run command: ``.sh`` followed by a
 # separator or end of line.  ``${{ github.sha }}`` and similar expressions
 # contain ``.sh`` textually but never a script filename.
-_SHELL_SCRIPT_REFERENCE = re.compile(r"\.sh(?=[\s\"'#;]|$)")
+_SHELL_SCRIPT_REFERENCE = re.compile(r"\.sh(?=[\s\"'#;)&<>|]|$)")
 
 
 def _yaml_mapping(path: Path) -> object:
@@ -386,15 +386,23 @@ class SourceContractTests(unittest.TestCase):
             with self.subTest(workflow=workflow.name):
                 self.assertNotIn("shell: bash", text)
                 self.assertNotIn("shellcheck", text)
-                in_run_block = False
+                # Textual scan, never YAML parsing: a ``run:`` key at any
+                # indentation starts a block, and lines indented deeper than
+                # the key are its multiline continuations.  A blank line keeps
+                # the block open; any other line at or above the key indent
+                # ends it.
+                run_indent: int | None = None
                 for line in text.splitlines():
-                    if line.startswith("run:"):
-                        in_run_block = True
-                    elif not (in_run_block and line.startswith(" ")):
-                        in_run_block = False
-                    if in_run_block:
-                        # Textual scan, never YAML parsing: run commands and
-                        # their multiline continuations carry no .sh scripts.
+                    stripped = line.lstrip()
+                    if stripped.startswith("run:"):
+                        run_indent = len(line) - len(stripped)
+                    elif (
+                        line.strip()
+                        and run_indent is not None
+                        and len(line) - len(line.lstrip()) <= run_indent
+                    ):
+                        run_indent = None
+                    if run_indent is not None:
                         self.assertNotRegex(line, _SHELL_SCRIPT_REFERENCE, line)
 
     def test_release_eligibility_script_contract(self) -> None:
@@ -482,6 +490,9 @@ class EligibilityScriptBranchTests(unittest.TestCase):
                     "GITHUB_REPOSITORY": "owner/repo",
                     "GITHUB_SHA": MAIN_BRANCH_SHA,
                     "GH_TOKEN": "token",
+                    # CI always sets GITHUB_OUTPUT; pin it empty so in-process
+                    # runs never append to the live job output file.
+                    "GITHUB_OUTPUT": "",
                     **env,
                 },
             ),
@@ -532,9 +543,10 @@ class EligibilityScriptBranchTests(unittest.TestCase):
 def expected_cleanup_inventory() -> dict[str, object]:
     """Recompute the inventory exactly as the snapshot observer sees it.
 
-    Tracked files only (``git ls-files``), real working-tree modes, so the
-    committed inventory matches what a fixture copy of the tracked source
-    observes.
+    Tracked files only (``git ls-files``); modes are canonicalized the same
+    way the observer digests them (0o644 plus the executable bit for files,
+    0o755 for directories), so the committed inventory matches a fixture
+    copy of the tracked source under any umask.
     """
 
     from scripts.bootstrap.paths import RepoPath
@@ -558,19 +570,14 @@ def expected_cleanup_inventory() -> dict[str, object]:
                 (
                     RepoPath(child),
                     child_path.read_bytes(),
-                    child_path.stat().st_mode & 0o7777,
+                    0o644 | (child_path.stat().st_mode & 0o100),
                 )
             )
             parent = Path(child).parent
             while parent.as_posix() != raw and parent.as_posix() != ".":
                 if parent.as_posix() not in seen_dirs:
                     seen_dirs.add(parent.as_posix())
-                    directories.append(
-                        (
-                            RepoPath(parent.as_posix()),
-                            (ROOT / parent).stat().st_mode & 0o7777,
-                        )
-                    )
+                    directories.append((RepoPath(parent.as_posix()), 0o755))
                 parent = parent.parent
         entries.append(
             {
