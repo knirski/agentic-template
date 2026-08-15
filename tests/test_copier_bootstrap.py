@@ -127,6 +127,7 @@ def main() -> int:
                 return 1
         for relative in (
             *CLEANUP_PATHS,
+            ".git",
             ".agentic-template/maintenance-artifacts.json",
         ):
             if (project / relative).exists():

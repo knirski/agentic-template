@@ -317,6 +317,29 @@ def _json_mapping(path: Path) -> object:
     return cast(object, json.loads(path.read_text(encoding="utf-8")))
 
 
+# Copier's own safety exclusions, re-declared because a custom _exclude list
+# replaces them; the maintenance set is the cleanup-inventory contract.
+COPIER_SAFETY_EXCLUSIONS = frozenset(
+    {
+        ".DS_Store",
+        ".direnv",
+        ".git",
+        ".hypothesis",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
+        ".coverage",
+        ".svn",
+        ".venv",
+        "~*",
+        "*.py[co]",
+        "__pycache__",
+        "copier.yaml",
+        "result",
+    }
+)
+
+
 class SourceContractTests(unittest.TestCase):
     """T13 source declarations: ownership split, exclusions, and inventory."""
 
@@ -325,15 +348,19 @@ class SourceContractTests(unittest.TestCase):
         self.assertIn("Copier owns source lifecycle updates", text)
         self.assertIn("bootstrap owns derived-output reconciliation", text)
 
-    def test_copier_excludes_match_the_cleanup_inventory(self) -> None:
+    def test_copier_excludes_pin_the_maintenance_and_safety_sets(self) -> None:
         config = cast(dict[str, object], _yaml_mapping(ROOT / "copier.yml"))
-        excludes = sorted(cast(list[str], config["_exclude"]))
+        excludes = set(cast(list[str], config["_exclude"]))
         inventory = cast(_InventoryDocument, _json_mapping(MAINTENANCE_INVENTORY))
-        expected = sorted(
+        maintenance = set(
             [entry["path"] for entry in inventory["entries"]]
             + [".agentic-template/maintenance-artifacts.json"]
         )
-        self.assertEqual(excludes, expected)
+        self.assertEqual(
+            excludes,
+            maintenance | COPIER_SAFETY_EXCLUSIONS,
+            "_exclude must be exactly the maintenance set plus the re-declared safety set",
+        )
 
     def test_source_ownership_matches_the_cleanup_inventory(self) -> None:
         ownership = cast(_OwnershipDocument, _json_mapping(SOURCE_OWNERSHIP))

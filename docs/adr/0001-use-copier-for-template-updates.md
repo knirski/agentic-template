@@ -25,6 +25,9 @@ projects. The maintenance exclusions are the finite template-maintenance artifac
 `.agentic-template/source-ownership.json`, so a Copier-generated project never receives source
 uv metadata (`pyproject.toml`, `uv.lock`, `.python-version`), Nix maintenance inputs
 (`flake.nix`, `flake.lock`), maintainer-only workflows, source test suites, or historical specs.
+Because a custom `_exclude` list replaces Copier's built-in exclusions, the template re-declares
+them alongside: VCS metadata (`.git`), Python bytecode caches, editor and OS litter, and local tool
+state never ship into generated projects.
 GitHub snapshots initially retain those same paths and remove them only when the snapshot
 cleanup contract authorizes deletion.
 

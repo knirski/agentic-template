@@ -82,6 +82,7 @@ def main() -> int:
         if not (project / ".copier-answers.yml").is_file() or any(
             (project / path).exists()
             for path in (
+                ".git",
                 ".python-version",
                 "pyproject.toml",
                 "uv.lock",

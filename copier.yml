@@ -1,12 +1,30 @@
 answers_file: .copier-answers.yml
 
-# Copier excludes the finite template-maintenance artifact set declared by
-# .agentic-template/source-ownership.json and the cleanup-control inventory
-# itself; generated projects keep every other generated-lifecycle source path.
-# Seed-once files ship in the copied project so bootstrap can recognize the
-# scaffold and install the adopter-owned content; Copier's merge and conflict
-# handling preserves adopter edits during updates.
+# A custom _exclude list replaces Copier's built-in safety exclusions, so they
+# are re-declared here: VCS metadata, Python bytecode, editor/OS litter, and
+# local tool state never ship into generated projects.
 _exclude:
+  - .DS_Store
+  - .direnv
+  - .git
+  - .hypothesis
+  - .pytest_cache
+  - .ruff_cache
+  - .mypy_cache
+  - .coverage
+  - .svn
+  - .venv
+  - "~*"
+  - "*.py[co]"
+  - __pycache__
+  - copier.yaml
+  - result
+  # The finite template-maintenance artifact set declared by
+  # .agentic-template/source-ownership.json and the cleanup-control inventory
+  # itself; generated projects keep every other generated-lifecycle source
+  # path.  Seed-once files ship in the copied project so bootstrap can
+  # recognize the scaffold and install the adopter-owned content; Copier's
+  # merge and conflict handling preserves adopter edits during updates.
   - .agentic-template/maintenance-artifacts.json
   - .github/workflows/copier-smoke.yml
   - .github/workflows/mutation.yml
