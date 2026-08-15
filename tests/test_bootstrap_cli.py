@@ -155,6 +155,18 @@ class ScaffoldFixture:
             target = self.root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             _ = shutil.copy2(source, target)
+        # The source's cleanup declarations are exercised by the real-snapshot
+        # fixtures (test_github_template_readiness.py); the CLI suite controls
+        # them explicitly through ``_make_fixture(maintenance=True)`` so its
+        # cleanup cases stay independent of the live source tree's inventory.
+        for relative in (
+            ".agentic-template/source-ownership.json",
+            ".agentic-template/maintenance-artifacts.json",
+        ):
+            target = self.root / relative
+            if target.is_file():
+                _ = target.unlink()
+        _ = shutil.rmtree(self.root / ".agentic-template", ignore_errors=True)
         self.hook_runs = parent / "hook-runs"
         _ = self.hook_runs.write_text("", encoding="utf-8")
         template.install_recording_hook(self.hook_runs)
@@ -284,8 +296,16 @@ def _make_fixture(
             "_commit: 0.1.0\n", encoding="utf-8"
         )
     if maintenance:
+        ownership = fixture.root / ".agentic-template/source-ownership.json"
+        ownership.parent.mkdir(parents=True, exist_ok=True)
+        _ = ownership.write_text(
+            json.dumps(
+                {"schema_version": 1, "snapshot_cleanup_paths": ["tests"]},
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
         inventory = fixture.root / ".agentic-template/maintenance-artifacts.json"
-        inventory.parent.mkdir(parents=True, exist_ok=True)
         _ = inventory.write_text(
             json.dumps(_inventory_document(fixture), sort_keys=True), encoding="utf-8"
         )

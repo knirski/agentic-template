@@ -11,59 +11,6 @@ permissions:
   contents: read
 
 jobs:
-  python-source:
-    name: Python 3.14 source checks
-    if: >
-      github.repository == 'knirski/agentic-template' &&
-      (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - name: Set up uv and Python 3.14
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-        with:
-          version: "0.12.1"
-          python-version: "3.14"
-          enable-cache: true
-      - name: Install locked source dependencies
-        run: uv sync --all-groups --locked
-      - name: Run source checks
-        run: |
-          uv run pytest --cov=scripts --cov-report=term-missing --cov-report=xml
-          uv run ruff check
-          uv run ruff format --check
-          uv run basedpyright
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6.0.2
-        with:
-          files: ./coverage.xml
-          use_oidc: true
-          fail_ci_if_error: false
-
-  delivery-contract:
-    name: Delivery contract
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - name: Set up uv and Python 3.14
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-        with:
-          version: "0.12.1"
-          python-version: "3.14"
-          enable-cache: true
-      - name: Validate generic delivery files
-        run: uv run --no-project --python 3.14 scripts/validate_template.py
-
   project-validation:
     name: Project validation
     runs-on: ubuntu-latest
@@ -83,27 +30,27 @@ jobs:
       - name: Validate generated-project contract
         if: github.repository != 'knirski/agentic-template'
         run: uv run --no-project --python 3.14 scripts/validate_repository.py
-      - name: Validate source fixtures
-        if: github.repository == 'knirski/agentic-template'
-        run: |
-          uv run --no-project --python 3.14 tests/test_project_readiness.py
-          uv run --no-project --python 3.14 tests/test_repository_validation.py
-          uv run --no-project --python 3.14 tests/test_github_template_readiness.py
 
-  workflow-lint:
-    name: Workflow lint
+  delivery-contract:
+    name: Delivery contract
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Run actionlint
-        uses: docker://docker.io/rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 # 1.7.7
+      - name: Set up uv and Python 3.14
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.12.1"
+          python-version: "3.14"
+          enable-cache: true
+      - name: Validate generic delivery files
+        run: uv run --no-project --python 3.14 scripts/validate_template.py
 
   release:
     name: Semantic Release
-    needs: [python-source, delivery-contract, project-validation, workflow-lint]
+    needs: [project-validation, delivery-contract]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: write

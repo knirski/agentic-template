@@ -18,9 +18,12 @@ from scripts.bootstrap.scaffold import (
     CLEANUP_SCHEMA_VERSION,
     MAINTENANCE_INVENTORY_PATH,
     SEED_ONCE_PATHS,
+    SOURCE_OWNERSHIP_SCHEMA_VERSION,
+    SOURCE_OWNERSHIP_PATH,
     CleanupEntryObservation,
     classify_cleanup,
     decode_cleanup_inventory,
+    decode_source_ownership,
     recognize_generation,
 )
 from scripts.bootstrap.state import (
@@ -219,25 +222,117 @@ class CleanupInventoryTests(unittest.TestCase):
                 self.fail(f"valid inventory rejected: {error}")
 
 
+class SourceOwnershipTests(unittest.TestCase):
+    def test_wrong_document_shape_is_rejected(self) -> None:
+        match decode_source_ownership(canonical_json({"schema_version": 1})):
+            case Err(error):
+                self.assertIsInstance(error, CleanupContractMismatch)
+            case Ok(_):
+                self.fail("wrong-shape ownership decoded")
+
+    def test_wrong_schema_version_is_rejected(self) -> None:
+        payload = canonical_json({"schema_version": 2, "snapshot_cleanup_paths": []})
+        match decode_source_ownership(payload):
+            case Err(error):
+                self.assertIsInstance(error, CleanupContractMismatch)
+            case Ok(_):
+                self.fail("future schema version decoded")
+
+    def test_non_list_paths_are_rejected(self) -> None:
+        payload = canonical_json(
+            {"schema_version": 1, "snapshot_cleanup_paths": "tests"}
+        )
+        match decode_source_ownership(payload):
+            case Err(error):
+                self.assertIsInstance(error, CleanupContractMismatch)
+            case Ok(_):
+                self.fail("non-list paths decoded")
+
+    def test_invalid_path_entries_are_rejected(self) -> None:
+        for paths in (["tests", 5], [".."], ["tests", "tests"]):
+            with self.subTest(paths=paths):
+                payload = canonical_json(
+                    {"schema_version": 1, "snapshot_cleanup_paths": paths}
+                )
+                match decode_source_ownership(payload):
+                    case Err(error):
+                        self.assertIsInstance(error, CleanupContractMismatch)
+                    case Ok(_):
+                        self.fail(f"invalid paths decoded: {paths}")
+
+    def test_administrative_paths_are_rejected(self) -> None:
+        for path in (MANIFEST_PATH.value, MAINTENANCE_INVENTORY_PATH.value):
+            with self.subTest(path=path):
+                payload = canonical_json(
+                    {"schema_version": 1, "snapshot_cleanup_paths": [path]}
+                )
+                match decode_source_ownership(payload):
+                    case Err(error):
+                        self.assertIsInstance(error, CleanupContractMismatch)
+                    case Ok(_):
+                        self.fail(f"administrative path decoded: {path}")
+
+    def test_valid_ownership_decodes_sorted(self) -> None:
+        payload = canonical_json(
+            {
+                "schema_version": SOURCE_OWNERSHIP_SCHEMA_VERSION,
+                "snapshot_cleanup_paths": ["z.txt", "a.txt"],
+            }
+        )
+        match decode_source_ownership(payload):
+            case Ok(ownership):
+                self.assertEqual(
+                    tuple(path.value for path in ownership.snapshot_cleanup_paths),
+                    ("a.txt", "z.txt"),
+                )
+            case Err(error):
+                self.fail(f"valid ownership rejected: {error}")
+
+
 class CleanupClassificationTests(unittest.TestCase):
     def test_absent_inventory_is_no_cleanup(self) -> None:
         self.assertIsInstance(
-            classify_cleanup(inventory=None, observed={}), NoSnapshotCleanup
+            classify_cleanup(
+                inventory=None, observed={}, declared_cleanup_paths=()
+            ),
+            NoSnapshotCleanup,
         )
 
     def test_invalid_inventory_is_a_mismatch(self) -> None:
         self.assertIsInstance(
-            classify_cleanup(inventory=b"{", observed={}), CleanupContractMismatch
+            classify_cleanup(
+                inventory=b"{", observed={}, declared_cleanup_paths=()
+            ),
+            CleanupContractMismatch,
         )
 
     def test_matching_inventory_is_a_valid_contract(self) -> None:
         path = RepoPath("docs/api")
         inventory = _inventory([_entry(path=path.value, digest=DIGEST)])
         observed = {path: CleanupEntryObservation(path, True, "directory", DIGEST)}
-        result = classify_cleanup(inventory=inventory, observed=observed)
+        result = classify_cleanup(
+            inventory=inventory,
+            observed=observed,
+            declared_cleanup_paths=(path,),
+        )
         self.assertIsInstance(result, CleanupContractValid)
         if isinstance(result, CleanupContractValid):
             self.assertEqual(result.contract.cleanup_paths, (path,))
+
+    def test_declared_set_disagreement_is_a_mismatch(self) -> None:
+        path = RepoPath("docs/api")
+        inventory = _inventory([_entry(path=path.value, digest=DIGEST)])
+        observed = {path: CleanupEntryObservation(path, True, "directory", DIGEST)}
+        for declared in ((RepoPath("tests"),), (path, RepoPath("tests"))):
+            with self.subTest(declared=declared):
+                result = classify_cleanup(
+                    inventory=inventory,
+                    observed=observed,
+                    declared_cleanup_paths=declared,
+                )
+                self.assertIsInstance(result, CleanupContractMismatch)
+                if isinstance(result, CleanupContractMismatch):
+                    self.assertIn(RepoPath("tests"), result.paths)
 
 
 if __name__ == "__main__":

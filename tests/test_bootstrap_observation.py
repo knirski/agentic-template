@@ -49,7 +49,10 @@ from scripts.bootstrap.observation import (
 )
 from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.result import Err, Ok
-from scripts.bootstrap.scaffold import MAINTENANCE_INVENTORY_PATH
+from scripts.bootstrap.scaffold import (
+    MAINTENANCE_INVENTORY_PATH,
+    SOURCE_OWNERSHIP_PATH,
+)
 from scripts.bootstrap.source_baseline import (
     CopierSourceBaseline,
     GitHubSourceBaseline,
@@ -581,6 +584,34 @@ class SystemStateAssemblyTests(unittest.TestCase):
         )
 
 
+def _inventory_bytes(
+    paths: tuple[RepoPath, ...],
+    *,
+    kinds: dict[str, tuple[str, str]] | None = None,
+) -> bytes:
+    entries = [
+        {
+            "path": path.value,
+            "kind": (kinds or {}).get(path.value, ("directory", sha256_hex(b"tree")))[0],
+            "sha256": (kinds or {}).get(path.value, ("directory", sha256_hex(b"tree")))[1],
+        }
+        for path in paths
+    ]
+    return json.dumps(
+        {"schema_version": 1, "entries": entries}, sort_keys=True
+    ).encode("utf-8")
+
+
+def _ownership_bytes(paths: tuple[RepoPath, ...]) -> bytes:
+    return json.dumps(
+        {
+            "schema_version": 1,
+            "snapshot_cleanup_paths": [path.value for path in paths],
+        },
+        sort_keys=True,
+    ).encode("utf-8")
+
+
 class ObservationShellContractTests(unittest.TestCase):
     """In-process contracts for the shell-side cleanup and git-evidence helpers.
 
@@ -604,28 +635,65 @@ class ObservationShellContractTests(unittest.TestCase):
         result = _cleanup_observation({inventory.path: inventory}, {})
         self.assertIsInstance(result, CleanupContractMismatch)
 
+    def test_cleanup_observation_requires_the_source_ownership(self) -> None:
+        inventory = CapturedFile(
+            MAINTENANCE_INVENTORY_PATH,
+            _inventory_bytes((RepoPath("tests"),)),
+            PosixMode.FILE,
+        )
+        result = _cleanup_observation({inventory.path: inventory}, {})
+        self.assertIsInstance(result, CleanupContractMismatch)
+        if isinstance(result, CleanupContractMismatch):
+            self.assertEqual(result.paths, (SOURCE_OWNERSHIP_PATH,))
+
+    def test_cleanup_observation_rejects_corrupt_source_ownership(self) -> None:
+        inventory = CapturedFile(
+            MAINTENANCE_INVENTORY_PATH,
+            _inventory_bytes((RepoPath("tests"),)),
+            PosixMode.FILE,
+        )
+        ownership = CapturedFile(SOURCE_OWNERSHIP_PATH, b"not json", PosixMode.FILE)
+        result = _cleanup_observation(
+            {inventory.path: inventory, ownership.path: ownership}, {}
+        )
+        self.assertIsInstance(result, CleanupContractMismatch)
+
+    def test_cleanup_observation_rejects_declared_set_disagreement(self) -> None:
+        inventory = CapturedFile(
+            MAINTENANCE_INVENTORY_PATH,
+            _inventory_bytes((RepoPath("tests"),)),
+            PosixMode.FILE,
+        )
+        ownership = CapturedFile(
+            SOURCE_OWNERSHIP_PATH,
+            _ownership_bytes((RepoPath("tests"), RepoPath("pyproject.toml"))),
+            PosixMode.FILE,
+        )
+        result = _cleanup_observation(
+            {inventory.path: inventory, ownership.path: ownership}, {}
+        )
+        self.assertIsInstance(result, CleanupContractMismatch)
+        if isinstance(result, CleanupContractMismatch):
+            self.assertIn(RepoPath("pyproject.toml"), result.paths)
+
     def test_cleanup_observation_verifies_present_file_entries(self) -> None:
         content = b"tests content"
         inventory = CapturedFile(
             MAINTENANCE_INVENTORY_PATH,
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "entries": [
-                        {
-                            "path": "tests",
-                            "kind": "file",
-                            "sha256": sha256_hex(content),
-                        },
-                    ],
-                },
-                sort_keys=True,
-            ).encode("utf-8"),
+            _inventory_bytes(
+                (RepoPath("tests"),), kinds={"tests": ("file", sha256_hex(content))}
+            ),
+            PosixMode.FILE,
+        )
+        ownership = CapturedFile(
+            SOURCE_OWNERSHIP_PATH,
+            _ownership_bytes((RepoPath("tests"),)),
             PosixMode.FILE,
         )
         observed = _cleanup_observation(
             {
                 inventory.path: inventory,
+                ownership.path: ownership,
                 RepoPath("tests"): CapturedFile(
                     RepoPath("tests"), content, PosixMode.FILE
                 ),
@@ -637,22 +705,17 @@ class ObservationShellContractTests(unittest.TestCase):
     def test_cleanup_observation_reports_missing_directory_entries(self) -> None:
         inventory = CapturedFile(
             MAINTENANCE_INVENTORY_PATH,
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "entries": [
-                        {
-                            "path": "vendor",
-                            "kind": "directory",
-                            "sha256": sha256_hex(b"tree"),
-                        },
-                    ],
-                },
-                sort_keys=True,
-            ).encode("utf-8"),
+            _inventory_bytes((RepoPath("vendor"),)),
             PosixMode.FILE,
         )
-        observed = _cleanup_observation({inventory.path: inventory}, {})
+        ownership = CapturedFile(
+            SOURCE_OWNERSHIP_PATH,
+            _ownership_bytes((RepoPath("vendor"),)),
+            PosixMode.FILE,
+        )
+        observed = _cleanup_observation(
+            {inventory.path: inventory, ownership.path: ownership}, {}
+        )
         self.assertIsInstance(observed, CleanupContractMismatch)
 
     def test_retained_cleanup_contract_requires_an_inventory(self) -> None:
@@ -661,6 +724,26 @@ class ObservationShellContractTests(unittest.TestCase):
                 self.assertEqual(error.kind.value, "cleanup_contract_invalid")
             case Ok(_):
                 self.fail("expected CLEANUP_CONTRACT_INVALID")
+
+    def test_retained_cleanup_contract_prefers_the_source_ownership(self) -> None:
+        pass_ = self._pass(
+            (
+                CapturedFile(
+                    MAINTENANCE_INVENTORY_PATH,
+                    _inventory_bytes((RepoPath("tests"),)),
+                    PosixMode.FILE,
+                ),
+                CapturedFile(SOURCE_OWNERSHIP_PATH, b"not json", PosixMode.FILE),
+            )
+        )
+        match _retained_cleanup_contract(pass_):
+            case Ok(contract):
+                self.assertEqual(
+                    contract.cleanup_paths,
+                    (MAINTENANCE_INVENTORY_PATH, RepoPath("tests")),
+                )
+            case Err(error):
+                self.fail(f"expected retention, got {error}")
 
     def test_retained_cleanup_contract_tolerates_invalid_inventories(self) -> None:
         pass_ = self._pass(

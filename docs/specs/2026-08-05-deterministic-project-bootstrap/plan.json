@@ -744,8 +744,9 @@
           "description": "First update ADR 0001 to state that Copier owns source lifecycle updates while bootstrap owns derived-output reconciliation. Then wire Copier to retain source lifecycle inputs while excluding generated managed/seed/cleanup outputs, including the source `pyproject.toml`, `.python-version`, `uv.lock`, flake files, maintainer-only Nix actions, and maintainer-only workflows. Split the generated portable workflow baseline from source-maintainer CI and release gating so generated projects do not require Nix; only the selected `nix` capability may render Nix artifacts or CI contributions. Replace any remaining Bash workflow adapters with Python entry points or native action steps and remove ShellCheck policy and configuration; no `.sh` entry point is retained. Add GitHub snapshot cleanup and ownership declarations; the GitHub cleanup inventory must include source uv and Nix maintenance inputs, while Copier excludes them from generated projects. Ensure both paths initialize a Git working tree before bootstrap, recognize only their legal scaffold shapes, and share the same compiler and transaction shell.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "in_progress",
+            "completion": null,
+            "github_prs": []
           },
           "files": {
             "create": [

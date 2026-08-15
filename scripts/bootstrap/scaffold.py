@@ -3,9 +3,11 @@
 The shell supplies bounded observations; this module owns the only two-way
 decoders.  For an absent manifest, ``recognize_generation`` maps an exact
 scaffold onto its generation path and every other shape onto ``None``, which
-the shell reports as ``UnsupportedManifestFree``.  ``classify_cleanup`` decodes
-the snapshot maintenance inventory and classifies its agreement with the
-observed paths as ``CleanupContractValid``, ``CleanupContractMismatch``, or
+the shell reports as ``UnsupportedManifestFree``.  ``decode_source_ownership``
+decodes the fingerprinted source-ownership declaration, and
+``classify_cleanup`` decodes the snapshot maintenance inventory and classifies
+its agreement with the declared snapshot-cleanup set and the observed paths as
+``CleanupContractValid``, ``CleanupContractMismatch``, or
 ``NoSnapshotCleanup``.
 """
 
@@ -30,6 +32,7 @@ from scripts.bootstrap.state import (
 from scripts.bootstrap.vocabulary import SHA256
 
 CLEANUP_SCHEMA_VERSION = 1
+SOURCE_OWNERSHIP_SCHEMA_VERSION = 1
 
 # The five declared seed-once slots and their installed paths, fixed by the
 # design's declared-placeholder-marker table.  Generation-path recognition
@@ -46,6 +49,7 @@ SEED_ONCE_PATHS: tuple[RepoPath, ...] = tuple(
 )
 COPIER_ANSWERS_PATH = RepoPath(".copier-answers.yml")
 MAINTENANCE_INVENTORY_PATH = RepoPath(".agentic-template/maintenance-artifacts.json")
+SOURCE_OWNERSHIP_PATH = RepoPath(".agentic-template/source-ownership.json")
 
 # The directory-tree hash tag used for maintenance-inventory directory entries.
 _CLEANUP_TREE_KIND = b"cleanup/tree"
@@ -66,6 +70,18 @@ class CleanupInventory:
     """The decoded ephemeral maintenance inventory; it never lists itself."""
 
     entries: tuple[tuple[RepoPath, Literal["file", "directory"], str], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SourceOwnership:
+    """The decoded fingerprinted source-ownership declaration.
+
+    ``snapshot_cleanup_paths`` is the finite source-only set excluded by
+    Copier and removed or explicitly retained by initial snapshot apply; it
+    must equal the maintenance inventory's path set.
+    """
+
+    snapshot_cleanup_paths: tuple[RepoPath, ...]
 
 
 def recognize_generation(
@@ -152,6 +168,47 @@ def decode_cleanup_inventory(
     return Ok(CleanupInventory(tuple(entries)))
 
 
+def decode_source_ownership(
+    data: bytes,
+) -> Result[SourceOwnership, CleanupContractMismatch]:
+    """Strictly decode the source-ownership declaration into sorted, unique paths."""
+
+    try:
+        value = decode_json(data)
+    except (ValueError, RecursionError):
+        return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
+    if not isinstance(value, dict) or set(value) != {
+        "schema_version",
+        "snapshot_cleanup_paths",
+    }:
+        return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
+    if value.get("schema_version") != SOURCE_OWNERSHIP_SCHEMA_VERSION:
+        return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
+    raw_paths = value.get("snapshot_cleanup_paths")
+    if not isinstance(raw_paths, list):
+        return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
+    paths: list[RepoPath] = []
+    seen: set[str] = set()
+    for raw_path in raw_paths:
+        if not isinstance(raw_path, str):
+            return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
+        match parse_path(raw_path):
+            case Err(_):
+                return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
+            case Ok(path):
+                pass
+        if path.value in seen or path in (
+            MANIFEST_PATH,
+            MAINTENANCE_INVENTORY_PATH,
+            SOURCE_OWNERSHIP_PATH,
+        ):
+            return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
+        seen.add(path.value)
+        paths.append(path)
+    paths.sort(key=lambda path: path.value.encode("utf-8"))
+    return Ok(SourceOwnership(tuple(paths)))
+
+
 def cleanup_directory_digest(
     root: RepoPath,
     *,
@@ -191,14 +248,16 @@ def classify_cleanup(
     *,
     inventory: bytes | None,
     observed: dict[RepoPath, CleanupEntryObservation],
+    declared_cleanup_paths: tuple[RepoPath, ...],
 ) -> CleanupObservation:
-    """Classify the snapshot maintenance inventory against its observed paths.
+    """Classify the snapshot maintenance inventory against its declared set and observed paths.
 
     An absent inventory is ``NoSnapshotCleanup``.  A decoded inventory must
-    match every declared path's presence, kind, and digest exactly; any
-    mismatch names the differing paths and deletes nothing.  The contract's
-    lifecycle side is empty: v1 cleanup targets are disjoint from
-    generated-lifecycle source by construction.
+    equal the source ownership's declared snapshot-cleanup path set and match
+    every declared path's presence, kind, and digest exactly; any mismatch
+    names the differing paths and deletes nothing.  The contract's lifecycle
+    side is empty: v1 cleanup targets are disjoint from generated-lifecycle
+    source by construction.
     """
 
     if inventory is None:
@@ -208,6 +267,16 @@ def classify_cleanup(
             return mismatch
         case Ok(decoded):
             pass
+    declared = _sorted_unique(declared_cleanup_paths)
+    inventory_paths = _sorted_unique(tuple(path for path, _, _ in decoded.entries))
+    if declared != inventory_paths:
+        differing = tuple(
+            sorted(
+                (set(declared) ^ set(inventory_paths)),
+                key=lambda path: path.value.encode("utf-8"),
+            )
+        )
+        return CleanupContractMismatch(differing)
     mismatched: list[RepoPath] = []
     for path, kind, digest in decoded.entries:
         entry = observed.get(path)
@@ -228,6 +297,10 @@ def classify_cleanup(
         fingerprint=_cleanup_fingerprint(inventory),
     )
     return CleanupContractValid(contract)
+
+
+def _sorted_unique(paths: tuple[RepoPath, ...]) -> tuple[RepoPath, ...]:
+    return tuple(sorted(set(paths), key=lambda path: path.value.encode("utf-8")))
 
 
 def _cleanup_fingerprint(inventory: bytes) -> str:

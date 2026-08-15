@@ -1,15 +1,20 @@
 answers_file: .copier-answers.yml
 
+# Copier excludes the finite template-maintenance artifact set declared by
+# .agentic-template/source-ownership.json and the cleanup-control inventory
+# itself; generated projects keep every other generated-lifecycle source path.
 _exclude:
+  - .agentic-template/maintenance-artifacts.json
   - .github/workflows/copier-smoke.yml
+  - .github/workflows/mutation.yml
+  - .github/workflows/template-ci.yml
   - .python-version
+  - docs/specs
+  - flake.lock
+  - flake.nix
   - pyproject.toml
   - tests
   - uv.lock
-  - tools
-
-_skip_if_exists:
-  - scripts/validate_project.py
 
 _message_after_copy: |
   Project created from the Agentic Delivery Template.

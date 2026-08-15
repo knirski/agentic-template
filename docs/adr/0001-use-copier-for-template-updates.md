@@ -16,6 +16,18 @@ fingerprinted generated-lifecycle compiler inputs; bootstrap alone reconciles th
 bootstrap-managed output, and only on the Copier-generated project path. It does not rewrite
 seed-once adopter output such as product files, licences, or bundled-skill provenance notices.
 
+## Ownership split
+
+Copier owns source lifecycle updates; bootstrap owns derived-output reconciliation. Copier
+retains every generated-lifecycle source input and excludes bootstrap-managed output, seed-once
+output, source-only snapshot-cleanup targets, and the cleanup-control inventory from generated
+projects. The exclusions are the finite template-maintenance artifact set declared by
+`.agentic-template/source-ownership.json`, so a Copier-generated project never receives source
+uv metadata (`pyproject.toml`, `uv.lock`, `.python-version`), Nix maintenance inputs
+(`flake.nix`, `flake.lock`), maintainer-only workflows, source test suites, or historical specs.
+GitHub snapshots initially retain those same paths and remove them only when the snapshot
+cleanup contract authorizes deletion.
+
 Semantic-release Git tags are the template versions, and Copier-generated projects retain Copier's
 `.copier-answers.yml` metadata. GitHub-generated projects are one-time snapshots without Copier
 update lineage. This accepts Python, Git, and network/tool-installation requirements for

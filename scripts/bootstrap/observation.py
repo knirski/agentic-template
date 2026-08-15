@@ -61,10 +61,12 @@ from scripts.bootstrap.scaffold import (
     MAINTENANCE_INVENTORY_PATH,
     SEED_ONCE_PATHS,
     SEED_ONCE_SLOTS,
+    SOURCE_OWNERSHIP_PATH,
     CleanupEntryObservation,
     classify_cleanup,
     cleanup_directory_digest,
     decode_cleanup_inventory,
+    decode_source_ownership,
     recognize_generation,
 )
 from scripts.bootstrap.source_baseline import (
@@ -850,13 +852,28 @@ def _cleanup_observation(
     files: Mapping[RepoPath, CapturedFile],
     directories: Mapping[RepoPath, CapturedDirectory],
 ) -> CleanupObservation:
-    """Classify the snapshot maintenance inventory against observed paths."""
+    """Classify the snapshot maintenance inventory against observed paths.
 
-    from scripts.bootstrap.state import NoSnapshotCleanup
+    A Copier scaffold carries no inventory and is ``NoSnapshotCleanup``.  A
+    GitHub scaffold's inventory is authorized only when the fingerprinted
+    source-ownership declaration is present, decodes, and declares exactly the
+    inventory's path set; every other shape names the differing paths and
+    deletes nothing.
+    """
+
+    from scripts.bootstrap.state import CleanupContractMismatch, NoSnapshotCleanup
 
     inventory_file = files.get(MAINTENANCE_INVENTORY_PATH)
     if inventory_file is None:
         return NoSnapshotCleanup()
+    ownership_file = files.get(SOURCE_OWNERSHIP_PATH)
+    if ownership_file is None:
+        return CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,))
+    match decode_source_ownership(ownership_file.content):
+        case Err(mismatch):
+            return mismatch
+        case Ok(ownership):
+            pass
     match decode_cleanup_inventory(inventory_file.content):
         case Err(mismatch):
             return mismatch
@@ -895,7 +912,11 @@ def _cleanup_observation(
                     path, files=child_files, directories=child_dirs
                 ),
             )
-    return classify_cleanup(inventory=inventory_file.content, observed=observed)
+    return classify_cleanup(
+        inventory=inventory_file.content,
+        observed=observed,
+        declared_cleanup_paths=ownership.snapshot_cleanup_paths,
+    )
 
 
 def _retained_cleanup_contract(  # pyright: ignore[reportUnusedFunction] — shared cleanup-contract helper, imported by the cli shell
@@ -903,9 +924,11 @@ def _retained_cleanup_contract(  # pyright: ignore[reportUnusedFunction] — sha
 ) -> Result[CleanupContract, ContractError]:
     """Derive the retention contract for a cleanup inventory that no longer matches.
 
-    ``--leave-maintenance-artifacts`` skips every cleanup deletion.  Until the
-    fingerprinted source-ownership declaration lands, the retained set is the
-    decoded inventory's declared paths plus the inventory itself when present.
+    ``--leave-maintenance-artifacts`` skips every cleanup deletion.  The
+    retained set is the fingerprinted source-ownership declaration's
+    snapshot-cleanup paths plus the inventory itself when present; a missing
+    or corrupt declaration falls back to the decoded inventory's declared
+    paths.
     """
 
     inventory = next(
@@ -919,11 +942,23 @@ def _retained_cleanup_contract(  # pyright: ignore[reportUnusedFunction] — sha
                 "--leave-maintenance-artifacts requires a maintenance inventory",
             )
         )
-    match decode_cleanup_inventory(inventory.content):
-        case Err(_):
-            declared: tuple[RepoPath, ...] = ()
-        case Ok(decoded):
-            declared = tuple(path for path, _kind, _digest in decoded.entries)
+    declared: tuple[RepoPath, ...] = ()
+    ownership = next(
+        (entry for entry in pass_.files if entry.path == SOURCE_OWNERSHIP_PATH),
+        None,
+    )
+    if ownership is not None:
+        match decode_source_ownership(ownership.content):
+            case Ok(decoded):
+                declared = decoded.snapshot_cleanup_paths
+            case Err(_):
+                pass
+    if not declared:
+        match decode_cleanup_inventory(inventory.content):
+            case Err(_):
+                pass
+            case Ok(decoded):
+                declared = tuple(path for path, _kind, _digest in decoded.entries)
     retained = tuple(
         sorted(
             (*declared, MAINTENANCE_INVENTORY_PATH),
