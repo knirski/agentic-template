@@ -23,5 +23,9 @@ jobs:
           version: "0.12.1"
           python-version: "3.14"
           enable-cache: true
-      - name: Run Copier smoke test
-        run: uv run --no-project --python 3.14 tests/test_copier.py
+      - name: Install locked source dependencies
+        run: uv sync --all-groups --locked
+      - name: Run Copier smoke tests
+        run: |
+          uv run python tests/test_copier.py
+          uv run python tests/test_copier_bootstrap.py

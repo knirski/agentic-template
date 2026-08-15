@@ -20,17 +20,11 @@ jobs:
 
       - name: Check release eligibility
         id: release-eligibility
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          main_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
-          if [ "$GITHUB_SHA" = "$main_sha" ]; then
-            echo "eligible=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "eligible=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping release because this validated commit is no longer the main branch tip."
-          fi
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: python3 scripts/check-release-eligibility.py
 
       - name: Set up uv and Python 3.14
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0

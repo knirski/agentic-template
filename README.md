@@ -88,6 +88,25 @@ order. The template source uses its fixture suites instead; it does not bypass r
 The bundled CI validates the template contract itself. Generated projects must add their own tests,
 linting, builds, security checks, and required-check configuration.
 
+### Regenerating the source cleanup inventory
+
+The template source carries a fingerprinted cleanup inventory
+(`.agentic-template/maintenance-artifacts.json`) that authorizes GitHub-snapshot cleanup of
+source-only paths. When tracked files under those paths change, regenerate it from the tracked
+source before committing:
+
+```console
+git add -A
+uv run python -c "import json, sys; sys.path.insert(0, '.'); from tests.test_github_template_readiness import expected_cleanup_inventory; open('.agentic-template/maintenance-artifacts.json', 'w', encoding='utf-8').write(json.dumps(expected_cleanup_inventory(), sort_keys=True, indent=2) + chr(10))"
+git add .agentic-template/maintenance-artifacts.json
+```
+
+The final ``git add`` re-stages the rewritten inventory; without it the commit
+would record the pre-regeneration bytes.
+
+`test_cleanup_inventory_matches_the_tracked_source` fails on a stale inventory, so the fixture
+suites catch a forgotten regeneration.
+
 ## Automated PR reviews
 
 PR Agent automatically describes, reviews, and suggests improvements when a same-repository pull
@@ -115,11 +134,15 @@ wiring.
 
 ## Releases
 
-After Python source, delivery-contract, project-validation, and workflow-lint checks succeed, the template runs
-semantic-release for pushes to `main` and manual CI dispatches from `main`. Releases are serialized,
-and Conventional Commit messages determine the next version, release notes, Git tag, and GitHub
-Release. Generated projects own their product-specific commands through `scripts/validate_project.py`;
-every release-critical validation job must be added to the `release` job's `needs`.
+After the project-validation and delivery-contract checks succeed, generated projects run
+semantic-release for pushes to `main` and manual CI dispatches from `main`. The template source
+releases through the maintainer workflow only after its locked source checks, source fixtures, and
+workflow lint pass. Releases are serialized, and Conventional Commit messages determine the next
+version, release notes, Git tag, and GitHub Release. Generated projects own their product-specific
+commands through `scripts/validate_project.py`; every release-critical validation job must be
+added to the `release` job's `needs`. Maintainer-only source checks (locked uv sync, Python source
+checks, and actionlint) run in the separate source-maintainer workflow that Copier excludes and
+GitHub snapshots clean up, so generated projects do not require the template's source toolchain.
 
 ## Scope
 

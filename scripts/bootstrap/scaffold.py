@@ -3,9 +3,11 @@
 The shell supplies bounded observations; this module owns the only two-way
 decoders.  For an absent manifest, ``recognize_generation`` maps an exact
 scaffold onto its generation path and every other shape onto ``None``, which
-the shell reports as ``UnsupportedManifestFree``.  ``classify_cleanup`` decodes
-the snapshot maintenance inventory and classifies its agreement with the
-observed paths as ``CleanupContractValid``, ``CleanupContractMismatch``, or
+the shell reports as ``UnsupportedManifestFree``.  ``decode_source_ownership``
+decodes the fingerprinted source-ownership declaration, and
+``classify_cleanup`` decodes the snapshot maintenance inventory and classifies
+its agreement with the declared snapshot-cleanup set and the observed paths as
+``CleanupContractValid``, ``CleanupContractMismatch``, or
 ``NoSnapshotCleanup``.
 """
 
@@ -14,11 +16,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from scripts.bootstrap.canonical_json import decode_json
+from scripts.bootstrap.canonical_json import StrictJsonValue, decode_json
 from scripts.bootstrap.identity import directory_tree_hash
 from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.manifest import MANIFEST_PATH
-from scripts.bootstrap.paths import RepoPath, parse_path
+from scripts.bootstrap.paths import RepoPath, parse_path, sorted_paths
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.state import (
     CleanupContract,
@@ -30,6 +32,7 @@ from scripts.bootstrap.state import (
 from scripts.bootstrap.vocabulary import SHA256
 
 CLEANUP_SCHEMA_VERSION = 1
+SOURCE_OWNERSHIP_SCHEMA_VERSION = 1
 
 # The five declared seed-once slots and their installed paths, fixed by the
 # design's declared-placeholder-marker table.  Generation-path recognition
@@ -46,6 +49,7 @@ SEED_ONCE_PATHS: tuple[RepoPath, ...] = tuple(
 )
 COPIER_ANSWERS_PATH = RepoPath(".copier-answers.yml")
 MAINTENANCE_INVENTORY_PATH = RepoPath(".agentic-template/maintenance-artifacts.json")
+SOURCE_OWNERSHIP_PATH = RepoPath(".agentic-template/source-ownership.json")
 
 # The directory-tree hash tag used for maintenance-inventory directory entries.
 _CLEANUP_TREE_KIND = b"cleanup/tree"
@@ -66,6 +70,18 @@ class CleanupInventory:
     """The decoded ephemeral maintenance inventory; it never lists itself."""
 
     entries: tuple[tuple[RepoPath, Literal["file", "directory"], str], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SourceOwnership:
+    """The decoded fingerprinted source-ownership declaration.
+
+    ``snapshot_cleanup_paths`` is the finite source-only set excluded by
+    Copier and removed or explicitly retained by initial snapshot apply; it
+    must equal the maintenance inventory's path set.
+    """
+
+    snapshot_cleanup_paths: tuple[RepoPath, ...]
 
 
 def recognize_generation(
@@ -104,19 +120,41 @@ def recognize_generation(
     return None
 
 
+def _decode_document(
+    data: bytes,
+    *,
+    document_path: RepoPath,
+    schema_version: int,
+    keys: frozenset[str],
+) -> Result[dict[str, StrictJsonValue], CleanupContractMismatch]:
+    """Decode one strict declaration document: exact keys, exact schema version."""
+
+    try:
+        value = decode_json(data)
+    except ValueError, RecursionError:
+        return Err(CleanupContractMismatch((document_path,)))
+    if not isinstance(value, dict) or set(value) != set(keys):
+        return Err(CleanupContractMismatch((document_path,)))
+    if value.get("schema_version") != schema_version:
+        return Err(CleanupContractMismatch((document_path,)))
+    return Ok(value)
+
+
 def decode_cleanup_inventory(
     data: bytes,
 ) -> Result[CleanupInventory, CleanupContractMismatch]:
     """Strictly decode the maintenance inventory into sorted, disjoint entries."""
 
-    try:
-        value = decode_json(data)
-    except ValueError, RecursionError:
-        return Err(CleanupContractMismatch((MAINTENANCE_INVENTORY_PATH,)))
-    if not isinstance(value, dict) or set(value) != {"schema_version", "entries"}:
-        return Err(CleanupContractMismatch((MAINTENANCE_INVENTORY_PATH,)))
-    if value.get("schema_version") != CLEANUP_SCHEMA_VERSION:
-        return Err(CleanupContractMismatch((MAINTENANCE_INVENTORY_PATH,)))
+    match _decode_document(
+        data,
+        document_path=MAINTENANCE_INVENTORY_PATH,
+        schema_version=CLEANUP_SCHEMA_VERSION,
+        keys=frozenset({"schema_version", "entries"}),
+    ):
+        case Err(mismatch):
+            return Err(mismatch)
+        case Ok(value):
+            pass
     raw_entries = value.get("entries")
     if not isinstance(raw_entries, list):
         return Err(CleanupContractMismatch((MAINTENANCE_INVENTORY_PATH,)))
@@ -150,6 +188,46 @@ def decode_cleanup_inventory(
         entries.append((path, kind, digest))
     entries.sort(key=lambda item: item[0].value.encode("utf-8"))
     return Ok(CleanupInventory(tuple(entries)))
+
+
+def decode_source_ownership(
+    data: bytes,
+) -> Result[SourceOwnership, CleanupContractMismatch]:
+    """Strictly decode the source-ownership declaration into sorted, unique paths."""
+
+    match _decode_document(
+        data,
+        document_path=SOURCE_OWNERSHIP_PATH,
+        schema_version=SOURCE_OWNERSHIP_SCHEMA_VERSION,
+        keys=frozenset({"schema_version", "snapshot_cleanup_paths"}),
+    ):
+        case Err(mismatch):
+            return Err(mismatch)
+        case Ok(value):
+            pass
+    raw_paths = value.get("snapshot_cleanup_paths")
+    if not isinstance(raw_paths, list):
+        return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
+    paths: list[RepoPath] = []
+    seen: set[str] = set()
+    for raw_path in raw_paths:
+        if not isinstance(raw_path, str):
+            return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
+        match parse_path(raw_path):
+            case Err(_):
+                return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
+            case Ok(path):
+                pass
+        if path.value in seen or path in (
+            MANIFEST_PATH,
+            MAINTENANCE_INVENTORY_PATH,
+            SOURCE_OWNERSHIP_PATH,
+        ):
+            return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
+        seen.add(path.value)
+        paths.append(path)
+    paths.sort(key=lambda path: path.value.encode("utf-8"))
+    return Ok(SourceOwnership(tuple(paths)))
 
 
 def cleanup_directory_digest(
@@ -191,14 +269,16 @@ def classify_cleanup(
     *,
     inventory: bytes | None,
     observed: dict[RepoPath, CleanupEntryObservation],
+    declared_cleanup_paths: tuple[RepoPath, ...],
 ) -> CleanupObservation:
-    """Classify the snapshot maintenance inventory against its observed paths.
+    """Classify the snapshot maintenance inventory against its declared set and observed paths.
 
     An absent inventory is ``NoSnapshotCleanup``.  A decoded inventory must
-    match every declared path's presence, kind, and digest exactly; any
-    mismatch names the differing paths and deletes nothing.  The contract's
-    lifecycle side is empty: v1 cleanup targets are disjoint from
-    generated-lifecycle source by construction.
+    equal the source ownership's declared snapshot-cleanup path set and match
+    every declared path's presence, kind, and digest exactly; any mismatch
+    names the differing paths and deletes nothing.  The contract's lifecycle
+    side is empty: v1 cleanup targets are disjoint from generated-lifecycle
+    source by construction.
     """
 
     if inventory is None:
@@ -208,6 +288,11 @@ def classify_cleanup(
             return mismatch
         case Ok(decoded):
             pass
+    declared = sorted_paths(declared_cleanup_paths)
+    inventory_paths = sorted_paths(tuple(path for path, _, _ in decoded.entries))
+    if declared != inventory_paths:
+        differing = sorted_paths(set(declared) ^ set(inventory_paths))
+        return CleanupContractMismatch(differing)
     mismatched: list[RepoPath] = []
     for path, kind, digest in decoded.entries:
         entry = observed.get(path)

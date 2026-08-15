@@ -1,0 +1,55 @@
+{
+  "entries": [
+    {
+      "kind": "file",
+      "path": ".github/workflows/copier-smoke.yml",
+      "sha256": "88e2170aa4e4dd849c4b8ea08dd4597f54834e56bb36d9ac62a99db3ba4c323c"
+    },
+    {
+      "kind": "file",
+      "path": ".github/workflows/mutation.yml",
+      "sha256": "a7d751509805c533224ab2f8861934d5c6135eab3d98eba5aee29ac6ffb65929"
+    },
+    {
+      "kind": "file",
+      "path": ".github/workflows/template-ci.yml",
+      "sha256": "cedd61d16d1f8b67dfa11db9e2434a3253eca2155344cc01886384cc084c980d"
+    },
+    {
+      "kind": "file",
+      "path": ".python-version",
+      "sha256": "a876e0b10411037a012498b9fe18d9bc1df32ed8b722a13564dc944ddcfd9135"
+    },
+    {
+      "kind": "directory",
+      "path": "docs/specs",
+      "sha256": "8c4facb02db8c9a39c987e30cba6d656002b399ee4d629691248fee683157687"
+    },
+    {
+      "kind": "file",
+      "path": "flake.lock",
+      "sha256": "2d56536b3f060dc9f8449e61f0726787a7bef72c3daad91abe22325a07a06f73"
+    },
+    {
+      "kind": "file",
+      "path": "flake.nix",
+      "sha256": "efc09b2079aa716b71d6ccd0d3f190da49c6c7c02286cffd5464b958dc382160"
+    },
+    {
+      "kind": "file",
+      "path": "pyproject.toml",
+      "sha256": "ddacc0f422405e1f2e32df592746aa52ebc9f5de0189498068385bd3f599d355"
+    },
+    {
+      "kind": "directory",
+      "path": "tests",
+      "sha256": "f4650185b3a482b9869c26f8a9583ba4988b0af33c63278fb8086d9366053222"
+    },
+    {
+      "kind": "file",
+      "path": "uv.lock",
+      "sha256": "cb3d87db9b7c7361096d5dca51b11302e8b8966280db4d483a8c5e080243ddde"
+    }
+  ],
+  "schema_version": 1
+}

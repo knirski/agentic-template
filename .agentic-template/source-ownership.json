@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "snapshot_cleanup_paths": [
+    ".github/workflows/copier-smoke.yml",
+    ".github/workflows/mutation.yml",
+    ".github/workflows/template-ci.yml",
+    ".python-version",
+    "docs/specs",
+    "flake.lock",
+    "flake.nix",
+    "pyproject.toml",
+    "tests",
+    "uv.lock"
+  ]
+}

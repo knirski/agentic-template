@@ -882,6 +882,12 @@ def capture_plan_snapshot(
         for path in sorted(dir_paths, key=lambda p: p.value.encode("utf-8")):
             components = tuple(os.fsencode(part) for part in path.value.split("/"))
             match walk_no_follow(root_fd, components, allow_absent_final=True):
+                case Err(ObservationError(kind=ObservationErrorKind.PATH_MISSING)):
+                    # A missing intermediate directory means the whole path is
+                    # absent: a deleted tree's nested directories are declared
+                    # deletion targets too, so the post-mutation verification
+                    # walks parents that are already gone.
+                    continue
                 case Err(error):
                     return Err(error)
                 case Ok(fd):

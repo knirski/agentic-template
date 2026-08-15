@@ -23,11 +23,11 @@ def run(
 
 def main() -> int:
     copier = shutil.which("copier")
-    command = [copier] if copier else ["uvx", "--from", f"copier=={VERSION}", "copier"]
-    if copier and run([*command, "--version"]).stdout.strip() != f"copier {VERSION}":
-        print(f"Copier {VERSION} is required", file=sys.stderr)
-        return 1
-    if not copier and not shutil.which("uvx"):
+    if copier and run([copier, "--version"]).stdout.strip() == f"copier {VERSION}":
+        command = [copier]
+    elif shutil.which("uvx"):
+        command = ["uvx", "--from", f"copier=={VERSION}", "copier"]
+    else:
         print(
             "Copier is required; install it with: uv tool install copier",
             file=sys.stderr,
@@ -39,7 +39,18 @@ def main() -> int:
         _ = shutil.copytree(
             ROOT,
             source,
-            ignore=shutil.ignore_patterns(".git", "__pycache__", ".direnv", "result"),
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".direnv",
+                "__pycache__",
+                "result",
+                ".venv",
+                ".hypothesis",
+                ".pytest_cache",
+                ".ruff_cache",
+                ".mypy_cache",
+                ".coverage",
+            ),
         )
         git = ["git", "-C", str(source)]
         for args in (
@@ -71,6 +82,7 @@ def main() -> int:
         if not (project / ".copier-answers.yml").is_file() or any(
             (project / path).exists()
             for path in (
+                ".git",
                 ".python-version",
                 "pyproject.toml",
                 "uv.lock",
@@ -124,7 +136,6 @@ def main() -> int:
             _ = handle.write("\nLocal project customization.\n")
         with project_hook.open("a", encoding="utf-8") as handle:
             _ = handle.write("\n# local hook customization\n")
-        expected_hook_text = project_hook.read_text(encoding="utf-8")
         _ = run(
             [
                 *project_git,
@@ -148,7 +159,11 @@ def main() -> int:
             print(result.stdout + result.stderr, file=sys.stderr)
             return 1
         if (
-            hook_text != expected_hook_text
+            # Until T20 ships the extensionless seed-once hook, the .py hook
+            # rides in the Copier copy; updates must still deliver template
+            # hook changes, with Copier's conflict markers preserving local
+            # edits (never a silent skip).
+            "# template hook update" not in hook_text
             or "Copier smoke-test marker."
             not in (project / "NOTICE.md").read_text(encoding="utf-8")
             or "Local project customization."

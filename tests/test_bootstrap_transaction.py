@@ -829,6 +829,54 @@ class TestSnapshotVerification:
         assert snapshot_matches_candidate(plan, snapshot) is False
 
 
+class TestPlanSnapshotCapture:
+    def test_nested_deleted_directory_is_captured_as_absent(self) -> None:
+        # T13: snapshot cleanup may delete a directory tree whose nested
+        # directories are also declared deletion targets.  The post-mutation
+        # verification then walks a tree whose intermediate directory is gone;
+        # that must capture the nested paths as absent, not fail.
+        _, store, _ = _full_plan()
+        plan = _plan(
+            (
+                RemoveEmptyDirectoryOperation(
+                    path=RepoPath("docs/specs/2026-08-03-project-readiness"),
+                    expected_old=DirectoryState(PosixMode.DIRECTORY, ()),
+                    planned_new=DirectoryAbsent(),
+                ),
+                RemoveEmptyDirectoryOperation(
+                    path=RepoPath("docs/specs"),
+                    expected_old=DirectoryState(PosixMode.DIRECTORY, ()),
+                    planned_new=DirectoryAbsent(),
+                ),
+            ),
+            store,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.fsencode(tmp)
+            _ = os.makedirs(os.path.join(tmp, "docs"))
+            resources = TransactionResources(
+                worktree=ResolvedGitWorktree(
+                    root_abs=root,
+                    git_dir_abs=os.fsencode(os.path.join(tmp, ".git")),
+                    state_root_abs=os.fsencode(os.path.join(tmp, "agentic-template")),
+                    target=TARGET,
+                ),
+                ownership_tokens=(),
+            )
+            from scripts.bootstrap.transaction_machine import capture_plan_snapshot
+
+            match capture_plan_snapshot(resources, plan):
+                case Ok(snapshot):
+                    pass
+                case Err(error):
+                    pytest.fail(f"snapshot capture failed: {error}")
+            observed_dirs = {entry.path for entry in snapshot.directories}
+            assert RepoPath("docs/specs") not in observed_dirs
+            assert (
+                RepoPath("docs/specs/2026-08-03-project-readiness") not in observed_dirs
+            )
+
+
 def _prefix_events(
     compiled: CompiledTransaction,
 ) -> dict[str, tuple[TransactionEvent, ...]]:

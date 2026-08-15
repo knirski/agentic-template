@@ -16,6 +16,33 @@ fingerprinted generated-lifecycle compiler inputs; bootstrap alone reconciles th
 bootstrap-managed output, and only on the Copier-generated project path. It does not rewrite
 seed-once adopter output such as product files, licences, or bundled-skill provenance notices.
 
+## Ownership split
+
+Copier owns source lifecycle updates; bootstrap owns derived-output reconciliation. Copier
+retains every generated-lifecycle source input and excludes bootstrap-managed output, seed-once
+output, source-only snapshot-cleanup targets, and the cleanup-control inventory from generated
+projects. The maintenance exclusions are the finite template-maintenance artifact set declared by
+`.agentic-template/source-ownership.json`, so a Copier-generated project never receives source
+uv metadata (`pyproject.toml`, `uv.lock`, `.python-version`), Nix maintenance inputs
+(`flake.nix`, `flake.lock`), maintainer-only workflows, source test suites, or historical specs.
+Because a custom `_exclude` list replaces Copier's built-in exclusions, the template re-declares
+them alongside: VCS metadata (`.git`), Python bytecode caches, editor and OS litter, and local tool
+state never ship into generated projects.
+GitHub snapshots initially retain those same paths and remove them only when the snapshot
+cleanup contract authorizes deletion.
+
+Seed-once output (README, PRD, SECURITY, `CONTRIBUTING.md`, the hook, and the
+legal/provenance files) is adopter-owned: bootstrap installs it once and reconcile never
+rewrites it. Copier excludes seed-once output by design; that exclusion takes effect once the
+template ships scaffold content at distinct generated-lifecycle blob paths (the recorded T13
+follow-up gate), and until then the seed-once files ship in the Copier copy so the generated
+project carries its own scaffold, with Copier's merge and conflict handling preserving adopter
+edits during updates.
+
+Future adopting projects upgrade the template through `copier update`: Copier delivers
+generated-lifecycle source updates, bootstrap reconciles the derived managed output on the
+Copier path, and the adopter's seed-once files remain preserved.
+
 Semantic-release Git tags are the template versions, and Copier-generated projects retain Copier's
 `.copier-answers.yml` metadata. GitHub-generated projects are one-time snapshots without Copier
 update lineage. This accepts Python, Git, and network/tool-installation requirements for

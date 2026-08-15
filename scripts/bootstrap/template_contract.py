@@ -7,6 +7,7 @@ import re
 REQUIRED_FILES: tuple[str, ...] = (
     "AGENTS.md",
     ".agents/AGENTS.md",
+    ".agentic-template/source-ownership.json",
     "README.md",
     "copier.yml",
     "docs/prd.md",
@@ -22,6 +23,7 @@ REQUIRED_FILES: tuple[str, ...] = (
     ".pr_agent.toml",
     ".releaserc",
     "scripts/check_project_readiness.py",
+    "scripts/check-release-eligibility.py",
     "scripts/validate_project.py",
     "scripts/validate_repository.py",
     "scripts/bootstrap/__init__.py",

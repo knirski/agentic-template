@@ -744,13 +744,39 @@
           "description": "First update ADR 0001 to state that Copier owns source lifecycle updates while bootstrap owns derived-output reconciliation. Then wire Copier to retain source lifecycle inputs while excluding generated managed/seed/cleanup outputs, including the source `pyproject.toml`, `.python-version`, `uv.lock`, flake files, maintainer-only Nix actions, and maintainer-only workflows. Split the generated portable workflow baseline from source-maintainer CI and release gating so generated projects do not require Nix; only the selected `nix` capability may render Nix artifacts or CI contributions. Replace any remaining Bash workflow adapters with Python entry points or native action steps and remove ShellCheck policy and configuration; no `.sh` entry point is retained. Add GitHub snapshot cleanup and ownership declarations; the GitHub cleanup inventory must include source uv and Nix maintenance inputs, while Copier excludes them from generated projects. Ensure both paths initialize a Git working tree before bootstrap, recognize only their legal scaffold shapes, and share the same compiler and transaction shell.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-15",
+              "commits": [
+                "d497aac",
+                "cdd562e",
+                "e624cf8",
+                "6a221b8"
+              ],
+              "evidence": [
+                "ADR 0001 now states the ownership split: Copier owns source lifecycle updates; bootstrap owns derived-output reconciliation",
+                "copier.yml excludes exactly the declared maintenance-artifact set plus the cleanup inventory (and re-declares Copier's own safety exclusions, which any custom _exclude list replaces), with no stale excludes and no skip-if-exists rule; seed-once files still ship in the Copier copy until the scaffold blob-path infrastructure lands, so `copier update` remains the upgrade path for future adopting projects with Copier's merge/conflict handling preserving adopter edits",
+                "GitHub snapshot and Copier fixtures install supplied and all-scaffold bundles through the real CLI entry point; snapshot apply removes the declared maintenance paths and the inventory itself, and --leave-maintenance-artifacts retains them",
+                "uv run pytest (951 passed, including 10 new GitHub-snapshot/source-contract tests, a new capture_plan_snapshot regression test for nested deleted directories, in-process release-eligibility branch tests, and updated scaffold/observation/CLI fixtures)",
+                "uv run ruff check (clean); uv run ruff format --check (78 files already formatted); uv run basedpyright (0 errors, 0 warnings, 0 notes) — the repository-declared type-check gate",
+                "uv lock --check (passed); actionlint on all workflows (clean); git diff --check (clean)",
+                "python3 scripts/validate_template.py (exit 0); python3 scripts/validate_repository.py (expected template-source exit 1; template contract passed and readiness findings emitted in canonical order)",
+                "stdlib lanes: test_project_readiness, test_repository_validation, test_delivery_contract, test_template_contract all exit 0",
+                "tests/test_copier.py and tests/test_copier_bootstrap.py pass against a real Copier 9.17.0 copy/update (copier contract: ok; copier bootstrap contract: ok)",
+                "transaction_machine.py fix: post-mutation plan-snapshot capture treats a missing intermediate directory as absence so nested cleanup trees (docs/specs) verify after deletion",
+                "review-fix batch: release gating split between the portable ci.yml release (generated projects) and a source-only template-ci.yml release job; shared tests/fixtures.py extracted so the two generation-path suites no longer import each other's internals; maintenance inventory regenerated from the tracked source (tests/ digest refreshed for the fixture extraction); basedpyright cleared to 0 errors and 0 warnings (typed JSON/YAML document decoders, no reportPrivateUsage, no reportAny); release-eligibility script hardened (repository-shape regex, 30s timeout, OSError handling); .sh workflow scan extended textually to multiline run continuations without YAML parsing; retained-cleanup sentinel fixed so a valid empty ownership declaration is honored and covered by prefer/empty-declaration tests; copier smoke scripts fall back to `uvx --from copier==9.17.0` when the system copier version mismatches",
+                "second review round (CodeRabbit full review): copier safety exclusions restored (a custom _exclude list replaces Copier's defaults; .git no longer leaks into generated projects — verified by reproduction); the .sh workflow guard now detects indented run: keys and scans their multiline continuations; the in-process eligibility harness pins GITHUB_OUTPUT so CI runs never write the live job output; cleanup digests canonicalize file/directory modes (0o644 plus the executable bit / 0o755) so unchanged snapshots verify under any umask — reproduced failing under umask 077, then verified passing under both umasks; README regeneration instructions re-stage the rewritten inventory"
+              ]
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/69"
+            ]
           },
           "files": {
             "create": [
               ".agentic-template/source-ownership.json",
               ".agentic-template/maintenance-artifacts.json",
+              "tests/fixtures.py",
               "tests/test_github_template_readiness.py",
               "tests/test_copier_bootstrap.py"
             ],
@@ -1101,7 +1127,7 @@
           "inputs": [
             "one-release activation boundary; extensionless hook; all prior batch evidence; final release gate."
           ],
-          "description": "Replace the source scaffold hook contract with `scripts/validate-project`, wire final Copier/readiness/aggregate/workflow/docs boundaries, remove stale legacy/adoption/migration references, ensure the source tree itself is the integrated profile fixture, archive the superseded `docs/specs/2026-08-03-project-readiness` directory (mark its design superseded and archive its plan), and remove the legacy four-argument `Finding` adapter contract from the shared core. Do not add compatibility aliases.",
+          "description": "Replace the source scaffold hook contract with `scripts/validate-project`, wire final Copier/readiness/aggregate/workflow/docs boundaries, remove stale legacy/adoption/migration references, ensure the source tree itself is the integrated profile fixture, archive the superseded `docs/specs/2026-08-03-project-readiness` directory (mark its design superseded and archive its plan), and remove the legacy four-argument `Finding` adapter contract from the shared core. Do not add compatibility aliases. Recorded follow-up from T13: once the template ships seed-once scaffold content at distinct generated-lifecycle blob paths (the render-source work), Copier must exclude the seed-once root paths (README, PRD, SECURITY, `CONTRIBUTING.md`, the hook, and the legal/provenance files) and bootstrap must read the scaffold bytes from those blob paths; the scaffold-recognition absent branch then applies on the Copier path instead of the copied seed files. Until then the seed-once files ship in the Copier copy and Copier's merge/conflict handling preserves adopter edits.",
           "execution": {
             "mode": "inline",
             "status": "pending",

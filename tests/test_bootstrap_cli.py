@@ -155,6 +155,15 @@ class ScaffoldFixture:
             target = self.root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             _ = shutil.copy2(source, target)
+        # The source's cleanup-control inventory is exercised by the
+        # real-snapshot fixtures (test_github_template_readiness.py); the CLI
+        # suite controls it explicitly through ``_make_fixture(maintenance=True)``
+        # so its cleanup cases stay independent of the live source tree's
+        # inventory.  The source-ownership declaration is generated-lifecycle
+        # source and stays in the fixture.
+        target = self.root / ".agentic-template/maintenance-artifacts.json"
+        if target.is_file():
+            _ = target.unlink()
         self.hook_runs = parent / "hook-runs"
         _ = self.hook_runs.write_text("", encoding="utf-8")
         template.install_recording_hook(self.hook_runs)
@@ -284,8 +293,15 @@ def _make_fixture(
             "_commit: 0.1.0\n", encoding="utf-8"
         )
     if maintenance:
+        ownership = fixture.root / ".agentic-template/source-ownership.json"
+        _ = ownership.write_text(
+            json.dumps(
+                {"schema_version": 1, "snapshot_cleanup_paths": ["tests"]},
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
         inventory = fixture.root / ".agentic-template/maintenance-artifacts.json"
-        inventory.parent.mkdir(parents=True, exist_ok=True)
         _ = inventory.write_text(
             json.dumps(_inventory_document(fixture), sort_keys=True), encoding="utf-8"
         )
@@ -307,8 +323,9 @@ def _inventory_document(fixture: ScaffoldFixture) -> dict[str, object]:
 
 def _directory_digest(fixture: ScaffoldFixture) -> str:
     # The declared digest must equal what the shell observes over the fixture
-    # copy (tracked files only, real modes), never the live source tree with
-    # its untracked caches.
+    # copy (tracked files only, canonical modes), never the live source tree
+    # with its untracked caches.  Modes mirror the observer: 0o644 plus the
+    # executable bit for files, 0o755 for directories.
     from scripts.bootstrap.paths import RepoPath
     from scripts.bootstrap.scaffold import cleanup_directory_digest
 
@@ -319,11 +336,13 @@ def _directory_digest(fixture: ScaffoldFixture) -> str:
         for name in sorted(names):
             path = Path(current) / name
             relative = RepoPath(path.relative_to(fixture.root).as_posix())
-            files.append((relative, path.read_bytes(), path.stat().st_mode & 0o7777))
+            files.append(
+                (relative, path.read_bytes(), 0o644 | (path.stat().st_mode & 0o100))
+            )
         for name in sorted(dirs):
             path = Path(current) / name
             relative = RepoPath(path.relative_to(fixture.root).as_posix())
-            directories.append((relative, path.stat().st_mode & 0o7777))
+            directories.append((relative, 0o755))
     return cleanup_directory_digest(
         RepoPath("tests"), files=tuple(files), directories=tuple(directories)
     )
@@ -368,7 +387,7 @@ class CliFamilyTests(unittest.TestCase):
 
     def test_status_invalid_manifest_exits_two(self) -> None:
         manifest = self.fixture.root / ".agentic-template/project.json"
-        manifest.parent.mkdir()
+        manifest.parent.mkdir(exist_ok=True)
         _ = manifest.write_text("not json", encoding="utf-8")
         result = self.run_cli(["status", "--target", self.target_arg()])
         self.assertEqual(_exit_code(result), 2)
