@@ -177,6 +177,15 @@ class FsEffectsTests(unittest.TestCase):
             parent = _ok(mkdir_parents_0755(os.fsencode(tmp), (b"a", b"b", b"leaf")))
             self.assertEqual(os.fsdecode(parent), os.path.join(tmp, "a", "b"))
 
+    def test_mkdir_parents_leaves_existing_file_modes_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            blocker = os.path.join(tmp, "blocker")
+            _write(blocker, b"x")
+            os.chmod(blocker, 0o600)
+            parent = _ok(mkdir_parents_0755(os.fsencode(tmp), (b"blocker", b"leaf")))
+            self.assertEqual(os.fsdecode(parent), blocker)
+            self.assertEqual(stat.S_IMODE(os.stat(blocker).st_mode), 0o600)
+
     def test_mkdir_parents_rejects_oversized_components(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             error = _err(mkdir_parents_0755(os.fsencode(tmp), (b"x" * 300, b"leaf")))

@@ -322,11 +322,11 @@ def fsync_directory(fd: int) -> Result[None, TransactionError]:
 def mkdir_parents_0755(
     root: bytes, components: tuple[bytes, ...]
 ) -> Result[bytes, TransactionError]:
-    """Create every parent prefix of ``root`` with deterministic 0755 modes.
+    """Create every missing parent prefix of ``root`` with 0755 modes.
 
-    The final component is the leaf and is never created; the last created
-    prefix (or ``root`` itself when there is no parent) is returned as the
-    leaf's parent directory.  Existing prefixes are tolerated, and each
+    The final component is the leaf and is never created; the last prefix
+    (or ``root`` itself when there is no parent) is returned as the leaf's
+    parent directory.  Existing prefixes are left untouched; each freshly
     created prefix is chmodded to exactly 0755 because mkdir modes are
     umask-masked.
     """
@@ -337,7 +337,10 @@ def mkdir_parents_0755(
         try:
             os.mkdir(parent, 0o755)
         except FileExistsError:
-            pass
+            # The prefix already exists; chmodding it could modify a
+            # non-directory entry's permissions, so only freshly created
+            # prefixes are normalized.
+            continue
         except OSError as error:
             return Err(
                 _transaction_error(
