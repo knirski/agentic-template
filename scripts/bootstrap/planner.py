@@ -688,6 +688,26 @@ def _build_tree(
     )
 
 
+def _classify_uncovered(
+    outputs: list[_PlannedOutput] | tuple[_PlannedOutput, ...],
+    covered_paths: set[str],
+    observed_files: Mapping[str, ObservedFileEntry],
+    observed_dirs: Mapping[str, ObservedDirectoryEntry],
+    blobs: VerifiedBlobStore,
+    *,
+    refuse_present_old: bool,
+) -> Result[tuple[FileOperation, ...], CompileError]:
+    """Classify the outputs a tree operation did not already cover."""
+
+    return _classify_outputs(
+        tuple(output for output in outputs if output.path.value not in covered_paths),
+        observed_files,
+        observed_dirs,
+        blobs,
+        refuse_present_old=refuse_present_old,
+    )
+
+
 def _classify_outputs(
     outputs: tuple[_PlannedOutput, ...],
     observed_files: Mapping[str, ObservedFileEntry],
@@ -842,9 +862,10 @@ def _cleanup_operations(
                 key=lambda entry: entry.path.value.encode("utf-8"),
             )
         )
-        for entry in descendants:
-            if not entry.path.value.startswith(prefix):
-                continue
+        under = tuple(
+            entry for entry in descendants if entry.path.value.startswith(prefix)
+        )
+        for entry in under:
             match entry:
                 case ObservedFileEntry():
                     file_deletes.append(
@@ -856,9 +877,7 @@ def _cleanup_operations(
                     )
                 case ObservedDirectoryEntry():
                     pass
-        for entry in descendants:
-            if not entry.path.value.startswith(prefix):
-                continue
+        for entry in under:
             match entry:
                 case ObservedDirectoryEntry():
                     dir_removes.append(
@@ -1057,10 +1076,9 @@ def compile_initial_plan(
             return Err(error)
         case Ok((tree_ops, covered_paths)):
             pass
-    match _classify_outputs(
-        tuple(
-            output for output in seed_outputs if output.path.value not in covered_paths
-        ),
+    match _classify_uncovered(
+        seed_outputs,
+        covered_paths,
         observed_files,
         observed_dirs,
         store,
@@ -1070,12 +1088,9 @@ def compile_initial_plan(
             return Err(error)
         case Ok(seed_plain):
             pass
-    match _classify_outputs(
-        tuple(
-            output
-            for output in managed_outputs
-            if output.path.value not in covered_paths
-        ),
+    match _classify_uncovered(
+        managed_outputs,
+        covered_paths,
         observed_files,
         observed_dirs,
         store,
@@ -1085,12 +1100,9 @@ def compile_initial_plan(
             return Err(error)
         case Ok(managed_plain):
             pass
-    match _classify_outputs(
-        tuple(
-            output
-            for output in manifest_outputs
-            if output.path.value not in covered_paths
-        ),
+    match _classify_uncovered(
+        manifest_outputs,
+        covered_paths,
         observed_files,
         observed_dirs,
         store,
@@ -1304,23 +1316,9 @@ def apply_plan(
     written: set[str] = set()
     for operation in plan.ordered_operations:
         match operation:
-            case CreateFileOperation() as create:
+            case CreateFileOperation() | ReplaceFileOperation() as write:
                 match _apply_file_write(
-                    create,
-                    observed_states,
-                    observed_dir_states,
-                    directories,
-                    files,
-                    plan.blob_store,
-                    written,
-                ):
-                    case Err(error):
-                        return Err(error)
-                    case Ok(_):
-                        pass
-            case ReplaceFileOperation() as replace:
-                match _apply_file_write(
-                    replace,
+                    write,
                     observed_states,
                     observed_dir_states,
                     directories,
