@@ -871,6 +871,47 @@ def _decode_retained_paths(
     return Ok(tuple(decoded))
 
 
+def _decode_typed_entry(
+    value: StrictJsonValue,
+    subject: str,
+    kinds: frozenset[str],
+) -> Result[tuple[RepoPath, str, PosixMode, str], ManifestError]:
+    """Validate one closed ``{path, kind, mode, sha256}`` entry into its fields.
+
+    Shared by the source and managed inventory decoders; each caller supplies
+    its own kind vocabulary, extra constraints, and typed constructor.
+    """
+
+    match _expect_closed_mapping(
+        value, subject, frozenset({"path", "kind", "mode", "sha256"})
+    ):
+        case Err(error):
+            return Err(error)
+        case Ok(entry):
+            pass
+    path = entry.get("path")
+    kind = entry.get("kind")
+    mode = entry.get("mode")
+    raw_digest = entry.get("sha256")
+    if (
+        not isinstance(path, str)
+        or kind not in kinds
+        or not isinstance(mode, int)
+        or mode not in INSTALL_MODES
+        or not isinstance(raw_digest, str)
+        or SHA256.fullmatch(raw_digest) is None
+    ):
+        return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
+    match parse_path(path):
+        case Err(_):
+            return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
+        case Ok(parsed):
+            pass
+    if not path_within_limits(parsed):
+        return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
+    return Ok((parsed, kind, PosixMode(mode), raw_digest))
+
+
 def _decode_source_entries(
     value: StrictJsonValue, subject: str
 ) -> Result[tuple[LifecycleSourceEntry, ...], ManifestError]:
@@ -878,44 +919,19 @@ def _decode_source_entries(
         return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
     entries: list[LifecycleSourceEntry] = []
     for raw_entry in value:
-        match _expect_closed_mapping(
-            raw_entry, subject, frozenset({"path", "kind", "mode", "sha256"})
-        ):
+        match _decode_typed_entry(raw_entry, subject, frozenset({"file", "directory"})):
             case Err(error):
                 return Err(error)
-            case Ok(entry):
+            case Ok((parsed, kind, mode, digest)):
                 pass
-        path = entry.get("path")
-        kind = entry.get("kind")
-        mode = entry.get("mode")
-        raw_digest = entry.get("sha256")
-        if (
-            not isinstance(path, str)
-            or kind not in ("file", "directory")
-            or not isinstance(mode, int)
-            or mode not in INSTALL_MODES
-            or (kind == "directory" and mode != PosixMode.DIRECTORY)
-            or not isinstance(raw_digest, str)
-            or SHA256.fullmatch(raw_digest) is None
-        ):
+        if kind == "directory" and mode != PosixMode.DIRECTORY:
             return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
-        match parse_path(path):
-            case Err(_):
-                return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
-            case Ok(parsed):
-                pass
-        if not path_within_limits(parsed):
-            return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
-        if kind == "file":
-            entry_kind: Literal["file", "directory"] = "file"
-        else:
-            entry_kind = "directory"
         entries.append(
             LifecycleSourceEntry(
                 path=parsed,
-                kind=entry_kind,
-                mode=PosixMode(mode),
-                sha256=raw_digest,
+                kind=cast(Literal["file", "directory"], kind),
+                mode=mode,
+                sha256=digest,
             )
         )
     return Ok(tuple(entries))
@@ -1053,45 +1069,17 @@ def _decode_managed(value: StrictJsonValue) -> Result[ManagedInventory, Manifest
         return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "managed"))
     entries: list[ManagedInventoryEntry] = []
     for raw_entry in value:
-        match _expect_closed_mapping(
-            raw_entry, "managed", frozenset({"path", "kind", "mode", "sha256"})
-        ):
+        match _decode_typed_entry(raw_entry, "managed", frozenset({"text", "binary"})):
             case Err(error):
                 return Err(error)
-            case Ok(entry):
+            case Ok((parsed, kind, mode, digest)):
                 pass
-        path = entry.get("path")
-        kind = entry.get("kind")
-        mode = entry.get("mode")
-        raw_digest = entry.get("sha256")
-        if (
-            not isinstance(path, str)
-            or kind not in ("text", "binary")
-            or not isinstance(mode, int)
-            or mode not in INSTALL_MODES
-            or not isinstance(raw_digest, str)
-            or SHA256.fullmatch(raw_digest) is None
-        ):
-            return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "managed"))
-        match parse_path(path):
-            case Err(_):
-                return Err(
-                    _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "managed")
-                )
-            case Ok(parsed):
-                pass
-        if not path_within_limits(parsed):
-            return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "managed"))
-        if kind == "text":
-            entry_kind: Literal["text", "binary"] = "text"
-        else:
-            entry_kind = "binary"
         entries.append(
             ManagedInventoryEntry(
                 path=parsed,
-                kind=entry_kind,
-                mode=PosixMode(mode),
-                sha256=raw_digest,
+                kind=cast(Literal["text", "binary"], kind),
+                mode=mode,
+                sha256=digest,
             )
         )
     return Ok(tuple(entries))
