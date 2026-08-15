@@ -767,7 +767,9 @@
                 "review-fix batch: release gating split between the portable ci.yml release (generated projects) and a source-only template-ci.yml release job; shared tests/fixtures.py extracted so the two generation-path suites no longer import each other's internals; maintenance inventory regenerated from the tracked source (tests/ digest refreshed for the fixture extraction); basedpyright cleared to 0 errors and 0 warnings (typed JSON/YAML document decoders, no reportPrivateUsage, no reportAny); release-eligibility script hardened (repository-shape regex, 30s timeout, OSError handling); .sh workflow scan extended textually to multiline run continuations without YAML parsing; retained-cleanup sentinel fixed so a valid empty ownership declaration is honored and covered by prefer/empty-declaration tests; copier smoke scripts fall back to `uvx --from copier==9.17.0` when the system copier version mismatches"
               ]
             },
-            "github_prs": []
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/69"
+            ]
           },
           "files": {
             "create": [
