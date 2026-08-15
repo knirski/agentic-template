@@ -558,6 +558,12 @@ def _optional_section_keep(
             return Err(error)
 
 
+def _optional_section_error(reason: str, name: str) -> RenderError:
+    """One closed optional-section template error."""
+
+    return RenderError(RenderErrorKind.INVALID_TEMPLATE, reason, name)
+
+
 def _apply_optional_sections(
     content: bytes,
     substitutions_by_name: Mapping[str, SubstitutionDefinition],
@@ -576,40 +582,18 @@ def _apply_optional_sections(
             )
         if kind == "begin":
             if stack:
-                return Err(
-                    RenderError(
-                        RenderErrorKind.INVALID_TEMPLATE,
-                        "nested_optional_section",
-                        name,
-                    )
-                )
+                return Err(_optional_section_error("nested_optional_section", name))
             stack.append((name, match.group(0)))
         else:
             if not stack:
-                return Err(
-                    RenderError(
-                        RenderErrorKind.INVALID_TEMPLATE,
-                        "unbalanced_optional_section",
-                        name,
-                    )
-                )
+                return Err(_optional_section_error("unbalanced_optional_section", name))
             begin_name, begin_marker = stack.pop()
             if begin_name != name:
-                return Err(
-                    RenderError(
-                        RenderErrorKind.INVALID_TEMPLATE,
-                        "unbalanced_optional_section",
-                        name,
-                    )
-                )
+                return Err(_optional_section_error("unbalanced_optional_section", name))
             sections.append((name, begin_marker, match.group(0)))
     if stack:
         name = stack[0][0]
-        return Err(
-            RenderError(
-                RenderErrorKind.INVALID_TEMPLATE, "unbalanced_optional_section", name
-            )
-        )
+        return Err(_optional_section_error("unbalanced_optional_section", name))
     result = content
     for name, begin_marker, end_marker in sections:
         match _optional_section_keep(
@@ -627,11 +611,7 @@ def _apply_optional_sections(
             end = result.find(end_marker, start)
             if start < 0 or end < 0:  # pragma: no cover
                 return Err(  # pragma: no cover
-                    RenderError(
-                        RenderErrorKind.INVALID_TEMPLATE,
-                        "unbalanced_optional_section",
-                        name,
-                    )
+                    _optional_section_error("unbalanced_optional_section", name)
                 )
             line_start = result.rfind(b"\n", 0, start) + 1
             line_end = result.find(b"\n", end)
