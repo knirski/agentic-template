@@ -6,6 +6,11 @@ from typing import Literal
 
 from pydantic import model_validator
 
+from scripts.bootstrap.dependencies import (
+    validate_invocation,
+    validate_runtime_dependency,
+    validate_supported_python,
+)
 from scripts.bootstrap.paths import parse_path
 from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.schemas import Identifier, SettingName, StrictModel
@@ -103,6 +108,28 @@ class CapabilityDefinition(StrictModel):
             raise ValueError("capability cannot depend on itself")
         return self
 
+    @model_validator(mode="after")
+    def validate_dependency_metadata(self) -> CapabilityDefinition:
+        for value in self.runtime_dependencies:
+            match validate_runtime_dependency(value):
+                case Ok(_):
+                    pass
+                case Err(error):
+                    raise ValueError(
+                        f"invalid runtime dependency: {error.subject or value}"
+                    )
+        match validate_supported_python(self.supported_python):
+            case Ok(_):
+                pass
+            case Err(error):
+                raise ValueError(f"invalid supported Python range: {error.subject}")
+        match validate_invocation(self.invocation):
+            case Ok(_):
+                pass
+            case Err(error):
+                raise ValueError(f"invalid invocation: {error.subject}")
+        return self
+
 
 def _capability(
     capability_id: str,
@@ -110,17 +137,26 @@ def _capability(
     *,
     dependencies: tuple[str, ...] = (),
     settings: tuple[SettingDefinition, ...] = (),
+    runtime_dependencies: tuple[str, ...] = (),
+    invocation: str | None = None,
 ) -> CapabilityDefinition:
     return CapabilityDefinition(
         id=capability_id,
         description=description,
         dependencies=dependencies,
         settings=settings,
+        runtime_dependencies=runtime_dependencies,
+        invocation=invocation,
     )
 
 
 CATALOG: dict[str, CapabilityDefinition] = {
-    "semantic-release": _capability("semantic-release", "Automated semantic releases."),
+    "semantic-release": _capability(
+        "semantic-release",
+        "Automated semantic releases.",
+        runtime_dependencies=("python-semantic-release>=9",),
+        invocation="uvx semantic-release",
+    ),
     "nix": _capability("nix", "Nix development and CI tooling."),
     "cachix-publish": _capability(
         "cachix-publish",
@@ -135,6 +171,9 @@ CATALOG: dict[str, CapabilityDefinition] = {
         ),
     ),
     "pr-agent-gemini": _capability(
-        "pr-agent-gemini", "Qodo PR Agent with a Gemini backend."
+        "pr-agent-gemini",
+        "Qodo PR Agent with a Gemini backend.",
+        runtime_dependencies=("pr-agent",),
+        invocation="uvx pr-agent",
     ),
 }

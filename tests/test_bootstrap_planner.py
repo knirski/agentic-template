@@ -19,6 +19,7 @@ from scripts.bootstrap.identity import (
     FileEntry,
     FileState,
     PosixMode,
+    content_identity,
     file_state_identity,
     sha256_hex,
     tagged_digest,
@@ -3071,17 +3072,56 @@ class TestCollisionsAndCleanup:
             case Ok(_):
                 raise AssertionError("manifest collision compiled")
 
-    def test_cleanup_managed_collision_is_refused(self) -> None:
+    def test_cleanup_managed_path_is_replaced_not_deleted(self) -> None:
+        # A declared cleanup path that is exactly a managed output path is a
+        # replacement: the managed file overwrites the source bytes and the
+        # cleanup delete is skipped, keeping one operation per path.
         cleanup = replace(
             fixture_cleanup(),
-            cleanup_paths=(*CLEANUP_PATHS, RepoPath("docs/template-updates.md")),
+            cleanup_paths=(*CLEANUP_PATHS, RepoPath("pyproject.toml")),
+        )
+        plan = get_plan(compile_fixture(cleanup=cleanup)[1])
+        pyproject_ops = [
+            operation
+            for operation in plan.ordered_operations
+            if isinstance(operation, (CreateFileOperation, ReplaceFileOperation))
+            and operation.path.value == "pyproject.toml"
+        ]
+        assert len(pyproject_ops) == 1
+        operation = pyproject_ops[0]
+        assert isinstance(operation, ReplaceFileOperation)
+        assert operation.expected_old.identity is not None
+        assert (
+            operation.expected_old.identity.normalized_sha256
+            == content_identity(SOURCE_PYPROJECT, text=True).normalized_sha256
+        )
+        match apply_plan(github_snapshot(), plan):
+            case Ok(expected):
+                by_path = {file.path.value: file for file in expected.files}
+                assert (
+                    by_path["pyproject.toml"].content
+                    == b'[project]\nname = "example"\n'
+                )
+            case Err(error):
+                raise AssertionError(f"unexpected overlay failure: {error}")
+        delete_paths = [
+            operation.path.value
+            for operation in plan.ordered_operations
+            if isinstance(operation, DeleteFileOperation)
+        ]
+        assert "pyproject.toml" not in delete_paths
+
+    def test_cleanup_nested_managed_path_is_refused(self) -> None:
+        cleanup = replace(
+            fixture_cleanup(),
+            cleanup_paths=(*CLEANUP_PATHS, RepoPath("docs")),
         )
         _, result = compile_fixture(cleanup=cleanup)
         match result:
             case Err(error):
                 assert error.kind is CompileErrorKind.PATH_COLLISION
             case Ok(_):
-                raise AssertionError("cleanup/managed collision compiled")
+                raise AssertionError("nested cleanup/managed paths compiled")
 
     def test_cleanup_disagreement_when_observed_path_is_missing(self) -> None:
         snapshot = github_snapshot()
@@ -3252,19 +3292,16 @@ class TestCollisionsAndCleanup:
         snapshot = github_snapshot()
         files = (
             *snapshot.files,
-            observed_file(RepoPath("docs.txt"), b"docs sibling\n"),
+            observed_file(RepoPath("tests.txt"), b"tests sibling\n"),
         )
-        directories = (
-            *snapshot.directories,
-            observed_directory(
-                RepoPath("docs/x"),
-                ((RepoPath("docs/x/doc.md"), b"# Doc\n"),),
-            ),
-        )
-        snapshot = _sorted_snapshot(files, directories)
+        snapshot = _sorted_snapshot(files, snapshot.directories)
         cleanup = replace(
             fixture_cleanup(),
-            cleanup_paths=(RepoPath("docs"), RepoPath("docs.txt"), RepoPath("docs/x")),
+            cleanup_paths=(
+                RepoPath("tests"),
+                RepoPath("tests.txt"),
+                RepoPath("tests/sub"),
+            ),
         )
         _, result = compile_fixture(snapshot=snapshot, cleanup=cleanup)
         match result:

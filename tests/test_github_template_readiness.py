@@ -208,10 +208,21 @@ class GitHubBootstrapTests(unittest.TestCase):
         self.assertEqual((project / "docs/prd.md").read_text(encoding="utf-8"), PRD)
         self.assertEqual((project / "README.md").read_text(encoding="utf-8"), README)
         for relative in CLEANUP_PATHS:
+            if relative == "pyproject.toml":
+                # The generated pyproject replaces the source one as
+                # bootstrap-managed output; cleanup removes everything else.
+                continue
             with self.subTest(path=relative):
                 self.assertFalse((project / relative).exists(), relative)
         self.assertFalse(
             (project / ".agentic-template/maintenance-artifacts.json").exists()
+        )
+        generated_pyproject = (
+            ROOT / "scripts/fixtures/generated-dependencies/pyproject.toml"
+        )
+        self.assertEqual(
+            (project / "pyproject.toml").read_text(encoding="utf-8"),
+            generated_pyproject.read_text(encoding="utf-8"),
         )
         for relative in RETAINED_PATHS:
             with self.subTest(path=relative):
@@ -229,8 +240,15 @@ class GitHubBootstrapTests(unittest.TestCase):
         self.assertTrue((project / ".agentic-template/project.json").is_file())
         self.assertEqual(len(record.read_text(encoding="utf-8").splitlines()), 1)
         for relative in CLEANUP_PATHS:
+            if relative == "pyproject.toml":
+                continue
             with self.subTest(path=relative):
                 self.assertFalse((project / relative).exists(), relative)
+        self.assertTrue((project / "pyproject.toml").is_file())
+        self.assertIn(
+            b'requires-python = ">=3.14"',
+            (project / "pyproject.toml").read_bytes(),
+        )
 
     def test_cleanup_mismatch_refuses_then_leave_retains(self) -> None:
         project, record = self._snapshot("mismatch")

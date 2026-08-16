@@ -87,7 +87,7 @@ def intern(
 
 
 FIXTURE_TEMPLATES: dict[str, bytes] = {
-    "pyproject": (
+    "tooling": (
         b"[project]\nname = agentic-template:value:project-name\n"
         b"agentic-template:if:strict:begin\n[tool.ruff]\nstrict = true\n"
         b"agentic-template:if:strict:end\n"
@@ -109,7 +109,16 @@ FIXTURE_TEMPLATES: dict[str, bytes] = {
     "unused": b"unused output\n",
 }
 
-EXPECTED_PYPROJECT = b'[project]\nname = "example"\n[tool.ruff]\nstrict = true\n'
+EXPECTED_PYPROJECT = (
+    b"[project]\n"
+    b'name = "example"\n'
+    b'version = "0.1.0"\n'
+    b'requires-python = ">=3.14"\n'
+    b"dependencies = [\n"
+    b'    "pydantic>=2",\n'
+    b'    "pyyaml>=6.0.3",\n'
+    b"]\n"
+)
 EXPECTED_CI = (
     b"name: ci\njobs:\n"
     b"  core-check:\n    runs-on: ubuntu-latest\n"
@@ -130,11 +139,11 @@ def fixture_core(content_ids: Mapping[str, ContentId]) -> CoreDefinition:
     return CoreDefinition(
         artifacts=(
             ArtifactDefinition(
-                id="pyproject",
-                path="pyproject.toml",
+                id="tooling",
+                path="tooling.toml",
                 kind="text",
                 install_mode=0o644,
-                template_blob=content_ids["pyproject"],
+                template_blob=content_ids["tooling"],
                 context="yaml",
                 substitutions=(
                     SubstitutionDefinition(
@@ -561,11 +570,15 @@ def test_managed_inventory_contains_only_managed_output() -> None:
         "assets/logo.bin",
         "docs/capabilities.md",
         "pyproject.toml",
+        "tooling.toml",
     )
     by_path = {entry.path.value: entry for entry in inventory}
     assert by_path["pyproject.toml"].mode == PosixMode.FILE
     assert by_path["pyproject.toml"].kind == "text"
     assert by_path["pyproject.toml"].sha256 == sha256_hex(EXPECTED_PYPROJECT)
+    assert by_path["tooling.toml"].sha256 == sha256_hex(
+        b'[project]\nname = "example"\n[tool.ruff]\nstrict = true\n'
+    )
     assert by_path["assets/logo.bin"].sha256 == sha256_hex(FIXTURE_TEMPLATES["logo"])
 
 
@@ -616,8 +629,8 @@ def test_boolean_setting_toggles_optional_section() -> None:
     )
     render_input = make_render_input(store, content_ids, settings=disabled)
     rendered = render_bytes(render_input, store)
-    assert rendered["pyproject.toml"] == b'[project]\nname = "example"\n'
-    assert b"ruff" not in rendered["pyproject.toml"]
+    assert rendered["tooling.toml"] == b'[project]\nname = "example"\n'
+    assert b"ruff" not in rendered["tooling.toml"]
 
 
 def test_optional_section_requires_normalized_boolean() -> None:
@@ -1074,7 +1087,7 @@ def test_text_artifacts_normalize_line_endings() -> None:
         }
     )
     rendered = render_bytes(replace(render_input, core=core), store)
-    assert rendered["pyproject.toml"] == b'[project]\nname = "x"\n'
+    assert rendered["tooling.toml"] == b'[project]\nname = "x"\n'
 
 
 def test_managed_render_is_sorted_by_canonical_path_bytes() -> None:
@@ -1112,7 +1125,11 @@ def test_managed_render_is_sorted_by_canonical_path_bytes() -> None:
     )
     match render_managed(render_input, store):
         case Ok(managed):
-            assert [file.path.value for file in managed] == ["a-b.txt", "a/b.txt"]
+            assert [file.path.value for file in managed] == [
+                "a-b.txt",
+                "a/b.txt",
+                "pyproject.toml",
+            ]
         case Err(error):
             raise AssertionError(f"unexpected render failure: {error}")
 
@@ -1690,7 +1707,7 @@ def test_optional_section_markers_at_line_and_file_boundaries() -> None:
         }
     )
     rendered = render_bytes(replace(render_input, core=core), store)
-    assert rendered["pyproject.toml"] == (
+    assert rendered["tooling.toml"] == (
         b"[project]\nname = x\n[tool.ruff]\nstrict = true\n"
     )
     store, indented_id = intern(
@@ -1708,7 +1725,7 @@ def test_optional_section_markers_at_line_and_file_boundaries() -> None:
         }
     )
     rendered = render_bytes(replace(render_input, core=core), store)
-    assert rendered["pyproject.toml"] == b"[project]\n[tool.ruff]\nstrict = true\n"
+    assert rendered["tooling.toml"] == b"[project]\n[tool.ruff]\nstrict = true\n"
     store, inline_id = intern(
         store,
         b"prefix agentic-template:if:strict:begin mid agentic-template:if:strict:end suffix",
@@ -1724,7 +1741,7 @@ def test_optional_section_markers_at_line_and_file_boundaries() -> None:
         }
     )
     rendered = render_bytes(replace(render_input, core=core), store)
-    assert rendered["pyproject.toml"] == b"prefix  mid  suffix\n"
+    assert rendered["tooling.toml"] == b"prefix  mid  suffix\n"
     disabled = MappingProxyType(
         {"semantic-release": {"channel": "next", "strict": False}}
     )
@@ -1740,7 +1757,7 @@ def test_optional_section_markers_at_line_and_file_boundaries() -> None:
         }
     )
     rendered = render_bytes(replace(render_input, core=core), store)
-    assert rendered["pyproject.toml"] == b"[project]\nname = x\n"
+    assert rendered["tooling.toml"] == b"[project]\nname = x\n"
 
 
 def test_remove_marker_line_is_total_and_line_aware() -> None:
