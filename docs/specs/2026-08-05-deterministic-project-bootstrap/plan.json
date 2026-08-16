@@ -821,8 +821,33 @@
           "description": "Extend capability definitions with explicit non-secret runtime dependency declarations, supported Python ranges, and invocation metadata. Render generated `pyproject.toml` for every generated project as a bootstrap-managed artifact containing `requires-python = \">=3.14\"`; add selected capability dependencies only when required. Keep the source repository's root `pyproject.toml` and `uv.lock` source-only. Define the adopter follow-up that creates `uv.lock`; bootstrap never resolves or installs packages. Add ownership and leakage fixtures proving that source development dependencies do not enter snapshots or generated Copier projects. Align the slot runtime model with the pruned v1 contract: `SlotDefinition` carries no `cardinality` and only `yaml`/`markdown` contexts, and contribution composition enforces no cardinality. The slot-model alignment sentence above already landed in the revision-16 code alignment (PR #41); the remaining scope is capability dependency metadata, generated `pyproject.toml` ownership, and leakage fixtures. The bootstrap engine baseline dependencies (`pydantic`, `pyyaml`) are always present in generated `pyproject.toml`.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-16",
+              "commits": [
+                "45516ac",
+                "d2feafd",
+                "ad9520b",
+                "1749bf5",
+                "e32a6db",
+                "78748e3"
+              ],
+              "evidence": [
+                "uv run pytest (992 passed, including 26 new generated-dependency tests and updated render/planner/GitHub-snapshot/Copier fixtures)",
+                "uv run ruff check (clean); uv run ruff format --check (clean)",
+                "uv run basedpyright (0 errors, 0 warnings, 0 notes) - the repository-declared type-check gate",
+                "uv lock --check (passed); git diff --check (clean)",
+                "python3 scripts/validate_template.py (exit 0); python3 scripts/validate_repository.py (expected template-source exit 1; template contract passed and readiness findings emitted in canonical order)",
+                "real Copier 9.17.0 suites pass (copier contract: ok; copier bootstrap contract: ok) with the generated pyproject pinned after apply and no generated uv.lock claimed",
+                "the generated-dependency uv lock fixture resolves pydantic/pyyaml through the adopter's uv lock + uv sync and proves source dev packages (pytest, hypothesis, mutmut, ruff, basedpyright) never leak into the generated runtime; resolution failures are hard failures",
+                "maintenance inventory regenerated from the tracked source after the T14 fixture and plan-record changes",
+                "code-review: four parallel reviewers plus architecture and challenge passes; review fixes in e32a6db (version normalization for the range meet, canonical dedup by PEP 503 name key, shared metadata validator, OWNERSHIP_COLLISION unification, hard-fail uv lock fixture, render-level profile matrix, intersection bound matrix) and 78748e3 (inventory refresh)",
+                "review scope records: production catalog wiring is T15 by plan dependency; the nested cleanup refusal is the necessary companion of the replacement model and is layered with the apply_plan single-operation backstop"
+              ]
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/70"
+            ]
           },
           "files": {
             "create": [

@@ -12,6 +12,7 @@ derived in ``plan_digest``.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal, assert_never
@@ -792,10 +793,15 @@ def _build_trees(
     return Ok((tuple(trees), covered))
 
 
+_NO_REPLACED_PATHS: frozenset[str] = frozenset()
+
+
 def _cleanup_operations(
     cleanup: CleanupContract,
     observed_files: Mapping[str, ObservedFileEntry],
     observed_dirs: Mapping[str, ObservedDirectoryEntry],
+    *,
+    replaced_paths: AbstractSet[str] = _NO_REPLACED_PATHS,
 ) -> Result[
     tuple[tuple[DeleteFileOperation, ...], tuple[RemoveEmptyDirectoryOperation, ...]],
     CompileError,
@@ -833,6 +839,10 @@ def _cleanup_operations(
                     _compile_error(CompileErrorKind.CLEANUP_DISAGREEMENT, parent.value)
                 )
     for path in cleanup.cleanup_paths:
+        if path.value in replaced_paths:
+            # The managed output replaces the source bytes at this path; the
+            # cleanup delete is skipped so the plan keeps one operation per path.
+            continue
         observed_file = observed_files.get(path.value)
         if observed_file is not None:
             if not observed_file.state.present:
@@ -986,10 +996,21 @@ def compile_initial_plan(
         )
     if cleanup is not None:
         declared = {path.value for path in cleanup.cleanup_paths}
-        collisions = declared & (seed_values | managed_values | {MANIFEST_PATH.value})
-        if collisions:
+        # A declared cleanup path that is exactly a managed output path is a
+        # replacement: the managed file replaces the source bytes, so its
+        # delete is skipped.  Every other overlap (seed, manifest, or a
+        # declared directory containing a managed path) is refused.
+        nested = {
+            path
+            for path in declared
+            if any(
+                managed_path.startswith(path + "/") for managed_path in managed_values
+            )
+        }
+        forbidden = (declared & (seed_values | {MANIFEST_PATH.value})) | nested
+        if forbidden:
             return Err(
-                _compile_error(CompileErrorKind.PATH_COLLISION, sorted(collisions)[0])
+                _compile_error(CompileErrorKind.PATH_COLLISION, sorted(forbidden)[0])
             )
         for path in cleanup.cleanup_paths:
             if not path_within_limits(path, limits):
@@ -1119,7 +1140,12 @@ def compile_initial_plan(
     match maintenance:
         case CleanMaintenance():
             if cleanup is not None:
-                match _cleanup_operations(cleanup, observed_files, observed_dirs):
+                match _cleanup_operations(
+                    cleanup,
+                    observed_files,
+                    observed_dirs,
+                    replaced_paths=managed_values,
+                ):
                     case Err(error):
                         return Err(error)
                     case Ok((files, directories)):

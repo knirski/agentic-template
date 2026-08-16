@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import model_validator
 
+from scripts.bootstrap.dependencies import validate_dependency_metadata
 from scripts.bootstrap.paths import parse_path
 from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.schemas import Identifier, SettingName, StrictModel
@@ -103,6 +104,13 @@ class CapabilityDefinition(StrictModel):
             raise ValueError("capability cannot depend on itself")
         return self
 
+    @model_validator(mode="after")
+    def validate_capability_metadata(self) -> CapabilityDefinition:
+        validate_dependency_metadata(
+            self.runtime_dependencies, self.supported_python, self.invocation
+        )
+        return self
+
 
 def _capability(
     capability_id: str,
@@ -110,17 +118,26 @@ def _capability(
     *,
     dependencies: tuple[str, ...] = (),
     settings: tuple[SettingDefinition, ...] = (),
+    runtime_dependencies: tuple[str, ...] = (),
+    invocation: str | None = None,
 ) -> CapabilityDefinition:
     return CapabilityDefinition(
         id=capability_id,
         description=description,
         dependencies=dependencies,
         settings=settings,
+        runtime_dependencies=runtime_dependencies,
+        invocation=invocation,
     )
 
 
 CATALOG: dict[str, CapabilityDefinition] = {
-    "semantic-release": _capability("semantic-release", "Automated semantic releases."),
+    "semantic-release": _capability(
+        "semantic-release",
+        "Automated semantic releases.",
+        runtime_dependencies=("python-semantic-release>=9",),
+        invocation="uvx semantic-release",
+    ),
     "nix": _capability("nix", "Nix development and CI tooling."),
     "cachix-publish": _capability(
         "cachix-publish",
@@ -135,6 +152,9 @@ CATALOG: dict[str, CapabilityDefinition] = {
         ),
     ),
     "pr-agent-gemini": _capability(
-        "pr-agent-gemini", "Qodo PR Agent with a Gemini backend."
+        "pr-agent-gemini",
+        "Qodo PR Agent with a Gemini backend.",
+        runtime_dependencies=("pr-agent",),
+        invocation="uvx pr-agent",
     ),
 }

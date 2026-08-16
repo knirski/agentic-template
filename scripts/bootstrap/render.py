@@ -19,6 +19,13 @@ import yaml
 from pydantic import BeforeValidator, Field, field_validator, model_validator
 
 from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
+from scripts.bootstrap.dependencies import (
+    GENERATED_PYPROJECT_PATH,
+    effective_dependencies,
+    effective_python_range,
+    render_generated_pyproject,
+    validate_dependency_metadata,
+)
 from scripts.bootstrap.identity import PosixMode, content_identity
 from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.manifest import (
@@ -241,6 +248,9 @@ class CapabilityDefinition(StrictModel):
     artifacts: tuple[ArtifactDefinition, ...] = ()
     contributions: tuple[ContributionDefinition, ...] = ()
     document_fragments: tuple[DocumentFragmentDefinition, ...] = ()
+    runtime_dependencies: tuple[str, ...] = ()
+    supported_python: str = ">=3.14"
+    invocation: str | None = None
 
     @model_validator(mode="after")
     def validate_unique_members(self) -> CapabilityDefinition:
@@ -257,6 +267,13 @@ class CapabilityDefinition(StrictModel):
         artifact_paths = [artifact.path for artifact in self.artifacts]
         if len(set(artifact_paths)) != len(artifact_paths):
             raise ValueError("capability artifact paths must be unique")
+        return self
+
+    @model_validator(mode="after")
+    def validate_capability_metadata(self) -> CapabilityDefinition:
+        validate_dependency_metadata(
+            self.runtime_dependencies, self.supported_python, self.invocation
+        )
         return self
 
 
@@ -757,6 +774,27 @@ def render_managed(
                 )
             )
         effective_definitions.append((capability_id, definition))
+    match effective_dependencies(render_input.effective, render_input.definitions):
+        case Err(error):
+            return Err(
+                RenderError(
+                    RenderErrorKind.INVALID_TEMPLATE, error.kind.value, error.subject
+                )
+            )
+        case Ok(dependencies):
+            pass
+    match effective_python_range(render_input.effective, render_input.definitions):
+        case Err(error):
+            return Err(
+                RenderError(
+                    RenderErrorKind.INVALID_TEMPLATE, error.kind.value, error.subject
+                )
+            )
+        case Ok(python_range):
+            pass
+    pyproject_content = render_generated_pyproject(
+        render_input.project.name, python_range, dependencies
+    )
     owner_pairs: list[tuple[str, tuple[ArtifactDefinition, ...]]] = [
         ("core", render_input.core.artifacts),
         *(
@@ -768,7 +806,9 @@ def render_managed(
         for artifact in artifacts:
             if blobs.get(artifact.template_blob) is None:
                 return Err(RenderError(RenderErrorKind.MISSING_BLOB, "", artifact.path))
-    seen_paths: dict[str, str] = {}
+    # The generated pyproject occupies its path for every render; an artifact
+    # claiming it is an ownership collision.
+    seen_paths: dict[str, str] = {GENERATED_PYPROJECT_PATH: "generated"}
     for owner, artifacts in owner_pairs:
         for artifact in artifacts:
             if artifact.path in seen_paths:
@@ -803,7 +843,12 @@ def render_managed(
         render_input.documents, key=lambda item: item.value.encode("utf-8")
     ):
         if path.value in seen_paths:
-            return Err(RenderError(RenderErrorKind.PATH_COLLISION, "", path.value))
+            kind = (
+                RenderErrorKind.OWNERSHIP_COLLISION
+                if path.value == GENERATED_PYPROJECT_PATH
+                else RenderErrorKind.PATH_COLLISION
+            )
+            return Err(RenderError(kind, "", path.value))
         if path.value not in declared_documents:
             return Err(RenderError(RenderErrorKind.UNDECLARED_OUTPUT, "", path.value))
         body = "\n\n".join(render_input.documents[path])
@@ -820,4 +865,12 @@ def render_managed(
         files.append(
             ManagedFile(path=path, kind="text", mode=PosixMode.FILE, content=content)
         )
+    files.append(
+        ManagedFile(
+            path=RepoPath(GENERATED_PYPROJECT_PATH),
+            kind="text",
+            mode=PosixMode.FILE,
+            content=pyproject_content,
+        )
+    )
     return Ok(tuple(sorted(files, key=lambda file: file.path.value.encode("utf-8"))))

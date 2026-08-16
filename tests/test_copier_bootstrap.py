@@ -161,6 +161,19 @@ def main() -> int:
         if not (project / ".agentic-template/project.json").is_file():
             print("Copier bootstrap apply left no manifest", file=sys.stderr)
             return 1
+        generated_pyproject = (
+            ROOT / "scripts/fixtures/generated-dependencies/pyproject.toml"
+        )
+        actual = (project / "pyproject.toml").read_text(encoding="utf-8")
+        if actual != generated_pyproject.read_text(encoding="utf-8"):
+            print(
+                "Copier bootstrap apply left an unexpected generated pyproject",
+                file=sys.stderr,
+            )
+            return 1
+        if (project / "uv.lock").exists():
+            print("Copier bootstrap apply claimed a uv lock", file=sys.stderr)
+            return 1
         if len(record.read_text(encoding="utf-8").splitlines()) != 1:
             print("Copier bootstrap apply hook count != 1", file=sys.stderr)
             return 1
