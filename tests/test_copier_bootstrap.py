@@ -164,10 +164,12 @@ def main() -> int:
         generated_pyproject = (
             ROOT / "scripts/fixtures/generated-dependencies/pyproject.toml"
         )
-        if (project / "pyproject.toml").read_text(encoding="utf-8") != (
-            generated_pyproject.read_text(encoding="utf-8")
-        ):
-            print("Copier bootstrap apply left no generated pyproject", file=sys.stderr)
+        actual = (project / "pyproject.toml").read_text(encoding="utf-8")
+        if actual != generated_pyproject.read_text(encoding="utf-8"):
+            print(
+                "Copier bootstrap apply left an unexpected generated pyproject",
+                file=sys.stderr,
+            )
             return 1
         if (project / "uv.lock").exists():
             print("Copier bootstrap apply claimed a uv lock", file=sys.stderr)

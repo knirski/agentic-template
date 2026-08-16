@@ -41,11 +41,14 @@ _DEPENDENCY_PATTERN = re.compile(
 _PYTHON_RANGE_PATTERN = re.compile(
     rf"^(?:{_COMPARATOR}\s*{_VERSION_PART})(?:,\s*{_COMPARATOR}\s*{_VERSION_PART})*$"
 )
-_INVOCATION_PATTERN = re.compile(r"^(?:uv|uvx)(?: [A-Za-z0-9._/-]+)+$")
+_INVOCATION_PATTERN = re.compile(r"^(?:uv|uvx)(?: (?!\.{1,2}$)[A-Za-z0-9._/-]+)+$")
+# PEP 503-style separator collapsing for the dependency dedup key.
+_NAME_SEPARATORS = re.compile(r"[-_.]+")
 
 # The declaration surface every capability definition (catalog and render
 # boundary) exposes to the effective-dependency derivation.
 RUNTIME_DEPENDENCY_MAX_LENGTH: Final[int] = 128
+PYTHON_RANGE_MAX_LENGTH: Final[int] = 128
 INVOCATION_MAX_LENGTH: Final[int] = 128
 
 
@@ -72,7 +75,12 @@ class RuntimeDependencySource(Protocol):
 
 
 def _parse_version(value: str) -> tuple[int, ...]:
-    return tuple(int(part) for part in value.split("."))
+    parts = tuple(int(part) for part in value.split("."))
+    # Normalize trailing zero components so comparisons are arity-independent:
+    # (3, 14) and (3, 14, 0) are the same PEP 440 version.
+    while len(parts) > 1 and parts[-1] == 0:
+        parts = parts[:-1]
+    return parts
 
 
 def _format_version(value: tuple[int, ...]) -> str:
@@ -100,7 +108,7 @@ def _parse_python_range(
     value: str,
 ) -> Result[tuple[tuple[str, tuple[int, ...]], ...], DependencyError]:
     if (
-        len(value) > RUNTIME_DEPENDENCY_MAX_LENGTH
+        len(value) > PYTHON_RANGE_MAX_LENGTH
         or _PYTHON_RANGE_PATTERN.fullmatch(value) is None
     ):
         return Err(DependencyError(DependencyErrorKind.INVALID_PYTHON_RANGE, value))
@@ -110,7 +118,9 @@ def _parse_python_range(
         if clause is None:  # pragma: no cover - the pattern implies the clause grammar
             return Err(DependencyError(DependencyErrorKind.INVALID_PYTHON_RANGE, value))
         clauses.append((clause.group("op"), _parse_version(clause.group("version"))))
-    # Canonical order: lower bounds by version, then upper bounds by version.
+    # Canonical order: lower bounds first by version, then upper bounds by
+    # version; at an equal version a strict comparator sorts before its
+    # non-strict counterpart so the meet's tiebreaker stays deterministic.
     clauses.sort(
         key=lambda clause: (
             0 if clause[0] in (">=", ">") else 1,
@@ -157,6 +167,42 @@ def validate_invocation(value: str | None) -> Result[str | None, DependencyError
     return Ok(value)
 
 
+def validate_dependency_metadata(
+    runtime_dependencies: tuple[str, ...],
+    supported_python: str,
+    invocation: str | None,
+) -> None:
+    """Validate capability dependency metadata, raising ValueError on the first failure.
+
+    Shared by the catalog and render-boundary ``CapabilityDefinition`` models so
+    the two surfaces cannot drift.
+    """
+    for value in runtime_dependencies:
+        match validate_runtime_dependency(value):
+            case Ok(_):
+                pass
+            case Err(error):
+                raise ValueError(f"invalid runtime dependency: {error.subject}")
+    match validate_supported_python(supported_python):
+        case Ok(_):
+            pass
+        case Err(error):
+            raise ValueError(f"invalid supported Python range: {error.subject}")
+    match validate_invocation(invocation):
+        case Ok(_):
+            pass
+        case Err(error):
+            raise ValueError(f"invalid invocation: {error.subject}")
+
+
+def _dependency_key(value: str) -> str:
+    """Return the PEP 503-style dedup key for a canonical dependency declaration."""
+    match = _DEPENDENCY_PATTERN.fullmatch(value)
+    if match is None:  # pragma: no cover - canonical values always match the grammar
+        return value
+    return _NAME_SEPARATORS.sub("-", match.group("name")).lower()
+
+
 def effective_dependencies(
     capability_ids: tuple[str, ...],
     catalog: Mapping[str, RuntimeDependencySource],
@@ -164,14 +210,15 @@ def effective_dependencies(
     """Return the ordered, deduplicated runtime dependency table for a selection.
 
     The baseline engine dependencies come first; selected capability
-    declarations follow in capability order, keeping each dependency's first
-    declared form.
+    declarations follow in capability order.  Each declaration is emitted in
+    its canonical form and deduplicated by its normalized distribution name,
+    keeping the first declared form.
     """
     result: list[str] = []
     seen: set[str] = set()
     for value in BASELINE_RUNTIME_DEPENDENCIES:
         result.append(value)
-        seen.add(value)
+        seen.add(_dependency_key(value))
     for capability_id in capability_ids:
         definition = catalog.get(capability_id)
         if definition is None:
@@ -179,9 +226,14 @@ def effective_dependencies(
                 DependencyError(DependencyErrorKind.UNKNOWN_CAPABILITY, capability_id)
             )
         for value in definition.runtime_dependencies:
-            if value not in seen:
-                seen.add(value)
-                result.append(value)
+            match validate_runtime_dependency(value):
+                case Ok(canonical):
+                    key = _dependency_key(canonical)
+                    if key not in seen:
+                        seen.add(key)
+                        result.append(canonical)
+                case Err(error):
+                    return Err(error)
     return Ok(tuple(result))
 
 

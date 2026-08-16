@@ -24,9 +24,7 @@ from scripts.bootstrap.dependencies import (
     effective_dependencies,
     effective_python_range,
     render_generated_pyproject,
-    validate_invocation,
-    validate_runtime_dependency,
-    validate_supported_python,
+    validate_dependency_metadata,
 )
 from scripts.bootstrap.identity import PosixMode, content_identity
 from scripts.bootstrap.intents import GenerationPath
@@ -272,25 +270,10 @@ class CapabilityDefinition(StrictModel):
         return self
 
     @model_validator(mode="after")
-    def validate_dependency_metadata(self) -> CapabilityDefinition:
-        for value in self.runtime_dependencies:
-            match validate_runtime_dependency(value):
-                case Ok(_):
-                    pass
-                case Err(error):
-                    raise ValueError(
-                        f"invalid runtime dependency: {error.subject or value}"
-                    )
-        match validate_supported_python(self.supported_python):
-            case Ok(_):
-                pass
-            case Err(error):
-                raise ValueError(f"invalid supported Python range: {error.subject}")
-        match validate_invocation(self.invocation):
-            case Ok(_):
-                pass
-            case Err(error):
-                raise ValueError(f"invalid invocation: {error.subject}")
+    def validate_capability_metadata(self) -> CapabilityDefinition:
+        validate_dependency_metadata(
+            self.runtime_dependencies, self.supported_python, self.invocation
+        )
         return self
 
 
@@ -860,7 +843,12 @@ def render_managed(
         render_input.documents, key=lambda item: item.value.encode("utf-8")
     ):
         if path.value in seen_paths:
-            return Err(RenderError(RenderErrorKind.PATH_COLLISION, "", path.value))
+            kind = (
+                RenderErrorKind.OWNERSHIP_COLLISION
+                if path.value == GENERATED_PYPROJECT_PATH
+                else RenderErrorKind.PATH_COLLISION
+            )
+            return Err(RenderError(kind, "", path.value))
         if path.value not in declared_documents:
             return Err(RenderError(RenderErrorKind.UNDECLARED_OUTPUT, "", path.value))
         body = "\n\n".join(render_input.documents[path])

@@ -12,6 +12,7 @@ import json
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
@@ -20,6 +21,7 @@ import pytest
 from pydantic import ValidationError
 from pytest import MonkeyPatch
 
+from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
 from scripts.bootstrap.catalog import CATALOG, CapabilityDefinition
 from scripts.bootstrap.dependencies import (
     BASELINE_PYTHON_RANGE,
@@ -48,6 +50,9 @@ from scripts.bootstrap.render import (
 )
 from scripts.bootstrap.result import Err, Ok, Result
 from tests.test_bootstrap_render import (
+    EXPECTED_PYPROJECT as RENDER_EXPECTED_PYPROJECT,
+)
+from tests.test_bootstrap_render import (
     fixture_blobs,
     make_render_input,
     render_bytes,
@@ -68,16 +73,7 @@ SOURCE_DEV_PACKAGES = (
     "ruff",
 )
 
-EXPECTED_BASELINE_PYPROJECT = (
-    b"[project]\n"
-    b'name = "example"\n'
-    b'version = "0.1.0"\n'
-    b'requires-python = ">=3.14"\n'
-    b"dependencies = [\n"
-    b'    "pydantic>=2",\n'
-    b'    "pyyaml>=6.0.3",\n'
-    b"]\n"
-)
+EXPECTED_BASELINE_PYPROJECT = GENERATED_PYPROJECT_FIXTURE.read_bytes()
 
 
 def _err[Value, Failure: DependencyError](
@@ -162,6 +158,8 @@ def test_invocation_validation() -> None:
         "bash -c x",
         "uvx semantic-release; rm -rf /",
         "uvx 'semantic-release'",
+        "uvx .",
+        "uvx ..",
     ):
         assert _err(validate_invocation(invalid)).kind is (
             DependencyErrorKind.INVALID_INVOCATION
@@ -245,27 +243,80 @@ def test_custom_selection_matrices_add_dependencies_only_when_required(
     assert all(dependency not in dependencies for dependency in SOURCE_DEV_PACKAGES)
 
 
-def test_effective_python_range_intersects_and_rejects_incompatible_ranges(
+def test_effective_dependencies_canonicalizes_and_deduplicates_by_name(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setitem(
         CATALOG,
-        "narrower",
-        CapabilityDefinition(id="narrower", description="x", supported_python=">=3.15"),
-    )
-    monkeypatch.setitem(
-        CATALOG,
-        "excludes-baseline",
+        "variants",
         CapabilityDefinition(
-            id="excludes-baseline", description="x", supported_python="<3.14"
+            id="variants",
+            description="x",
+            runtime_dependencies=(
+                "pydantic",  # bare name duplicates the baseline package
+                "Pydantic >= 2",  # case and spacing variants dedup to the baseline
+                "pyyaml>=6.0.3.0",  # trailing-zero variant dedups to the baseline
+                "python-semantic-release>=9",
+            ),
         ),
     )
-    assert effective_python_range(("narrower",), CATALOG) == Ok(">=3.15")
-    assert effective_python_range((), CATALOG) == Ok(">=3.14")
-    failure = _err(effective_python_range(("excludes-baseline",), CATALOG))
-    assert failure.kind is DependencyErrorKind.INCOMPATIBLE_PYTHON_RANGE
-    assert failure.subject == "excludes-baseline"
+    assert effective_dependencies(("variants",), CATALOG) == Ok(
+        ("pydantic>=2", "pyyaml>=6.0.3", "python-semantic-release>=9")
+    )
+
+
+@pytest.mark.parametrize(
+    ("capability_range", "expected"),
+    [
+        (">=3.15", ">=3.15"),
+        (">3.14", ">3.14"),
+        ("<3.15", ">=3.14,<3.15"),
+        (">=3.14,<=3.14", ">=3.14,<=3.14"),
+        ("<=3.14", ">=3.14,<=3.14"),
+        ("<3.14", None),
+        (">3.14,<=3.14", None),
+        ("<3.14.0", None),  # trailing-zero normalization must not mask emptiness
+    ],
+)
+def test_effective_python_range_intersects_bounds(
+    capability_range: str,
+    expected: str | None,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(
+        CATALOG,
+        "bound",
+        CapabilityDefinition(
+            id="bound", description="x", supported_python=capability_range
+        ),
+    )
+    result = effective_python_range(("bound",), CATALOG)
+    if expected is None:
+        failure = _err(result)
+        assert failure.kind is DependencyErrorKind.INCOMPATIBLE_PYTHON_RANGE
+        assert failure.subject == "bound"
+    else:
+        assert result == Ok(expected)
+
+
+def test_effective_python_range_point_range_with_trailing_zeros_is_valid(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(
+        CATALOG,
+        "point",
+        CapabilityDefinition(
+            id="point", description="x", supported_python=">=3.14.0,<=3.14"
+        ),
+    )
+    assert effective_python_range(("point",), CATALOG) == Ok(">=3.14,<=3.14")
+
+
+def test_unknown_capability_ids_are_rejected() -> None:
     failure = _err(effective_dependencies(("ghost",), CATALOG))
+    assert failure.kind is DependencyErrorKind.UNKNOWN_CAPABILITY
+    assert failure.subject == "ghost"
+    failure = _err(effective_python_range(("ghost",), CATALOG))
     assert failure.kind is DependencyErrorKind.UNKNOWN_CAPABILITY
     assert failure.subject == "ghost"
 
@@ -279,14 +330,63 @@ def test_generated_pyproject_matches_the_frozen_fixture() -> None:
     )
     assert rendered == GENERATED_PYPROJECT_FIXTURE.read_bytes()
     assert rendered == EXPECTED_BASELINE_PYPROJECT
+    # The render-boundary expectation stays byte-identical to the frozen
+    # artifact so one fixture is the single source of truth.
+    assert GENERATED_PYPROJECT_FIXTURE.read_bytes() == RENDER_EXPECTED_PYPROJECT
 
 
-def test_render_managed_emits_the_generated_pyproject_for_every_profile() -> None:
+def _catalog_render_definitions() -> dict[str, RenderCapabilityDefinition]:
+    """Render-boundary definitions mirroring the live catalog's dependency metadata."""
+    return {
+        capability_id: RenderCapabilityDefinition(
+            id=capability_id,
+            runtime_dependencies=definition.runtime_dependencies,
+            supported_python=definition.supported_python,
+            invocation=definition.invocation,
+        )
+        for capability_id, definition in CATALOG.items()
+    }
+
+
+def _render_with_definitions(
+    store: VerifiedBlobStore,
+    content_ids: Mapping[str, ContentId],
+    *,
+    effective: tuple[str, ...],
+) -> bytes:
+    base = make_render_input(store, content_ids, effective=())
+    base = replace(
+        base,
+        definitions=_catalog_render_definitions(),
+        effective=effective,
+        core=CoreDefinition(),
+        contributions=(),
+        documents={},
+    )
+    return render_bytes(base, store)[GENERATED_PYPROJECT_PATH]
+
+
+@pytest.mark.parametrize("profile_id", sorted(PROFILE_CAPABILITIES))
+def test_render_managed_emits_the_generated_pyproject_for_every_profile(
+    profile_id: str,
+) -> None:
     store, content_ids = fixture_blobs()
-    render_input = make_render_input(store, content_ids, effective=())
-    rendered = render_bytes(render_input, store)
-    assert rendered[GENERATED_PYPROJECT_PATH] == EXPECTED_BASELINE_PYPROJECT
-    assert "uv.lock" not in rendered
+    selection = PROFILE_CAPABILITIES[profile_id]
+    rendered = _render_with_definitions(store, content_ids, effective=selection)
+    assert b'requires-python = ">=3.14"' in rendered
+    for baseline in BASELINE_RUNTIME_DEPENDENCIES:
+        assert baseline.encode() in rendered
+    if profile_id == "portable":
+        assert rendered == EXPECTED_BASELINE_PYPROJECT
+    if "semantic-release" in selection:
+        assert b"python-semantic-release>=9" in rendered
+    else:
+        assert b"python-semantic-release" not in rendered
+    if "pr-agent-gemini" in selection:
+        assert b'"pr-agent"' in rendered
+    else:
+        assert b"pr-agent" not in rendered
+    assert b"uv.lock" not in rendered
 
 
 def test_render_managed_never_claims_a_generated_uv_lock() -> None:
@@ -301,30 +401,14 @@ def test_render_managed_never_claims_a_generated_uv_lock() -> None:
 
 def test_render_adds_capability_dependencies_only_when_selected() -> None:
     store, content_ids = fixture_blobs()
-    definitions = {
-        "semantic-release": RenderCapabilityDefinition(
-            id="semantic-release",
-            runtime_dependencies=("python-semantic-release>=9",),
-            supported_python=">=3.14",
-            invocation="uvx semantic-release",
-        ),
-        "pr-agent-gemini": RenderCapabilityDefinition(
-            id="pr-agent-gemini",
-            runtime_dependencies=("pr-agent",),
-        ),
-    }
-    base = make_render_input(store, content_ids, effective=())
-    base = replace(
-        base,
-        definitions=definitions,
-        effective=("semantic-release",),
-        core=CoreDefinition(),
-        contributions=(),
-        documents={},
+    selected = _render_with_definitions(
+        store, content_ids, effective=("semantic-release",)
     )
-    rendered = render_bytes(base, store)
-    assert b"python-semantic-release>=9" in rendered[GENERATED_PYPROJECT_PATH]
-    assert b"pr-agent" not in rendered[GENERATED_PYPROJECT_PATH]
+    assert b"python-semantic-release>=9" in selected
+    assert b"pr-agent" not in selected
+    unselected = _render_with_definitions(store, content_ids, effective=("nix",))
+    assert b"python-semantic-release" not in unselected
+    assert b"pr-agent" not in unselected
 
 
 def test_render_rejects_an_artifact_claiming_the_generated_pyproject_path() -> None:
@@ -433,17 +517,29 @@ def test_slot_definitions_carry_no_cardinality_and_only_yaml_markdown_contexts()
 def test_contribution_composition_enforces_no_cardinality() -> None:
     store, content_ids = fixture_blobs()
     render_input = make_render_input(store, content_ids)
-    assert len(render_input.contributions) >= 2
-    # Multiple contributions to the same slot compose without any cardinality
-    # constraint; the existing render already proves the ordering.
-    assert [c.slot for c in render_input.contributions].count("ci-jobs") >= 2
+    bodies = [
+        contribution.rendered_body
+        for contribution in render_input.contributions
+        if contribution.slot == "ci-jobs"
+    ]
+    assert len(bodies) >= 2
+    # Multiple contributions to one slot compose without any cardinality
+    # constraint: every body appears in the rendered owner artifact.
+    rendered_ci = render_bytes(render_input, store)[".github/workflows/ci.yml"]
+    for body in bodies:
+        assert body.encode() in rendered_ci
 
 
 # --- Adopter uv lock follow-up ----------------------------------------------
 
 
 def test_generated_fixture_creates_and_uses_its_own_uv_lock() -> None:
-    """The adopter's ``uv lock``/``uv sync`` follow-up resolves only runtime deps."""
+    """The adopter's ``uv lock``/``uv sync`` follow-up resolves only runtime deps.
+
+    Resolution needs uv and (without a warm cache) the package index; a failed
+    resolution is a hard failure because it is exactly the regression this test
+    exists to catch.  Only a missing uv binary skips.
+    """
     uv = shutil.which("uv")
     if uv is None:
         pytest.skip("uv is required for the generated lock fixture")
@@ -454,11 +550,18 @@ def test_generated_fixture_creates_and_uses_its_own_uv_lock() -> None:
                 "example", ">=3.14", BASELINE_RUNTIME_DEPENDENCIES
             )
         )
-        locked = subprocess.run(
-            [uv, "lock"], cwd=project, text=True, capture_output=True, check=False
+        attempts = (["lock", "--offline"], ["lock"])
+        locked: subprocess.CompletedProcess[str] | None = None
+        for argv in attempts:
+            locked = subprocess.run(
+                [uv, *argv], cwd=project, text=True, capture_output=True, check=False
+            )
+            if locked.returncode == 0:
+                break
+        assert locked is not None
+        assert locked.returncode == 0, (
+            "uv lock failed on the generated pyproject: " + locked.stderr
         )
-        if locked.returncode:
-            pytest.skip(f"uv lock could not resolve offline or online: {locked.stderr}")
         lock = (project / "uv.lock").read_text(encoding="utf-8")
         assert "pydantic" in lock
         assert "pyyaml" in lock
@@ -467,8 +570,7 @@ def test_generated_fixture_creates_and_uses_its_own_uv_lock() -> None:
         synced = subprocess.run(
             [uv, "sync"], cwd=project, text=True, capture_output=True, check=False
         )
-        if synced.returncode:
-            pytest.skip(f"uv sync failed: {synced.stderr}")
+        assert synced.returncode == 0, "uv sync failed: " + synced.stderr
         imported = subprocess.run(
             [uv, "run", "python", "-c", "import pydantic, yaml"],
             cwd=project,

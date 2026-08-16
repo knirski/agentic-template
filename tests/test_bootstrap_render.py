@@ -531,14 +531,29 @@ def test_document_artifact_path_collision_is_rejected() -> None:
     render_input = make_render_input(store, content_ids)
     colliding = replace(
         render_input,
-        documents=MappingProxyType({RepoPath("pyproject.toml"): ("body",)}),
+        documents=MappingProxyType({RepoPath(".github/workflows/ci.yml"): ("body",)}),
     )
     match render_managed(colliding, store):
         case Err(error):
             assert error.kind is RenderErrorKind.PATH_COLLISION
-            assert error.subject == "pyproject.toml"
+            assert error.subject == ".github/workflows/ci.yml"
         case Ok(_):
             raise AssertionError("expected a path collision failure")
+
+
+def test_document_claiming_the_generated_pyproject_is_an_ownership_collision() -> None:
+    store, content_ids = fixture_blobs()
+    render_input = make_render_input(store, content_ids)
+    colliding = replace(
+        render_input,
+        documents=MappingProxyType({RepoPath("pyproject.toml"): ("body",)}),
+    )
+    match render_managed(colliding, store):
+        case Err(error):
+            assert error.kind is RenderErrorKind.OWNERSHIP_COLLISION
+            assert error.subject == "pyproject.toml"
+        case Ok(_):
+            raise AssertionError("expected an ownership collision failure")
 
 
 def test_undeclared_document_is_rejected() -> None:

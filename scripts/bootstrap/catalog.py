@@ -6,11 +6,7 @@ from typing import Literal
 
 from pydantic import model_validator
 
-from scripts.bootstrap.dependencies import (
-    validate_invocation,
-    validate_runtime_dependency,
-    validate_supported_python,
-)
+from scripts.bootstrap.dependencies import validate_dependency_metadata
 from scripts.bootstrap.paths import parse_path
 from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.schemas import Identifier, SettingName, StrictModel
@@ -109,25 +105,10 @@ class CapabilityDefinition(StrictModel):
         return self
 
     @model_validator(mode="after")
-    def validate_dependency_metadata(self) -> CapabilityDefinition:
-        for value in self.runtime_dependencies:
-            match validate_runtime_dependency(value):
-                case Ok(_):
-                    pass
-                case Err(error):
-                    raise ValueError(
-                        f"invalid runtime dependency: {error.subject or value}"
-                    )
-        match validate_supported_python(self.supported_python):
-            case Ok(_):
-                pass
-            case Err(error):
-                raise ValueError(f"invalid supported Python range: {error.subject}")
-        match validate_invocation(self.invocation):
-            case Ok(_):
-                pass
-            case Err(error):
-                raise ValueError(f"invalid invocation: {error.subject}")
+    def validate_capability_metadata(self) -> CapabilityDefinition:
+        validate_dependency_metadata(
+            self.runtime_dependencies, self.supported_python, self.invocation
+        )
         return self
 
 
