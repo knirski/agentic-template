@@ -845,7 +845,9 @@
                 "review scope records: production catalog wiring is T15 by plan dependency; the nested cleanup refusal is the necessary companion of the replacement model and is layered with the apply_plan single-operation backstop"
               ]
             },
-            "github_prs": []
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/70"
+            ]
           },
           "files": {
             "create": [
