@@ -822,7 +822,8 @@
           "execution": {
             "mode": "inline",
             "status": "in_progress",
-            "completion": null
+            "completion": null,
+            "github_prs": []
           },
           "files": {
             "create": [
