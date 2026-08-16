@@ -73,6 +73,12 @@ SOURCE_DEV_PACKAGES = (
     "ruff",
 )
 
+# Bounded per-stage budgets for the live adopter uv follow-up fixture; a
+# stalled package-index operation must fail promptly instead of hanging.
+UV_LOCK_TIMEOUT_SECONDS = 120
+UV_SYNC_TIMEOUT_SECONDS = 120
+UV_RUN_TIMEOUT_SECONDS = 60
+
 EXPECTED_BASELINE_PYPROJECT = GENERATED_PYPROJECT_FIXTURE.read_bytes()
 
 
@@ -552,13 +558,31 @@ def test_generated_fixture_creates_and_uses_its_own_uv_lock() -> None:
         )
         attempts = (["lock", "--offline"], ["lock"])
         locked: subprocess.CompletedProcess[str] | None = None
+        timed_out: subprocess.TimeoutExpired | None = None
         for argv in attempts:
-            locked = subprocess.run(
-                [uv, *argv], cwd=project, text=True, capture_output=True, check=False
-            )
+            try:
+                locked = subprocess.run(
+                    [uv, *argv],
+                    cwd=project,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=UV_LOCK_TIMEOUT_SECONDS,
+                )
+            except subprocess.TimeoutExpired as exc:
+                # A stalled offline attempt falls through to the online retry;
+                # both timing out is a hard stage failure.
+                timed_out = exc
+                locked = None
+                continue
             if locked.returncode == 0:
                 break
-        assert locked is not None
+        if locked is None:
+            assert timed_out is not None
+            raise AssertionError(
+                "uv lock timed out after "
+                + f"{UV_LOCK_TIMEOUT_SECONDS}s per attempt (offline and online): {timed_out}"
+            ) from None
         assert locked.returncode == 0, (
             "uv lock failed on the generated pyproject: " + locked.stderr
         )
@@ -567,15 +591,33 @@ def test_generated_fixture_creates_and_uses_its_own_uv_lock() -> None:
         assert "pyyaml" in lock
         for package in SOURCE_DEV_PACKAGES:
             assert package not in lock
-        synced = subprocess.run(
-            [uv, "sync"], cwd=project, text=True, capture_output=True, check=False
-        )
+        try:
+            synced = subprocess.run(
+                [uv, "sync"],
+                cwd=project,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=UV_SYNC_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise AssertionError(
+                "uv sync timed out after "
+                + f"{UV_SYNC_TIMEOUT_SECONDS}s on the generated pyproject: {exc}"
+            ) from None
         assert synced.returncode == 0, "uv sync failed: " + synced.stderr
-        imported = subprocess.run(
-            [uv, "run", "python", "-c", "import pydantic, yaml"],
-            cwd=project,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        try:
+            imported = subprocess.run(
+                [uv, "run", "python", "-c", "import pydantic, yaml"],
+                cwd=project,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=UV_RUN_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise AssertionError(
+                "uv run timed out after "
+                + f"{UV_RUN_TIMEOUT_SECONDS}s on the generated pyproject: {exc}"
+            ) from None
         assert imported.returncode == 0, imported.stderr
