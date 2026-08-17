@@ -892,8 +892,9 @@
           "description": "Add the four declarative capability contributions, profile expansions, settings normalization, compiled workflow/document outputs, release dependencies, read-only secret preflights, and available/unavailable activation behavior. Keep capability-specific dependency commands behind their declared uv invocation metadata. Treat Nix as maintainer-only unless the `nix` capability is selected: the portable generated baseline has no Nix job or release dependency, while selected Nix and Cachix capabilities render their own artifacts and gates. Ensure unselected capabilities emit no artifacts or workflow jobs. Record the frozen v1 catalog-surface fixture and wire `validate_template.py` to compare the live catalog against it (stable-ID compatibility), replacing the import-time baseline removed by the alignment PR #41.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "in_progress",
+            "completion": null,
+            "github_prs": []
           },
           "files": {
             "create": [

@@ -99,10 +99,12 @@
             pkgs.runCommand "agentic-template-repository-validation" { nativeBuildInputs = [ pkgs.python314 ]; }
               ''
                 cd ${source}
+                # The portable bare-python lane: template-contract tests need
+                # the declared runtime dependencies (pydantic) and run under
+                # the uv pytest suite instead (template-ci python-source job).
                 if [ -f tests/test_project_readiness.py ]; then python3.14 tests/test_project_readiness.py; fi
                 if [ -f tests/test_repository_validation.py ]; then python3.14 tests/test_repository_validation.py; fi
                 if [ -f tests/test_delivery_contract.py ]; then python3.14 tests/test_delivery_contract.py; fi
-                if [ -f tests/test_template_contract.py ]; then python3.14 tests/test_template_contract.py; fi
                 touch $out
               '';
         }

@@ -76,6 +76,23 @@ class ContributionDefinition(StrictModel):
     kind: Identifier
 
 
+class DocumentFragmentDefinition(StrictModel):
+    id: Identifier
+    document: str
+    order: int
+
+    @model_validator(mode="after")
+    def validate_document(self) -> DocumentFragmentDefinition:
+        match parse_path(self.document):
+            case Ok(
+                _
+            ):  # pragma: no cover  coverage.py attributes case headers to the neighboring branch
+                pass
+            case Err(_):
+                raise ValueError("fragment document must be repository-relative")
+        return self
+
+
 class CapabilityDefinition(StrictModel):
     id: Identifier
     description: str
@@ -83,6 +100,7 @@ class CapabilityDefinition(StrictModel):
     settings: tuple[SettingDefinition, ...] = ()
     artifacts: tuple[ArtifactDefinition, ...] = ()
     contributions: tuple[ContributionDefinition, ...] = ()
+    document_fragments: tuple[DocumentFragmentDefinition, ...] = ()
     runtime_dependencies: tuple[str, ...] = ()
     supported_python: str = ">=3.14"
     invocation: str | None = None
@@ -96,6 +114,10 @@ class CapabilityDefinition(StrictModel):
             (
                 tuple(contribution.id for contribution in self.contributions),
                 "contributions",
+            ),
+            (
+                tuple(fragment.id for fragment in self.document_fragments),
+                "document_fragments",
             ),
         ):
             if len(set(values)) != len(values):
@@ -118,6 +140,9 @@ def _capability(
     *,
     dependencies: tuple[str, ...] = (),
     settings: tuple[SettingDefinition, ...] = (),
+    artifacts: tuple[ArtifactDefinition, ...] = (),
+    contributions: tuple[ContributionDefinition, ...] = (),
+    document_fragments: tuple[DocumentFragmentDefinition, ...] = (),
     runtime_dependencies: tuple[str, ...] = (),
     invocation: str | None = None,
 ) -> CapabilityDefinition:
@@ -126,6 +151,9 @@ def _capability(
         description=description,
         dependencies=dependencies,
         settings=settings,
+        artifacts=artifacts,
+        contributions=contributions,
+        document_fragments=document_fragments,
         runtime_dependencies=runtime_dependencies,
         invocation=invocation,
     )
@@ -135,10 +163,63 @@ CATALOG: dict[str, CapabilityDefinition] = {
     "semantic-release": _capability(
         "semantic-release",
         "Automated semantic releases.",
+        artifacts=(
+            ArtifactDefinition(
+                id="releaserc",
+                path=".releaserc",
+                kind="text",
+                mode=0o644,
+            ),
+            ArtifactDefinition(
+                id="semantic-release-workflow",
+                path=".github/workflows/semantic-release.yml",
+                kind="text",
+                mode=0o644,
+            ),
+        ),
+        contributions=(
+            ContributionDefinition(
+                id="release",
+                slot="release-job",
+                order=0,
+                kind="yaml",
+            ),
+        ),
         runtime_dependencies=("python-semantic-release>=9",),
         invocation="uvx semantic-release",
     ),
-    "nix": _capability("nix", "Nix development and CI tooling."),
+    "nix": _capability(
+        "nix",
+        "Nix development and CI tooling.",
+        artifacts=(
+            ArtifactDefinition(
+                id="flake-nix",
+                path="flake.nix",
+                kind="text",
+                mode=0o644,
+            ),
+            ArtifactDefinition(
+                id="flake-lock",
+                path="flake.lock",
+                kind="text",
+                mode=0o644,
+            ),
+            ArtifactDefinition(
+                id="nix-workflow",
+                path=".github/workflows/nix.yml",
+                kind="text",
+                mode=0o644,
+            ),
+        ),
+        contributions=(
+            ContributionDefinition(
+                id="nix-check",
+                slot="capability-checks",
+                order=0,
+                kind="yaml",
+            ),
+        ),
+    ),
     "cachix-publish": _capability(
         "cachix-publish",
         "Publish Nix artifacts through Cachix.",
@@ -150,11 +231,106 @@ CATALOG: dict[str, CapabilityDefinition] = {
                 required=True,
             ),
         ),
+        artifacts=(
+            ArtifactDefinition(
+                id="cachix-publish-workflow",
+                path=".github/workflows/cachix-publish.yml",
+                kind="text",
+                mode=0o644,
+            ),
+        ),
+        contributions=(
+            ContributionDefinition(
+                id="cachix-publish",
+                slot="publish-job",
+                order=0,
+                kind="yaml",
+            ),
+        ),
     ),
     "pr-agent-gemini": _capability(
         "pr-agent-gemini",
         "Qodo PR Agent with a Gemini backend.",
-        runtime_dependencies=("pr-agent",),
+        artifacts=(
+            ArtifactDefinition(
+                id="pr-agent-toml",
+                path=".pr_agent.toml",
+                kind="text",
+                mode=0o644,
+            ),
+            ArtifactDefinition(
+                id="pr-agent-workflow",
+                path=".github/workflows/pr-agent.yml",
+                kind="text",
+                mode=0o644,
+            ),
+            ArtifactDefinition(
+                id="pr-agent-commands-workflow",
+                path=".github/workflows/pr-agent-commands.yml",
+                kind="text",
+                mode=0o644,
+            ),
+        ),
+        # No generated-project runtime dependency: the generated workflows run
+        # PR Agent through its pinned GitHub action, and the ``pr-agent``
+        # package's exact transitive pins (``pyyaml==6.0.1``, ``ujson==5.8.0``)
+        # are not installable on the generated project's Python 3.14.  The
+        # local command stays declared through the invocation metadata.
         invocation="uvx pr-agent",
     ),
 }
+
+
+def catalog_surface() -> dict[str, dict[str, object]]:
+    """The frozen v1 catalog surface: the stable-ID compatibility contract.
+
+    ``validate_template.py`` compares the live catalog against the recorded
+    fixture; within v1 a capability may update artifact bodies and
+    documentation but may not change any member of this surface.
+    """
+
+    return {
+        capability_id: {
+            "dependencies": list(definition.dependencies),
+            "settings": [
+                {
+                    "name": setting.name,
+                    "type": setting.type,
+                    "required": setting.required,
+                    "default": setting.default,
+                    "choices": list(setting.choices),
+                }
+                for setting in definition.settings
+            ],
+            "artifacts": [
+                {
+                    "id": artifact.id,
+                    "path": artifact.path,
+                    "kind": artifact.kind,
+                    "mode": artifact.mode,
+                }
+                for artifact in definition.artifacts
+            ],
+            "contributions": [
+                {
+                    "id": contribution.id,
+                    "slot": contribution.slot,
+                    "order": contribution.order,
+                    "kind": contribution.kind,
+                }
+                for contribution in definition.contributions
+            ],
+            "document_fragments": [
+                {
+                    "id": fragment.id,
+                    "document": fragment.document,
+                    "order": fragment.order,
+                }
+                for fragment in definition.document_fragments
+            ],
+            "runtime_dependencies": list(definition.runtime_dependencies),
+            "supported_python": definition.supported_python,
+            "invocation": definition.invocation,
+        }
+        for capability_id, definition in sorted(CATALOG.items())
+    }

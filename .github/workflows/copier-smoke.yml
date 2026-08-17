@@ -29,3 +29,11 @@ jobs:
         run: |
           uv run python tests/test_copier.py
           uv run python tests/test_copier_bootstrap.py
+      - name: Stage compiled workflow fixtures for linting
+        run: |
+          mkdir -p .github/workflows/fixtures
+          cp scripts/fixtures/workflows/*.yml .github/workflows/fixtures/
+      - name: Run actionlint on source and compiled workflow fixtures
+        uses: docker://docker.io/rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 # 1.7.7
+      - name: Remove staged fixture copies
+        run: rm -rf .github/workflows/fixtures

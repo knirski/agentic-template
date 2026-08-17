@@ -85,7 +85,12 @@ def compose_contributions(
     maintenance: MaintenanceInfo,
     blobs: VerifiedBlobStore,
 ) -> Result[tuple[ResolvedContribution, ...], RenderError]:
-    """Compose every effective contribution into the normative sorted order."""
+    """Compose every effective contribution into the normative sorted order.
+
+    Bodies are validated and ordered first; the composed order then feeds the
+    release-graph substitution so a release contribution can name every
+    selected capability check without a second pass over the input.
+    """
     match _owner_pairs(core, definitions, effective):
         case Err(error):
             return Err(error)
@@ -115,9 +120,7 @@ def compose_contributions(
                 )
             identities.add(identity)
     slots_by_id = {slot.id: slot for slot in core.slots}
-    by_slot: dict[str, list[ResolvedContribution]] = {
-        slot.id: [] for slot in core.slots
-    }
+    raw: list[tuple[ContributionDefinition, bytes, str]] = []
     for owner, _order, contributions in owner_pairs:
         for contribution in contributions:
             slot = slots_by_id.get(contribution.slot)
@@ -149,53 +152,59 @@ def compose_contributions(
                         _identity(owner, contribution.id),
                     )
                 )
-            match apply_substitutions(
-                body,
-                contribution.substitutions,
-                context=slot.context,
-                settings=settings,
-                project=project,
-                maintenance=maintenance,
-            ):
-                case Err(error):
-                    return Err(error)
-                case Ok(rendered):
-                    try:
-                        rendered_body = rendered.decode("utf-8")
-                    except UnicodeDecodeError:
-                        return Err(
-                            RenderError(
-                                RenderErrorKind.INVALID_TEMPLATE,
-                                "body_encoding",
-                                _identity(owner, contribution.id),
-                            )
-                        )
-                    by_slot[contribution.slot].append(
-                        ResolvedContribution(
-                            slot=contribution.slot,
-                            owner=owner,
-                            contribution_id=contribution.id,
-                            order=contribution.order,
-                            kind=contribution.kind,
-                            rendered_body=rendered_body,
-                        )
-                    )
+            raw.append((contribution, body, owner))
     owner_order_by_id = {owner: order for owner, order, _ in owner_pairs}
-    resolved = [
-        contribution
-        for contributions in by_slot.values()
-        for contribution in contributions
-    ]
     ordered = sorted(
-        resolved,
-        key=lambda contribution: (
-            contribution.order,
-            owner_order_by_id[contribution.owner],
-            contribution.owner,
-            contribution.contribution_id,
+        raw,
+        key=lambda entry: (
+            entry[0].order,
+            owner_order_by_id[entry[2]],
+            entry[2],
+            entry[0].id,
         ),
     )
-    return Ok(tuple(ordered))
+    slot_ids: dict[str, tuple[str, ...]] = {}
+    for contribution, _body, _owner in ordered:
+        slot_ids[contribution.slot] = (
+            *slot_ids.get(contribution.slot, ()),
+            contribution.id,
+        )
+    resolved: list[ResolvedContribution] = []
+    for contribution, body, owner in ordered:
+        slot = slots_by_id[contribution.slot]
+        match apply_substitutions(
+            body,
+            contribution.substitutions,
+            context=slot.context,
+            settings=settings,
+            project=project,
+            maintenance=maintenance,
+            slot_ids=slot_ids,
+        ):
+            case Err(error):
+                return Err(error)
+            case Ok(rendered):
+                try:
+                    rendered_body = rendered.decode("utf-8")
+                except UnicodeDecodeError:
+                    return Err(
+                        RenderError(
+                            RenderErrorKind.INVALID_TEMPLATE,
+                            "body_encoding",
+                            _identity(owner, contribution.id),
+                        )
+                    )
+                resolved.append(
+                    ResolvedContribution(
+                        slot=contribution.slot,
+                        owner=owner,
+                        contribution_id=contribution.id,
+                        order=contribution.order,
+                        kind=contribution.kind,
+                        rendered_body=rendered_body,
+                    )
+                )
+    return Ok(tuple(resolved))
 
 
 def _fragment_pairs(
@@ -287,6 +296,7 @@ def compose_document_bodies(
                 settings=settings,
                 project=project,
                 maintenance=maintenance,
+                slot_ids={},
             ):
                 case Err(error):
                     return Err(error)

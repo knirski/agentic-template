@@ -1,0 +1,62 @@
+# AI-powered PR review using Qodo's PR Agent with a Gemini backend.
+# Requires the GEMINI_API_KEY GitHub Actions repository secret.
+name: PR Agent
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+
+permissions: {}
+
+concurrency:
+  group: pr-agent-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  gemini-availability:
+    name: Gemini availability
+    runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+      guidance: ${{ steps.check.outputs.guidance }}
+    steps:
+      - name: Check Gemini API key
+        id: check
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -n "$GEMINI_API_KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "guidance=Proceed." >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "guidance=The GEMINI_API_KEY secret is unavailable in this run; likely causes include fork pull requests, Dependabot runs, and restricted Actions policy. See docs/github-setup.md." >> "$GITHUB_OUTPUT"
+          fi
+
+  pr-agent:
+    name: Run PR Agent
+    if: |
+      needs.gemini-availability.outputs.available == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.type != 'Bot' &&
+      (github.event.pull_request.author_association == 'OWNER' ||
+       github.event.pull_request.author_association == 'MEMBER' ||
+       github.event.pull_request.author_association == 'COLLABORATOR')
+    needs: [gemini-availability]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Run PR Agent
+        uses: the-pr-agent/pr-agent@6ad7cf75d95cb3bbb54cf2ad92050eb03804964a # v0.40.0
+        env:
+          config.model: gemini/gemini-3.6-flash
+          config.fallback_models: '["gemini/gemini-3.5-flash-lite"]'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_AI_STUDIO.GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

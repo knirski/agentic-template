@@ -74,14 +74,21 @@ class TemplateContractTests(unittest.TestCase):
         self.assertEqual(bash_files, [], f"bash shebangs remain: {bash_files}")
 
     def test_adapter_delegates_contract_policy_to_bootstrap_core(self) -> None:
-        with patch(
-            "scripts.bootstrap.template_contract.required_contract_failures",
-            return_value=("delegated failure",),
-        ) as policy:
+        with (
+            patch(
+                "scripts.bootstrap.template_contract.required_contract_failures",
+                return_value=("delegated failure",),
+            ) as policy,
+            patch(
+                "scripts.validate_template.validate_catalog_surface",
+                return_value=(),
+            ) as surface,
+        ):
             failures = validate_template.validate_contract(Path("."), ())
 
         self.assertEqual(failures, ("delegated failure",))
         policy.assert_called_once()
+        surface.assert_called_once()
 
     def test_missing_shared_bootstrap_module_fails_template_contract(self) -> None:
         missing = "scripts/bootstrap/presentation.py"

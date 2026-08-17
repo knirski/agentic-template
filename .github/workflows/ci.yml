@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - main
+      - "main"
   workflow_dispatch:
 
 permissions:
@@ -29,7 +29,7 @@ jobs:
           enable-cache: true
       - name: Validate generated-project contract
         if: github.repository != 'knirski/agentic-template'
-        run: uv run --no-project --python 3.14 scripts/validate_repository.py
+        run: uv run --python 3.14 scripts/validate_repository.py
 
   delivery-contract:
     name: Delivery contract
@@ -46,19 +46,4 @@ jobs:
           python-version: "3.14"
           enable-cache: true
       - name: Validate generic delivery files
-        run: uv run --no-project --python 3.14 scripts/validate_template.py
-
-  release:
-    name: Semantic Release
-    # The template source releases through the gated maintainer workflow
-    # (template-ci.yml); generated projects keep this portable gate.
-    if: >
-      github.repository != 'knirski/agentic-template' &&
-      github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: [project-validation, delivery-contract]
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-    uses: ./.github/workflows/semantic-release.yml
+        run: uv run --python 3.14 scripts/validate_template.py

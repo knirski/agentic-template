@@ -3,7 +3,7 @@
     {
       "kind": "file",
       "path": ".github/workflows/copier-smoke.yml",
-      "sha256": "88e2170aa4e4dd849c4b8ea08dd4597f54834e56bb36d9ac62a99db3ba4c323c"
+      "sha256": "c79d81a682686bef2861c7ce729046008e9530b1db24c9c734635673535f2de7"
     },
     {
       "kind": "file",
@@ -23,7 +23,7 @@
     {
       "kind": "directory",
       "path": "docs/specs",
-      "sha256": "24f6dfe8be73f044835f7e4383361ebba6acbe8f823fe1d095a4bd6bf237b0c6"
+      "sha256": "f60183c5cc6a394686830d76c1a693744e6b7a8e7f64c0a068e292c474fa155e"
     },
     {
       "kind": "file",
@@ -33,22 +33,22 @@
     {
       "kind": "file",
       "path": "flake.nix",
-      "sha256": "efc09b2079aa716b71d6ccd0d3f190da49c6c7c02286cffd5464b958dc382160"
+      "sha256": "30b0c8880e448f8f83c8899ac6beac48cc2eafd647764efe66574bcee2c0a5cb"
     },
     {
       "kind": "file",
       "path": "pyproject.toml",
-      "sha256": "71b14d2f1f5f3b5ad13fa51cb9eb787453d6d72dd6146ec9db7d465570a4103a"
+      "sha256": "9a81fd74e04d48a170ee4d6786c11210b81f495fdc202cdde77ae1f8789bb06c"
     },
     {
       "kind": "directory",
       "path": "tests",
-      "sha256": "400dc77cabc0556a4654facaa6de9ebd45acbc71b5cf6eb446c145e5bbd6f94a"
+      "sha256": "c02fd50869cb50c73552d05bc302729e2446224645b143aafb8b52b1dce90468"
     },
     {
       "kind": "file",
       "path": "uv.lock",
-      "sha256": "e912232a7d3b828fdf333f0173ce76ca926479333ad69c3498b1fdc0c116ee98"
+      "sha256": "ae418f75fe5f17822eae4a6c5a5730afe4ed5d244d1c9edbcf13d28283b3660b"
     }
   ],
   "schema_version": 1
