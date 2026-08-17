@@ -896,7 +896,8 @@
             "completion": {
               "completed_at": "2026-08-17",
               "commits": [
-                "148a00f"
+                "148a00f",
+                "c07d868"
               ],
               "evidence": [
                 "uv run pytest (1033 passed, including the full profile/custom-selection matrix, structural preflight policy, local non-secret canary, release-graph gating, and the adopter uv-lock fixture)",
