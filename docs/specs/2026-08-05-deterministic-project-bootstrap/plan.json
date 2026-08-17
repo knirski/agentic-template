@@ -914,7 +914,9 @@
                 "review scope records: source pr-agent workflow drift from the compiled capability output is a tracked T16 deferral (T16 wires the source tree as the integrated fixture); the source flake.nix lane change (test_template_contract.py moved to the uv pytest suite because validate_template.py now uses the declared pydantic dependency) is the necessary companion of that wiring; catalog/render surface deduplication, the dead _render_artifact slot_ids recomputation, and the duplicated pytest surface comparison are tracked follow-up for the T16 batch"
               ]
             },
-            "github_prs": []
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/71"
+            ]
           },
           "files": {
             "create": [
