@@ -1,0 +1,272 @@
+"""Source-tree integrated-fixture wiring (T16).
+
+The apply pipeline compiles per-profile CI as managed output, so adopting
+projects receive exactly the workflow files for their selected profile and
+drift in the managed CI is detected by the standard ``status`` machinery
+(``restore`` is the later lifecycle task).  The source's own committed
+workflow files stay byte-identical to their canonical compiled renders, the
+source never commits Nix workflow files (so adopters cannot inherit Nix),
+maintainer-only jobs live in a workflow excluded from generated projects, and
+no Actions YAML parser, semantic workflow normal form, allowlist, or
+trust-predicate conformance fixture remains.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import tempfile
+from pathlib import Path
+from typing import cast
+
+import yaml
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from tests.fixtures import (  # noqa: E402
+    SCAFFOLD_CONTRIBUTING,
+    SCAFFOLD_SECURITY,
+    copy_tracked,
+    run,
+    scaffold_hook,
+    write_bundle,
+)
+from tests.test_capability_matrix import (  # noqa: E402
+    ALL_CAPABILITIES,
+    SOURCE_WORKFLOW_SELECTIONS,
+    render_for,
+)
+
+SOURCE_CI = ".github/workflows/ci.yml"
+
+# The source-maintainer-only workflows: excluded from generated projects by
+# the Copier _exclude list and removed from GitHub snapshots by the cleanup
+# contract, so adopters never receive the maintainer check suite.
+MAINTAINER_WORKFLOWS = {
+    ".github/workflows/template-ci.yml",
+    ".github/workflows/copier-smoke.yml",
+    ".github/workflows/mutation.yml",
+}
+# The maintainer-only jobs in template-ci.yml.  None may appear in any
+# compiled render that generated projects receive.
+MAINTAINER_ONLY_MARKERS = (
+    "uv sync",
+    "ruff check",
+    "basedpyright",
+    "pytest --cov",
+    "coverage.xml",
+    "actionlint",
+)
+
+
+def test_source_workflows_are_compiled_managed_artifacts() -> None:
+    # Drift in the source's own CI is a compile drift: the committed files must
+    # stay byte-identical to the canonical compiled renders so the standard
+    # status machinery (not a conformance fixture) is the detector.
+    for path, selection in SOURCE_WORKFLOW_SELECTIONS.items():
+        assert (ROOT / path).read_bytes() == render_for(selection)[path], (
+            f"{path} drifted from the compiled source render"
+        )
+
+
+def test_source_never_commits_nix_capability_workflows() -> None:
+    # The source must not ship Nix workflow files: snapshot and Copier copies
+    # carry every committed workflow into generated projects, so committing
+    # Nix files would make Nix appear required.  Nix stays optional: only an
+    # explicit capability selection compiles these artifacts through apply.
+    for path in (
+        ".github/workflows/nix.yml",
+        ".github/workflows/cachix-publish.yml",
+    ):
+        assert not (ROOT / path).exists(), f"{path} must not be committed"
+
+
+def test_maintainer_only_jobs_are_excluded_from_generated_projects() -> None:
+    source_ownership = cast(
+        dict[str, object],
+        json.loads(
+            (ROOT / ".agentic-template/source-ownership.json").read_text(
+                encoding="utf-8"
+            )
+        ),
+    )
+    copier_config = cast(
+        dict[str, object],
+        yaml.safe_load((ROOT / "copier.yml").read_text(encoding="utf-8")),
+    )
+    cleanup_paths = cast(list[str], source_ownership["snapshot_cleanup_paths"])
+    excludes = set(cast(list[str], copier_config["_exclude"]))
+    for relative in MAINTAINER_WORKFLOWS:
+        assert relative in cleanup_paths
+        assert relative in excludes
+
+    maintainer = (ROOT / ".github/workflows/template-ci.yml").read_text(
+        encoding="utf-8"
+    )
+    for marker in MAINTAINER_ONLY_MARKERS:
+        assert marker in maintainer, f"template-ci.yml lost maintainer job {marker}"
+
+    # No compiled render adopters receive contains the maintainer check suite.
+    for path, selection in SOURCE_WORKFLOW_SELECTIONS.items():
+        rendered = render_for(selection)[path].decode("utf-8")
+        for marker in MAINTAINER_ONLY_MARKERS:
+            assert marker not in rendered, f"{path} leaked maintainer job {marker}"
+
+
+def test_source_workflows_match_the_frozen_security_fixtures() -> None:
+    # The source capability workflows are byte-identical to the frozen
+    # security fixtures, so the structural preflight policy and local canary
+    # coverage in test_secret_preflight.py also pin the source itself.
+    assert (ROOT / ".github/workflows/pr-agent.yml").read_bytes() == (
+        ROOT / "scripts/fixtures/workflows/pr-agent-gemini.yml"
+    ).read_bytes()
+    assert (ROOT / ".github/workflows/semantic-release.yml").read_bytes() == (
+        ROOT / "scripts/fixtures/workflows/semantic-release.yml"
+    ).read_bytes()
+
+
+def test_no_actions_yaml_parser_or_conformance_fixture_remains() -> None:
+    # No Actions YAML parser, semantic workflow normal form, allowlist, or
+    # trust-predicate fixture is defined; PyYAML is limited to scalar emission
+    # in the render boundary and never parses workflows.
+    for path in sorted((ROOT / "scripts").rglob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        for token in ("allowlist", "trust_predicate", "trust-predicate"):
+            assert token not in text, f"{path} still references {token}"
+        assert "yaml.safe_load" not in text, f"{path} still parses workflow YAML"
+    render = (ROOT / "scripts/bootstrap/render.py").read_text(encoding="utf-8")
+    assert "yaml.safe_dump" in render
+
+
+def _activate_source(
+    parent: Path,
+    *,
+    capabilities: tuple[str, ...] | None = None,
+    capability_settings: dict[str, dict[str, str | bool]] | None = None,
+) -> tuple[Path, Path]:
+    """Copy the tracked source, overlay the scaffold, and apply one bundle."""
+    project = parent / "project"
+    copy_tracked(ROOT, project)
+    record = parent / "hook-runs"
+    _ = record.write_text("", encoding="utf-8")
+    hook = project / "scripts/validate-project"
+    _ = hook.write_text(scaffold_hook(record), encoding="utf-8")
+    hook.chmod(0o755)
+    _ = (project / "CONTRIBUTING.md").write_text(
+        SCAFFOLD_CONTRIBUTING, encoding="utf-8"
+    )
+    _ = (project / "SECURITY.md").write_text(SCAFFOLD_SECURITY, encoding="utf-8")
+    for args in (
+        ("init", "-q", "-b", "main"),
+        ("add", "-A"),
+        (
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "-m",
+            "scaffold",
+        ),
+    ):
+        result = run(["git", "-C", str(project), *args])
+        assert result.returncode == 0, result.stderr
+    bundle = write_bundle(
+        parent,
+        supplied=True,
+        record=record,
+        capabilities=capabilities,
+        capability_settings=capability_settings,
+    )
+    applied = run(
+        [
+            sys.executable,
+            str(project / "scripts/bootstrap_project.py"),
+            "apply",
+            "--bundle",
+            str(bundle),
+            "--target",
+            str(project),
+        ]
+    )
+    assert applied.returncode == 0, applied.stdout + applied.stderr
+    return project, record
+
+
+def test_apply_compiles_and_manages_per_profile_ci() -> None:
+    """A portable activation installs the compiled, managed baseline CI."""
+    with tempfile.TemporaryDirectory(prefix="agentic-template-source.") as raw:
+        project, _record = _activate_source(Path(raw))
+
+        # The installed ci.yml is the compiled portable render -- managed
+        # output, byte-identical to the source's committed baseline.
+        compiled_ci = render_for(())[SOURCE_CI]
+        committed_ci = (ROOT / SOURCE_CI).read_bytes()
+        installed_ci = project / SOURCE_CI
+        assert compiled_ci == committed_ci == installed_ci.read_bytes()
+
+        # ci.yml is a managed artifact the status/restore machinery tracks.
+        manifest = cast(
+            dict[str, object],
+            json.loads(
+                (project / ".agentic-template/project.json").read_text(encoding="utf-8")
+            ),
+        )
+        managed_paths = {
+            str(entry["path"])
+            for entry in cast(list[dict[str, str]], manifest["managed"])
+        }
+        assert SOURCE_CI in managed_paths
+
+        # Maintainer-only workflows are removed by snapshot cleanup, and Nix
+        # workflows are never present because the source never commits them.
+        for relative in MAINTAINER_WORKFLOWS:
+            assert not (project / relative).exists(), relative
+        for relative in (
+            ".github/workflows/nix.yml",
+            ".github/workflows/cachix-publish.yml",
+        ):
+            assert not (project / relative).exists(), relative
+
+        cli = [sys.executable, str(project / "scripts/bootstrap_project.py")]
+        clean = run([*cli, "status", "--target", str(project)])
+        assert clean.returncode == 0, clean.stdout + clean.stderr
+        assert "managed: verified: no managed drift" in clean.stdout
+
+        # Drift in the managed CI is reported by status; restore repairs it in
+        # the later lifecycle task (T18).
+        with installed_ci.open("a", encoding="utf-8") as handle:
+            _ = handle.write("  # local drift\n")
+        drifted = run([*cli, "status", "--target", str(project)])
+        assert drifted.returncode == 0, drifted.stdout + drifted.stderr
+        assert "managed: drift: .github/workflows/ci.yml" in drifted.stdout
+
+
+def test_apply_compiles_selected_capability_workflows() -> None:
+    """A selected profile compiles its capability workflows through apply.
+
+    The source never commits Nix workflow files, yet selecting Nix (and the
+    other capabilities) makes apply compile them into the project -- so
+    adopters receive exactly the workflows they selected, and no more.
+    """
+    with tempfile.TemporaryDirectory(prefix="agentic-template-source.") as raw:
+        selection = tuple(sorted(ALL_CAPABILITIES))
+        project, _record = _activate_source(
+            Path(raw),
+            capabilities=selection,
+            capability_settings={"cachix-publish": {"cache_name": "example"}},
+        )
+        compiled = render_for(selection)
+        workflows = {
+            ".github/workflows/ci.yml",
+            ".github/workflows/semantic-release.yml",
+            ".github/workflows/nix.yml",
+            ".github/workflows/cachix-publish.yml",
+            ".github/workflows/pr-agent.yml",
+            ".github/workflows/pr-agent-commands.yml",
+        }
+        for relative in workflows:
+            assert (project / relative).read_bytes() == compiled[relative], relative
+        assert (ROOT / ".github/workflows/nix.yml").exists() is False

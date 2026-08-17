@@ -6,8 +6,10 @@ shared pure boundary (``core_definition`` + ``capability_definitions`` from
 capabilities emit no artifacts or workflow jobs, the release graph waits on
 every selected managed capability check, the compiled workflow fixtures in
 ``scripts/fixtures/workflows`` stay byte-identical to the canonical render,
-and the source ``ci.yml`` stays byte-identical to the compiled portable
-baseline.
+and the source's committed workflow files stay byte-identical to their
+canonical compiled renders (the source ci is the portable baseline).  The
+source never commits Nix workflow files, so generated projects can only
+receive them through an explicit capability selection compiled by apply.
 """
 
 from __future__ import annotations
@@ -46,7 +48,6 @@ from scripts.bootstrap.result import Err, Ok
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW_FIXTURES = ROOT / "scripts/fixtures/workflows"
-SOURCE_CI = ROOT / ".github/workflows/ci.yml"
 CATALOG_SURFACE_FIXTURE = ROOT / "scripts/fixtures/catalog-surface-v1.json"
 
 ALL_CAPABILITIES = ("semantic-release", "nix", "cachix-publish", "pr-agent-gemini")
@@ -76,6 +77,17 @@ CAPABILITY_CONTRIBUTIONS: dict[str, tuple[str, ...]] = {
     "nix": ("nix-check",),
     "cachix-publish": ("cachix-publish",),
     "pr-agent-gemini": (),
+}
+
+# The compiled render selection whose ci.yml is the source's committed
+# baseline.  The apply pipeline compiles per-profile CI for adopters, and the
+# source ci must stay the portable baseline so it never carries a capability
+# job into the source repo's own CI.
+SOURCE_WORKFLOW_SELECTIONS: dict[str, tuple[str, ...]] = {
+    ".github/workflows/ci.yml": (),
+    ".github/workflows/semantic-release.yml": ("semantic-release",),
+    ".github/workflows/pr-agent.yml": ("pr-agent-gemini",),
+    ".github/workflows/pr-agent-commands.yml": ("pr-agent-gemini",),
 }
 
 
@@ -378,9 +390,26 @@ def test_frozen_workflow_fixtures_are_complete() -> None:
     ]
 
 
-def test_source_ci_is_the_compiled_portable_baseline() -> None:
-    rendered = render_for(())
-    assert rendered[CORE_CI_PATH] == SOURCE_CI.read_bytes()
+def test_source_workflows_match_the_compiled_render() -> None:
+    for path, selection in SOURCE_WORKFLOW_SELECTIONS.items():
+        compiled = render_for(selection)
+        assert (ROOT / path).read_bytes() == compiled[path], (
+            f"{path} drifted from the compiled source render; "
+            "restore it from the compiled output"
+        )
+
+
+def test_source_never_commits_nix_capability_workflows() -> None:
+    # Copier and snapshot apply copy every committed source workflow into
+    # generated projects' pre-apply trees, so committing Nix workflow files
+    # would leak them into adopters that never selected Nix.  Nix stays
+    # optional: only an explicit capability selection compiles these
+    # artifacts through apply.
+    for path in (
+        ".github/workflows/nix.yml",
+        ".github/workflows/cachix-publish.yml",
+    ):
+        assert not (ROOT / path).exists(), f"{path} must not be committed"
 
 
 def test_catalog_surface_matches_the_frozen_fixture() -> None:

@@ -963,20 +963,39 @@
           "inputs": [
             "design template-source CI section (revision 16); maintainer-only source CI separation; capability-matrix security fixtures."
           ],
-          "description": "Remove the Actions YAML loader, semantic workflow normal form, raw SHA-comment checks, trust predicates, allowlist, and source-versus-rendered comparison from the plan; PyYAML is not a source dependency. Wire the source repository as the `integrated`-profile fixture at activation: its `ci.yml` is a compiled managed artifact, maintainer-only jobs (uv sync, source canaries, actionlint) live in a source-maintainer-owned workflow file excluded from generated projects by Copier and snapshot cleanup, and drift in the managed artifact is detected by the standard `status`/`restore` machinery. Pin generated-workflow security properties through capability-matrix and structural-policy fixtures. The unwired compatibility and comparison modules landed in the revision-16 alignment (PR #41), and revision 17 restores PyYAML as a runtime dependency for the render boundary's scalar encoder only; remaining work is the integrated-fixture wiring, maintainer-only job separation, and security fixtures.",
+          "description": "Remove the Actions YAML loader, semantic workflow normal form, raw SHA-comment checks, trust predicates, allowlist, and source-versus-rendered comparison from the plan; PyYAML is a declared runtime dependency used only for scalar emission in the render boundary. Implemented: the `apply` pipeline compiles per-profile CI as managed output (`compile_initial_install` renders `ci.yml` and every selected capability workflow), so adopters receive exactly their selected profile and drift in the managed CI is detected by the standard `status` machinery (`restore` is the later lifecycle task, T18). The source is the compiled-managed-artifact fixture: `validate_template.py` and `tests/test_source_bootstrap.py` pin its committed workflows byte-for-byte to the canonical compiled renders, the source `ci.yml` stays the compiled portable baseline, and Nix/Cachix workflow files are never committed so adopters cannot inherit them; the source's `pr-agent.yml`/`pr-agent-commands.yml` drift was fixed to the compiled security fixtures. Maintainer-only jobs live in `template-ci.yml`, excluded from generated projects by Copier and snapshot cleanup. Implementation revised the original 'integrated-profile fixture' wording (user-approved during execution): the engine previously copied the source's committed workflows verbatim into adopters, so the source committed set stays portable/no-Nix and the apply-pipeline compilation is the place adopters receive workflows.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-17",
+              "commits": [],
+              "evidence": [
+                "uv run pytest (1050 passed, including new tests/test_source_bootstrap.py: source-workflow parity, maintainer-only exclusion, no-Nix-committed, security fixtures, no conformance tooling, and two real activations proving per-profile CI is compiled + managed with status detecting ci.yml drift; plus the full profile/custom-selection matrix)",
+                "uv run ruff check (clean); uv run ruff format --check (clean)",
+                "uv run basedpyright (0 errors, 0 warnings, 0 notes) - the repository-declared type-check gate",
+                "uv lock --check (passed); git diff --check (clean)",
+                "uv run --python 3.14 scripts/validate_repository.py (expected template-source exit 1; template contract passed and readiness findings emitted in canonical order)",
+                "stdlib lanes (test_project_readiness, test_repository_validation, test_delivery_contract) exit 0",
+                "actionlint on the source workflows and every compiled workflow fixture (clean)",
+                "real Copier 9.17.0 suites pass (copier contract: ok; copier bootstrap contract: ok)",
+                "maintenance inventory regenerated from the tracked source after the new test file and test edits"
+              ]
+            },
+            "github_prs": []
           },
           "files": {
             "create": [
               "tests/test_source_bootstrap.py"
             ],
             "modify": [
+              ".agentic-template/maintenance-artifacts.json",
+              ".github/workflows/pr-agent-commands.yml",
+              ".github/workflows/pr-agent.yml",
+              "scripts/bootstrap/bundles.py",
               "scripts/validate_template.py",
-              ".github/workflows/ci.yml",
-              ".github/workflows/template-ci.yml"
+              "tests/fixtures.py",
+              "tests/test_capability_matrix.py"
             ],
             "remove": []
           },

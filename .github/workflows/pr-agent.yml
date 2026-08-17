@@ -16,13 +16,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  gemini-availability:
+    name: Gemini availability
+    runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+      guidance: ${{ steps.check.outputs.guidance }}
+    steps:
+      - name: Check Gemini API key
+        id: check
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -n "$GEMINI_API_KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "guidance=Proceed." >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "guidance=The GEMINI_API_KEY secret is unavailable in this run; likely causes include fork pull requests, Dependabot runs, and restricted Actions policy. See docs/github-setup.md." >> "$GITHUB_OUTPUT"
+          fi
+
   pr-agent:
+    name: Run PR Agent
     if: |
+      needs.gemini-availability.outputs.available == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.type != 'Bot' &&
       (github.event.pull_request.author_association == 'OWNER' ||
        github.event.pull_request.author_association == 'MEMBER' ||
        github.event.pull_request.author_association == 'COLLABORATOR')
+    needs: [gemini-availability]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -30,15 +53,6 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - name: Validate Gemini API key secret
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          if [ -z "$GEMINI_API_KEY" ]; then
-            echo "::error::GEMINI_API_KEY repository secret is required for PR Agent."
-            exit 1
-          fi
-
       - name: Run PR Agent
         uses: the-pr-agent/pr-agent@6ad7cf75d95cb3bbb54cf2ad92050eb03804964a # v0.40.0
         env:

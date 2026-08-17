@@ -112,8 +112,15 @@ def write_bundle(
     supplied: bool,
     record: Path,
     name: str = "bundle",
+    capabilities: tuple[str, ...] | None = None,
+    capability_settings: dict[str, dict[str, str | bool]] | None = None,
 ) -> Path:
-    """Write a bootstrap answer bundle: supplied content or scaffold modes."""
+    """Write a bootstrap answer bundle: supplied content or scaffold modes.
+
+    ``capabilities`` writes a custom profile selection and
+    ``capability_settings`` its settings; both omitted, the bundle is the
+    portable profile (no capabilities) used by the generation-path suites.
+    """
     bundle = parent / name
     bundle.mkdir()
     content_paths = {
@@ -144,13 +151,16 @@ def write_bundle(
         content[slot] = (
             {"mode": "scaffold"} if not supplied else {"mode": "file", "path": relative}
         )
+    profile: dict[str, object] = {"id": "portable"}
+    if capabilities is not None:
+        profile = {"id": "custom", "capabilities": list(capabilities)}
     document = {
         "schema_version": 1,
         "project": {"name": "example", "default_branch": "main"},
-        "profile": {"id": "portable"},
+        "profile": profile,
         "content": content,
         "licensing": {"mode": "retain-apache-2.0"},
-        "capability_settings": {},
+        "capability_settings": capability_settings or {},
     }
     _ = (bundle / "bootstrap.json").write_text(
         json.dumps(document, sort_keys=True), encoding="utf-8"
