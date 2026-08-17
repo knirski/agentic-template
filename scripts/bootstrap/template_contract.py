@@ -17,11 +17,6 @@ REQUIRED_FILES: tuple[str, ...] = (
     ".github/ISSUE_TEMPLATE/feature.yml",
     ".github/pull_request_template.md",
     ".github/workflows/ci.yml",
-    ".github/workflows/pr-agent-commands.yml",
-    ".github/workflows/pr-agent.yml",
-    ".github/workflows/semantic-release.yml",
-    ".pr_agent.toml",
-    ".releaserc",
     "scripts/check_project_readiness.py",
     "scripts/check-release-eligibility.py",
     "scripts/validate_project.py",
@@ -33,6 +28,20 @@ REQUIRED_FILES: tuple[str, ...] = (
     "scripts/bootstrap/template_contract.py",
     "scripts/bootstrap/validation_program.py",
 )
+
+# The source tree is the compiled-managed-artifact fixture: every committed
+# ``.github/workflows`` file is pinned to its canonical compiled render.  The
+# source ci.yml stays the compiled portable baseline (the source repo releases
+# through the maintainer workflow and runs no capability job); capability
+# workflow files are source-maintainer artifacts excluded from generated
+# projects and compiled per-profile by apply, so unselected adopters never
+# receive them.  The source never ships Nix workflow files.
+SOURCE_WORKFLOW_SELECTIONS: dict[str, tuple[str, ...]] = {
+    ".github/workflows/ci.yml": (),
+    ".github/workflows/semantic-release.yml": ("semantic-release",),
+    ".github/workflows/pr-agent.yml": ("pr-agent-gemini",),
+    ".github/workflows/pr-agent-commands.yml": ("pr-agent-gemini",),
+}
 
 REQUIRED_SKILLS: tuple[str, ...] = (
     "atelier-orchestrator",

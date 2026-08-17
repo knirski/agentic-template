@@ -2216,20 +2216,30 @@ eligibility check. Without `semantic-release`, no release workflow or job is emi
 
 ### Template-source CI conformance
 
-The template source is bootstrapped as the `integrated`-profile fixture at activation, so its
-workflow files are compiled managed output: drift between the source CI and the compiled render is
-detected by the standard managed-inventory machinery (`status`, `restore`), not by a separate
-conformance fixture. Maintainer-only jobs (uv sync, source canaries, actionlint) live in a
-source-maintainer-owned workflow file that Copier excludes and snapshot cleanup removes, so generated
-projects never receive them. No Actions YAML parser, semantic workflow normal form, trust-predicate
-comparison, allowlist, or raw pin-comment fixture is defined, and PyYAML is a declared runtime
-dependency used only for scalar emission in the render boundary, never for workflow parsing.
-`actionlint` continues to lint the source and every generated workflow fixture. Generated-workflow
-security properties (permissions, secrets, preflights, release dependency, privileged-job trust) are
-pinned by the capability-matrix and structural-policy fixtures. `check_project_readiness.py`'s
-checks remain deliberately bounded — presence, recognizable `workflow_call`, canonical command,
-absence of secret passing and privileged environment declarations, and the managed caller's exact
-hash — and are documented as bounded rather than semantic.
+The `apply` pipeline compiles the generated `ci.yml` and every selected capability workflow per
+profile as compiled managed output (the single shared `render_generation` boundary), so adopting
+projects receive exactly the workflow files for their selected profile and no more. Drift in that
+managed CI is detected by the standard managed-inventory machinery: `status` reports `managed:
+drift` on the compiled `ci.yml`, and `restore` repairs it (a later lifecycle task). The source tree
+is the compiled-managed-artifact fixture for its committed workflow set: `validate_template.py`
+pins every committed `.github/workflows` file byte-for-byte to its canonical compiled render, with
+the source `ci.yml` staying the compiled portable baseline (the source repo releases through the
+maintainer workflow and runs no capability job). Capability workflow files (pr-agent*,
+semantic-release, `.pr_agent.toml`, `.releaserc`) are source-maintainer artifacts: committed for the
+source's own use but excluded from generated projects by Copier and snapshot cleanup, and compiled
+per-profile by `apply` when selected, so unselected adopters never receive them. Nix and Cachix
+workflow files are never committed at all, so adopters can never inherit Nix. Maintainer-only jobs
+(uv sync, source canaries, actionlint) live in a source-maintainer-owned workflow file that Copier
+excludes and snapshot cleanup removes, so generated projects never receive them. No Actions YAML
+parser, semantic workflow normal form, trust-predicate comparison, allowlist, or raw pin-comment
+fixture is defined, and PyYAML is a declared runtime dependency used only for scalar emission in the
+render boundary, never for workflow parsing. `actionlint` continues to lint the source and every
+generated workflow fixture. Generated-workflow security properties (permissions, secrets,
+preflights, release dependency, privileged-job trust) are pinned by the capability-matrix and
+structural-policy fixtures. `check_project_readiness.py`'s checks remain deliberately bounded —
+presence, recognizable `workflow_call`, canonical command, absence of secret passing and privileged
+environment declarations, and the managed caller's exact hash — and are documented as bounded rather
+than semantic.
 
 ## Validation boundaries
 

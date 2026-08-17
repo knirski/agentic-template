@@ -12,8 +12,28 @@
     },
     {
       "kind": "file",
+      "path": ".github/workflows/pr-agent-commands.yml",
+      "sha256": "28c48270403c49f8e5ed4406d965941cc8b3e371004e0a1e28630b61672ae4b2"
+    },
+    {
+      "kind": "file",
+      "path": ".github/workflows/pr-agent.yml",
+      "sha256": "350881fd295b8246d43b29ac20a5197117084f815888b4c9f7c94a734bcdbc10"
+    },
+    {
+      "kind": "file",
+      "path": ".github/workflows/semantic-release.yml",
+      "sha256": "ffe79600a6674facf24709bdecae76a1a90fafc18b6bf12a03b7ac09d8029d7a"
+    },
+    {
+      "kind": "file",
       "path": ".github/workflows/template-ci.yml",
       "sha256": "cedd61d16d1f8b67dfa11db9e2434a3253eca2155344cc01886384cc084c980d"
+    },
+    {
+      "kind": "file",
+      "path": ".pr_agent.toml",
+      "sha256": "27d66919f96cff6bd0cf2b47a0ffdc3a15f24d7ba55ab7ade84b883c696514ef"
     },
     {
       "kind": "file",
@@ -21,9 +41,14 @@
       "sha256": "a876e0b10411037a012498b9fe18d9bc1df32ed8b722a13564dc944ddcfd9135"
     },
     {
+      "kind": "file",
+      "path": ".releaserc",
+      "sha256": "6d55333a7dcf0b69b74657b8ef72cb953ed99c58099177e57bbbacc16df2b1a9"
+    },
+    {
       "kind": "directory",
       "path": "docs/specs",
-      "sha256": "b9543b2d5c2300ed3fd59002120dd4427692874e21e24bde178b62d06c7a26e7"
+      "sha256": "b1a5ccc9d13713735b98660166111d8147c50308196e095fc7076ebe6df96c09"
     },
     {
       "kind": "file",
@@ -43,7 +68,7 @@
     {
       "kind": "directory",
       "path": "tests",
-      "sha256": "20c20fb6f9dbc09b4ae30262310888216d01e799fd22df7b48f54776cb1826e5"
+      "sha256": "9b4a91afdfdb63596d46538a404b11ad2429c721d99e69e4972d23c366f6c26e"
     },
     {
       "kind": "file",

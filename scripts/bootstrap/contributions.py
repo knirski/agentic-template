@@ -11,18 +11,26 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from scripts.bootstrap.blobs import VerifiedBlobStore
+from scripts.bootstrap.capability_fragments import template_bodies
+from scripts.bootstrap.intents import GenerationPath
+from scripts.bootstrap.manifest import SlotContent
 from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.render import (
     CapabilityDefinition,
     ContributionDefinition,
     CoreDefinition,
     DocumentFragmentDefinition,
+    LicensingInfo,
     MaintenanceInfo,
+    ManagedRender,
+    ProfileInfo,
     ProjectInfo,
     RenderError,
     RenderErrorKind,
+    RenderInput,
     ResolvedContribution,
     apply_substitutions,
+    render_managed,
 )
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.schemas import SettingValue
@@ -343,3 +351,81 @@ def compose_document_bodies(
         )
     )
     return Ok(result)
+
+
+def render_generation(
+    *,
+    generation_path: GenerationPath,
+    core: CoreDefinition,
+    definitions: Mapping[str, CapabilityDefinition],
+    effective: tuple[str, ...],
+    settings: Mapping[str, Mapping[str, SettingValue]],
+    project: ProjectInfo,
+    licensing: LicensingInfo,
+    profile: ProfileInfo,
+    maintenance: MaintenanceInfo,
+    slots: Mapping[str, SlotContent],
+    blobs: VerifiedBlobStore,
+) -> Result[ManagedRender, RenderError]:
+    """Compose and render the complete managed output for one selection.
+
+    The single shared render entry point: it interns the capability fragment
+    bodies, composes contributions and document fragments for the effective
+    selection, builds the render input, and returns the verified managed
+    files.  Callers map ``RenderError`` to their own surface -- the imperative
+    shell wraps it as a contract violation; validators and fixtures raise it.
+    """
+    interned = blobs
+    for content in template_bodies().values():
+        match interned.intern(content):
+            case Err(error):
+                return Err(
+                    RenderError(
+                        RenderErrorKind.MISSING_BLOB, error.kind.value, error.subject
+                    )
+                )
+            case Ok((_content_id, updated)):
+                interned = updated
+    match compose_contributions(
+        core,
+        definitions,
+        effective,
+        settings,
+        project,
+        maintenance,
+        interned,
+    ):
+        case Err(error):
+            return Err(error)
+        case Ok(contributions):
+            pass
+    match compose_document_bodies(
+        core,
+        definitions,
+        effective,
+        settings,
+        project,
+        maintenance,
+        interned,
+    ):
+        case Err(error):
+            return Err(error)
+        case Ok(documents):
+            pass
+    render_input = RenderInput(
+        render_input_version=1,
+        generation_path=generation_path,
+        project=project,
+        licensing=licensing,
+        profile=profile,
+        additions=(),
+        effective=effective,
+        definitions=definitions,
+        core=core,
+        settings=settings,
+        contributions=contributions,
+        documents=dict(documents),
+        maintenance=maintenance,
+        slots=slots,
+    )
+    return render_managed(render_input, interned)

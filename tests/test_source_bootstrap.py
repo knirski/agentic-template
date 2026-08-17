@@ -24,21 +24,21 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from scripts.bootstrap.capability_fragments import CORE_CI_PATH  # noqa: E402
+from scripts.bootstrap.resolver import resolve_bundle  # noqa: E402
+from scripts.bootstrap.result import Err, Ok  # noqa: E402
+from scripts.bootstrap.schemas import BootstrapBundle  # noqa: E402
+from scripts.bootstrap.template_contract import SOURCE_WORKFLOW_SELECTIONS  # noqa: E402
 from tests.fixtures import (  # noqa: E402
+    ALL_CAPABILITIES,
     SCAFFOLD_CONTRIBUTING,
     SCAFFOLD_SECURITY,
     copy_tracked,
+    render_for,
     run,
     scaffold_hook,
     write_bundle,
 )
-from tests.test_capability_matrix import (  # noqa: E402
-    ALL_CAPABILITIES,
-    SOURCE_WORKFLOW_SELECTIONS,
-    render_for,
-)
-
-SOURCE_CI = ".github/workflows/ci.yml"
 
 # The source-maintainer-only workflows: excluded from generated projects by
 # the Copier _exclude list and removed from GitHub snapshots by the cleanup
@@ -48,6 +48,16 @@ MAINTAINER_WORKFLOWS = {
     ".github/workflows/copier-smoke.yml",
     ".github/workflows/mutation.yml",
 }
+# Capability artifacts are source-maintainer files too: committed for the
+# source's own use but excluded from generated projects and compiled per-profile
+# by apply, so unselected adopters never receive them.
+CAPABILITY_FILES = (
+    ".github/workflows/pr-agent.yml",
+    ".github/workflows/pr-agent-commands.yml",
+    ".github/workflows/semantic-release.yml",
+    ".pr_agent.toml",
+    ".releaserc",
+)
 # The maintainer-only jobs in template-ci.yml.  None may appear in any
 # compiled render that generated projects receive.
 MAINTAINER_ONLY_MARKERS = (
@@ -58,28 +68,6 @@ MAINTAINER_ONLY_MARKERS = (
     "coverage.xml",
     "actionlint",
 )
-
-
-def test_source_workflows_are_compiled_managed_artifacts() -> None:
-    # Drift in the source's own CI is a compile drift: the committed files must
-    # stay byte-identical to the canonical compiled renders so the standard
-    # status machinery (not a conformance fixture) is the detector.
-    for path, selection in SOURCE_WORKFLOW_SELECTIONS.items():
-        assert (ROOT / path).read_bytes() == render_for(selection)[path], (
-            f"{path} drifted from the compiled source render"
-        )
-
-
-def test_source_never_commits_nix_capability_workflows() -> None:
-    # The source must not ship Nix workflow files: snapshot and Copier copies
-    # carry every committed workflow into generated projects, so committing
-    # Nix files would make Nix appear required.  Nix stays optional: only an
-    # explicit capability selection compiles these artifacts through apply.
-    for path in (
-        ".github/workflows/nix.yml",
-        ".github/workflows/cachix-publish.yml",
-    ):
-        assert not (ROOT / path).exists(), f"{path} must not be committed"
 
 
 def test_maintainer_only_jobs_are_excluded_from_generated_projects() -> None:
@@ -97,7 +85,7 @@ def test_maintainer_only_jobs_are_excluded_from_generated_projects() -> None:
     )
     cleanup_paths = cast(list[str], source_ownership["snapshot_cleanup_paths"])
     excludes = set(cast(list[str], copier_config["_exclude"]))
-    for relative in MAINTAINER_WORKFLOWS:
+    for relative in (*MAINTAINER_WORKFLOWS, *CAPABILITY_FILES):
         assert relative in cleanup_paths
         assert relative in excludes
 
@@ -137,6 +125,15 @@ def test_no_actions_yaml_parser_or_conformance_fixture_remains() -> None:
         assert "yaml.safe_load" not in text, f"{path} still parses workflow YAML"
     render = (ROOT / "scripts/bootstrap/render.py").read_text(encoding="utf-8")
     assert "yaml.safe_dump" in render
+
+
+def _resolved_effective(bundle: BootstrapBundle) -> tuple[str, ...]:
+    """The dependency-topological effective order the resolver derives."""
+    match resolve_bundle(bundle):
+        case Ok(resolved):
+            return resolved.effective
+        case Err(failure):
+            raise AssertionError(f"bundle resolution failed: {failure}")
 
 
 def _activate_source(
@@ -202,9 +199,9 @@ def test_apply_compiles_and_manages_per_profile_ci() -> None:
 
         # The installed ci.yml is the compiled portable render -- managed
         # output, byte-identical to the source's committed baseline.
-        compiled_ci = render_for(())[SOURCE_CI]
-        committed_ci = (ROOT / SOURCE_CI).read_bytes()
-        installed_ci = project / SOURCE_CI
+        compiled_ci = render_for(())[CORE_CI_PATH]
+        committed_ci = (ROOT / CORE_CI_PATH).read_bytes()
+        installed_ci = project / CORE_CI_PATH
         assert compiled_ci == committed_ci == installed_ci.read_bytes()
 
         # ci.yml is a managed artifact the status/restore machinery tracks.
@@ -218,11 +215,12 @@ def test_apply_compiles_and_manages_per_profile_ci() -> None:
             str(entry["path"])
             for entry in cast(list[dict[str, str]], manifest["managed"])
         }
-        assert SOURCE_CI in managed_paths
+        assert CORE_CI_PATH in managed_paths
 
-        # Maintainer-only workflows are removed by snapshot cleanup, and Nix
-        # workflows are never present because the source never commits them.
-        for relative in MAINTAINER_WORKFLOWS:
+        # Maintainer-only and capability workflows are removed by snapshot
+        # cleanup, and Nix workflows are never present because the source never
+        # commits them: an unselected adopter receives no capability artifact.
+        for relative in (*MAINTAINER_WORKFLOWS, *CAPABILITY_FILES):
             assert not (project / relative).exists(), relative
         for relative in (
             ".github/workflows/nix.yml",
@@ -247,18 +245,24 @@ def test_apply_compiles_and_manages_per_profile_ci() -> None:
 def test_apply_compiles_selected_capability_workflows() -> None:
     """A selected profile compiles its capability workflows through apply.
 
-    The source never commits Nix workflow files, yet selecting Nix (and the
-    other capabilities) makes apply compile them into the project -- so
-    adopters receive exactly the workflows they selected, and no more.
+    The source never commits Nix workflow files, yet selecting the capabilities
+    makes apply compile every selected artifact into the project -- and only
+    those, so adopters receive exactly the workflows they selected.
     """
     with tempfile.TemporaryDirectory(prefix="agentic-template-source.") as raw:
+        parent = Path(raw)
         selection = tuple(sorted(ALL_CAPABILITIES))
         project, _record = _activate_source(
-            Path(raw),
+            parent,
             capabilities=selection,
             capability_settings={"cachix-publish": {"cache_name": "example"}},
         )
-        compiled = render_for(selection)
+        # Render the expected output in the same effective order apply resolves
+        # (dependency-topological), closing the test/apply ordering gap.
+        bundle = BootstrapBundle.model_validate(
+            json.loads((parent / "bundle/bootstrap.json").read_text(encoding="utf-8"))
+        )
+        compiled = render_for(_resolved_effective(bundle))
         workflows = {
             ".github/workflows/ci.yml",
             ".github/workflows/semantic-release.yml",

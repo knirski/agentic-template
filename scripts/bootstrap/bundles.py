@@ -12,12 +12,8 @@ from scripts.bootstrap.canonical_json import canonical_json, decode_json
 from scripts.bootstrap.capability_fragments import (
     capability_definitions,
     core_definition,
-    template_bodies,
 )
-from scripts.bootstrap.contributions import (
-    compose_contributions,
-    compose_document_bodies,
-)
+from scripts.bootstrap.contributions import render_generation
 from scripts.bootstrap.errors import (
     CommandError,
     ContractError,
@@ -61,8 +57,6 @@ from scripts.bootstrap.render import (
     MaintenanceInfo,
     ProfileInfo,
     ProjectInfo,
-    RenderInput,
-    render_managed,
 )
 from scripts.bootstrap.resolver import ResolvedBundle, resolve_bundle
 from scripts.bootstrap.result import Err, Ok, Result
@@ -370,12 +364,6 @@ def compile_initial_install(
     """Compile the complete initial plan for one generation path."""
 
     blobs = VerifiedBlobStore.empty(limits)
-    for content in template_bodies().values():
-        match blobs.intern(content):
-            case Err(error):
-                return Err(error)
-            case Ok((_content_id, updated)):
-                blobs = updated
     match _seed_once_inputs(decoded, scaffold, blobs, limits, template_root):
         case Err(error):
             return Err(error)
@@ -398,47 +386,12 @@ def compile_initial_install(
     # per-profile managed output: adopters receive only their selected profile,
     # and drift in the managed CI is detected by the standard status/restore
     # machinery rather than by a conformance fixture.
-    core = core_definition()
-    definitions = capability_definitions()
-    match compose_contributions(
-        core,
-        definitions,
-        resolved.effective,
-        resolved.settings,
-        project,
-        maintenance_info,
-        blobs,
-    ):
-        case Err(error):
-            return Err(
-                ContractError(
-                    ContractErrorKind.RENDER_CONTRACT_VIOLATION,
-                    f"{error.kind.value}:{error.subject}",
-                )
-            )
-        case Ok(contributions):
-            pass
-    match compose_document_bodies(
-        core,
-        definitions,
-        resolved.effective,
-        resolved.settings,
-        project,
-        maintenance_info,
-        blobs,
-    ):
-        case Err(error):
-            return Err(
-                ContractError(
-                    ContractErrorKind.RENDER_CONTRACT_VIOLATION,
-                    f"{error.kind.value}:{error.subject}",
-                )
-            )
-        case Ok(documents):
-            pass
-    render_input = RenderInput(
-        render_input_version=1,
+    match render_generation(
         generation_path=generation,
+        core=core_definition(),
+        definitions=capability_definitions(),
+        effective=resolved.effective,
+        settings=resolved.settings,
         project=project,
         licensing=LicensingInfo(
             mode=licensing.mode,
@@ -449,22 +402,15 @@ def compile_initial_install(
             ),
         ),
         profile=profile,
-        additions=(),
-        effective=resolved.effective,
-        definitions=definitions,
-        core=core,
-        settings=resolved.settings,
-        contributions=contributions,
-        documents=dict(documents),
         maintenance=maintenance_info,
         slots=answers.slots,
-    )
-    match render_managed(render_input, blobs):
+        blobs=blobs,
+    ):
         case Err(error):
             return Err(
                 ContractError(
                     ContractErrorKind.RENDER_CONTRACT_VIOLATION,
-                    f"{error.kind.value}:{error.subject}",
+                    f"{error.kind.value}:{error.reason or ''}:{error.subject}",
                 )
             )
         case Ok(managed):

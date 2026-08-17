@@ -3,8 +3,13 @@
   "snapshot_cleanup_paths": [
     ".github/workflows/copier-smoke.yml",
     ".github/workflows/mutation.yml",
+    ".github/workflows/pr-agent-commands.yml",
+    ".github/workflows/pr-agent.yml",
+    ".github/workflows/semantic-release.yml",
     ".github/workflows/template-ci.yml",
+    ".pr_agent.toml",
     ".python-version",
+    ".releaserc",
     "docs/specs",
     "flake.lock",
     "flake.nix",

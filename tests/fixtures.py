@@ -14,6 +14,21 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from scripts.bootstrap.blobs import VerifiedBlobStore
+from scripts.bootstrap.capability_fragments import (
+    capability_definitions,
+    core_definition,
+)
+from scripts.bootstrap.contributions import render_generation
+from scripts.bootstrap.intents import GenerationPath
+from scripts.bootstrap.render import (
+    LicensingInfo,
+    MaintenanceInfo,
+    ProfileInfo,
+    ProjectInfo,
+)
+from scripts.bootstrap.result import Err, Ok, Result
+
 PRD = """# Product
 ## Problem
 Problem.
@@ -55,12 +70,19 @@ SCAFFOLD_HOOK_TEMPLATE = (
 )
 
 # The finite source-only set declared by .agentic-template/source-ownership.json
-# and removed by an initial GitHub snapshot apply.
+# and removed by an initial GitHub snapshot apply.  Capability workflow files
+# are source-maintainer artifacts: they are excluded from generated projects
+# and compiled per-profile by apply, so unselected adopters never receive them.
 CLEANUP_PATHS = (
     ".github/workflows/copier-smoke.yml",
     ".github/workflows/mutation.yml",
+    ".github/workflows/pr-agent-commands.yml",
+    ".github/workflows/pr-agent.yml",
+    ".github/workflows/semantic-release.yml",
     ".github/workflows/template-ci.yml",
+    ".pr_agent.toml",
     ".python-version",
+    ".releaserc",
     "docs/specs",
     "flake.lock",
     "flake.nix",
@@ -68,6 +90,59 @@ CLEANUP_PATHS = (
     "tests",
     "uv.lock",
 )
+
+# The complete v1 capability catalog surface, mirroring the deployed catalog
+# order used by the capability-matrix and source-bootstrap suites.
+ALL_CAPABILITIES = ("semantic-release", "nix", "cachix-publish", "pr-agent-gemini")
+# The canonical Cachix cache name used by rendered fixtures.
+CANONICAL_CACHE_NAME = "example"
+
+_PROJECT = ProjectInfo(name="example", default_branch="main")
+_LICENSING = LicensingInfo(mode="retain-apache-2.0", content_sha256=None)
+_MAINTENANCE = MaintenanceInfo(status="clean", retained_paths=())
+
+
+def _ok_render[Value, Failure](result: Result[Value, Failure]) -> Value:
+    match result:
+        case Ok(value):
+            return value
+        case Err(failure):
+            raise AssertionError(f"unexpected render failure: {failure}")
+
+
+def render_for(
+    effective: tuple[str, ...],
+    *,
+    settings: dict[str, dict[str, str | bool]] | None = None,
+) -> dict[str, bytes]:
+    """Render the compiled managed outputs for one effective capability set.
+
+    The shared test-side render entry point over the bootstrap render helper;
+    it parameterizes only the canonically frozen fixture inputs (example
+    project, retain-Apache-2.0, clean maintenance, custom profile) that the
+    capability-matrix and per-profile activation suites both need.
+    """
+    resolved_settings: dict[str, dict[str, str | bool]] = {}
+    if "cachix-publish" in effective:
+        resolved_settings["cachix-publish"] = {"cache_name": CANONICAL_CACHE_NAME}
+    if settings is not None:
+        resolved_settings.update(settings)
+    managed = _ok_render(
+        render_generation(
+            generation_path=GenerationPath.GITHUB,
+            core=core_definition(),
+            definitions=capability_definitions(),
+            effective=effective,
+            settings=resolved_settings,
+            project=_PROJECT,
+            licensing=_LICENSING,
+            profile=ProfileInfo(id="custom", frozen=effective),
+            maintenance=_MAINTENANCE,
+            slots={},
+            blobs=VerifiedBlobStore.empty(),
+        )
+    )
+    return {file.path.value: file.content for file in managed}
 
 
 def run(
