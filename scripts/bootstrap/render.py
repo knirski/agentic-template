@@ -117,8 +117,17 @@ class MaintenanceSource(StrictModel):
     key: Literal["status", "retained_paths"]
 
 
+class ReleaseNeedsSource(StrictModel):
+    """The release job's ``needs`` list: static core jobs plus every contribution
+    id in the declared capability-check slot, in composed order."""
+
+    kind: Literal["release_needs"]
+    slot: Identifier
+    static: tuple[Identifier, ...] = ()
+
+
 SubstitutionSource = Annotated[
-    SettingSource | ProjectSource | MaintenanceSource,
+    SettingSource | ProjectSource | MaintenanceSource | ReleaseNeedsSource,
     Field(discriminator="kind"),
 ]
 
@@ -305,27 +314,39 @@ _OPTIONAL_SECTION_MARKER = re.compile(
 )
 
 
+type SubstitutedValue = SettingValue | tuple[str, ...]
+
+
 def _boolean_text(value: bool) -> str:
     return "true" if value else "false"
 
 
-def _encode_yaml(value: SettingValue) -> str:
+def _encode_yaml(value: SubstitutedValue) -> str:
     match value:
         case bool():
             return _boolean_text(value)
         case str():
             return yaml.safe_dump(value, default_style='"', allow_unicode=True).strip()
+        case tuple():
+            return yaml.safe_dump(
+                list(value),
+                default_flow_style=True,
+                default_style='"',
+                allow_unicode=True,
+            ).strip()
 
 
-def _encode_markdown(value: SettingValue) -> str:
+def _encode_markdown(value: SubstitutedValue) -> str:
     match value:
         case str():
             return value
         case bool():
             return _boolean_text(value)
+        case tuple():
+            return ", ".join(value)
 
 
-def encode_scalar(value: SettingValue, context: ContextName) -> str:
+def encode_scalar(value: SubstitutedValue, context: ContextName) -> str:
     """Encode a normalized scalar value for the declared template context."""
     match context:
         case "yaml":
@@ -340,7 +361,7 @@ def encode_scalar(value: SettingValue, context: ContextName) -> str:
 
 def _project_source_value(
     key: Literal["name", "default_branch"], project: ProjectInfo
-) -> Result[SettingValue, RenderError]:
+) -> Result[SubstitutedValue, RenderError]:
     match key:
         case "name":
             return Ok(project.name)
@@ -354,7 +375,7 @@ def _project_source_value(
 
 def _maintenance_source_value(
     key: Literal["status", "retained_paths"], maintenance: MaintenanceInfo
-) -> Result[SettingValue, RenderError]:
+) -> Result[SubstitutedValue, RenderError]:
     match key:
         case "status":
             return Ok(maintenance.status)
@@ -371,7 +392,8 @@ def resolve_substitution_value(
     settings: Mapping[str, Mapping[str, SettingValue]],
     project: ProjectInfo,
     maintenance: MaintenanceInfo,
-) -> Result[SettingValue, RenderError]:
+    slot_ids: Mapping[str, tuple[str, ...]],
+) -> Result[SubstitutedValue, RenderError]:
     match source:
         case SettingSource(capability=capability_id, setting=setting_name):
             values = settings.get(capability_id)
@@ -388,6 +410,8 @@ def resolve_substitution_value(
             return _project_source_value(key, project)
         case MaintenanceSource(key=key):
             return _maintenance_source_value(key, maintenance)
+        case ReleaseNeedsSource(slot=slot, static=static):
+            return Ok((*static, *slot_ids.get(slot, ())))
         case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
             return assert_never(
                 source
@@ -402,6 +426,7 @@ def apply_substitutions(
     settings: Mapping[str, Mapping[str, SettingValue]],
     project: ProjectInfo,
     maintenance: MaintenanceInfo,
+    slot_ids: Mapping[str, tuple[str, ...]],
 ) -> Result[bytes, RenderError]:
     """Replace every value marker with its context-encoded substitution value."""
     by_name = {substitution.name: substitution for substitution in substitutions}
@@ -417,7 +442,7 @@ def apply_substitutions(
                 )
             )
         match resolve_substitution_value(
-            substitution.source, settings, project, maintenance
+            substitution.source, settings, project, maintenance, slot_ids
         ):
             case Ok(value):
                 encoded = encode_scalar(value, context).encode("utf-8")
@@ -543,7 +568,9 @@ def _remove_marker_line(content: bytes, marker: bytes) -> bytes:
     return content[:start] + content[end:]
 
 
-def _boolean_section_value(value: SettingValue, name: str) -> Result[bool, RenderError]:
+def _boolean_section_value(
+    value: SubstitutedValue, name: str
+) -> Result[bool, RenderError]:
     """Optional-section substitutions must resolve to a boolean scalar."""
     match value:
         case bool():
@@ -568,6 +595,7 @@ def _optional_section_keep(
         render_input.settings,
         render_input.project,
         render_input.maintenance,
+        slot_ids={},
     ):
         case Ok(value):
             return _boolean_section_value(value, name)
@@ -723,6 +751,12 @@ def _render_artifact(
                     artifact.path,
                 )
             )
+        slot_ids_by_slot: dict[str, list[str]] = {}
+        for contribution in render_input.contributions:
+            slot_ids_by_slot.setdefault(contribution.slot, []).append(
+                contribution.contribution_id
+            )
+        slot_ids = {slot: tuple(ids) for slot, ids in slot_ids_by_slot.items()}
         match apply_substitutions(
             content,
             artifact.substitutions,
@@ -730,6 +764,7 @@ def _render_artifact(
             settings=render_input.settings,
             project=render_input.project,
             maintenance=render_input.maintenance,
+            slot_ids=slot_ids,
         ):
             case Err(error):
                 return Err(error)

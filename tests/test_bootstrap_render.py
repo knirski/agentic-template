@@ -717,6 +717,7 @@ def test_value_marker_prefix_is_not_partially_substituted() -> None:
         settings={},
         project=PROJECT,
         maintenance=MaintenanceInfo(status="clean", retained_paths=()),
+        slot_ids={},
     )
     assert result == Ok(b"name = agentic-template:value:repo_url\n")
 
@@ -1881,6 +1882,7 @@ def test_maintenance_substitutions_render_retained_paths() -> None:
             status="retained",
             retained_paths=(RepoPath("a.txt"), RepoPath("b/c.txt")),
         ),
+        slot_ids={},
     )
     match result:
         case Ok(rendered):

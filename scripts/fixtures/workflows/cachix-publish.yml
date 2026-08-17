@@ -1,0 +1,50 @@
+name: Cachix publish
+
+on:
+  workflow_call:
+
+jobs:
+  cachix-availability:
+    name: Cachix availability
+    runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+      guidance: ${{ steps.check.outputs.guidance }}
+    steps:
+      - name: Check Cachix auth token
+        id: check
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: |
+          if [ -n "$CACHIX_AUTH_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "guidance=Proceed." >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "guidance=The CACHIX_AUTH_TOKEN secret is unavailable in this run; likely causes include fork pull requests, Dependabot runs, and restricted Actions policy. Cachix publishing is skipped while Nix validation continues uncached. See docs/github-setup.md." >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    name: Publish to Cachix
+    if: needs.cachix-availability.outputs.available == 'true'
+    needs: [cachix-availability]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - name: Set up Cachix cache
+        uses: cachix/cachix-action@5f2d7c5294214f71b873db4b969586b980625e71 # v17
+        with:
+          name: "example"
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Build and push flake outputs
+        env:
+          CACHIX_CACHE_NAME: "example"
+        run: |
+          system=$(nix eval --raw --impure --expr 'builtins.currentSystem')
+          nix build ".#devShells.${system}.default"
+          cachix push "$CACHIX_CACHE_NAME" "result"
