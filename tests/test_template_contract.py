@@ -31,6 +31,14 @@ class TemplateContractTests(unittest.TestCase):
         result = self.run_script("scripts/validate_template.py")
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_validator_except_tuple_is_parenthesized(self) -> None:
+        # The comma form (``except OSError, ValueError:``) is PEP 758 syntax,
+        # valid only on Python 3.14+ and a portability footgun in the
+        # canonical validator; syntax gates cannot catch it, so pin it.
+        text = (ROOT / "scripts/validate_template.py").read_text(encoding="utf-8")
+        self.assertIn("except (OSError, ValueError):", text)
+        self.assertNotIn("except OSError, ValueError:", text)
+
     def test_delivery_contract(self) -> None:
         result = self.run_script("tests/test_delivery_contract.py")
         self.assertEqual(result.returncode, 0, result.stderr)
