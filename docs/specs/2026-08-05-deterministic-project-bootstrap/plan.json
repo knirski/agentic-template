@@ -892,8 +892,25 @@
           "description": "Add the four declarative capability contributions, profile expansions, settings normalization, compiled workflow/document outputs, release dependencies, read-only secret preflights, and available/unavailable activation behavior. Keep capability-specific dependency commands behind their declared uv invocation metadata. Treat Nix as maintainer-only unless the `nix` capability is selected: the portable generated baseline has no Nix job or release dependency, while selected Nix and Cachix capabilities render their own artifacts and gates. Ensure unselected capabilities emit no artifacts or workflow jobs. Record the frozen v1 catalog-surface fixture and wire `validate_template.py` to compare the live catalog against it (stable-ID compatibility), replacing the import-time baseline removed by the alignment PR #41.",
           "execution": {
             "mode": "inline",
-            "status": "in_progress",
-            "completion": null,
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-17",
+              "commits": [
+                "148a00f"
+              ],
+              "evidence": [
+                "uv run pytest (1033 passed, including the full profile/custom-selection matrix, structural preflight policy, local non-secret canary, release-graph gating, and the adopter uv-lock fixture)",
+                "uv run ruff check (clean); uv run ruff format --check (clean)",
+                "uv run basedpyright (0 errors, 0 warnings, 0 notes) - the repository-declared type-check gate",
+                "uv lock --check (passed); git diff --check (clean)",
+                "uv run python scripts/validate_template.py (exit 0, including the frozen catalog-surface comparison); validate_repository.py (expected template-source exit 1; template contract passed and readiness findings emitted in canonical order)",
+                "actionlint on the source workflows and every compiled workflow fixture (rendered profiles and frozen fixtures); the Copier smoke job now lints the compiled fixtures",
+                "real Copier 9.17.0 suites pass (copier contract: ok; copier bootstrap contract: ok)",
+                "the adopter uv-lock fixture resolves the integrated generated pyproject and runs the declared capability command (uv run semantic-release --help) while canonical validators remain directly runnable in the uv environment; the probe proved pr-agent's exact transitive pins are not installable on Python 3.14, so pr-agent was removed from the generated runtime dependencies (its workflows run the pinned GitHub action) with the invocation metadata retained",
+                "maintenance inventory regenerated from the tracked source after the fixture and plan-record changes",
+                "the source ci.yml is byte-identical to the compiled portable baseline render and the workflow fixtures match the compiled integrated render"
+              ]
+            },
             "github_prs": []
           },
           "files": {
