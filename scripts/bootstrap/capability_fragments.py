@@ -204,6 +204,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
       - name: Run flake checks
@@ -293,7 +297,10 @@ FLAKE_NIX_TEMPLATE: Final[bytes] = b"""\
             pkgs.runCommand "project-repository-validation" { nativeBuildInputs = [ pkgs.python314 ]; }
               ''
                 cd ${source}
-                python3.14 scripts/validate_repository.py
+                # The bare-python lane runs the stdlib-only readiness checker;
+                # the full canonical validator needs the declared runtime
+                # dependencies (pydantic) and runs through uv in CI.
+                python3.14 scripts/check_project_readiness.py
                 touch $out
               '';
         }
@@ -374,6 +381,10 @@ jobs:
     needs: [cachix-availability]
     runs-on: ubuntu-latest
     steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - name: Install Nix
         uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
       - name: Set up Cachix cache
@@ -382,10 +393,12 @@ jobs:
           name: agentic-template:value:cache-name
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Build and push flake outputs
+        env:
+          CACHIX_CACHE_NAME: agentic-template:value:cache-name
         run: |
           system=$(nix eval --raw --impure --expr 'builtins.currentSystem')
           nix build ".#devShells.${system}.default"
-          cachix push agentic-template:value:cache-name "result"
+          cachix push "$CACHIX_CACHE_NAME" "result"
 """
 
 # The Cachix publish job contributed to the core CI: it is additionally gated
@@ -398,7 +411,8 @@ CACHIX_PUBLISH_JOB: Final[bytes] = b"""\
       github.ref_name == github.event.repository.default_branch &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [nix-check]
-    uses: ./.github/workflows/cachix-publish.yml"""
+    uses: ./.github/workflows/cachix-publish.yml
+    secrets: inherit"""
 
 # --- pr-agent-gemini ---------------------------------------------------------
 

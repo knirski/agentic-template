@@ -215,7 +215,11 @@ def test_nix_enabled_profile_emits_nix_artifacts_without_release() -> None:
     flake = rendered["flake.nix"].decode("utf-8")
     assert 'description = "example";' in flake
     assert "tests/" not in flake
-    assert "scripts/validate_repository.py" in flake
+    # The bare-python nix lane runs only the stdlib-only readiness checker;
+    # the full validator needs the declared runtime dependencies and runs
+    # through uv in the project-validation CI.
+    assert "scripts/check_project_readiness.py" in flake
+    assert "scripts/validate_repository.py" not in flake
 
 
 def test_integrated_profile_emits_everything_and_gates_release() -> None:

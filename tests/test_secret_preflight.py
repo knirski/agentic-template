@@ -158,10 +158,15 @@ def test_invalid_cache_fails_as_an_activation_error() -> None:
     assert "if: always()" not in publish
 
 
-def test_local_canary_never_leaks_the_sentinel() -> None:
-    """The preflight script run outside GitHub leaks no secret value anywhere."""
-    rendered = render_for(("pr-agent-gemini",))
-    path, preflight_job, _privileged, secret = PREFLIGHT_WORKFLOWS[0]
+@pytest.mark.parametrize(
+    ("path", "preflight_job", "_privileged_job", "secret"),
+    PREFLIGHT_WORKFLOWS,
+)
+def test_local_canary_never_leaks_the_sentinel(
+    path: str, preflight_job: str, _privileged_job: str, secret: str
+) -> None:
+    """Every preflight script run outside GitHub leaks no secret value anywhere."""
+    rendered = render_for(("pr-agent-gemini", "nix", "cachix-publish"))
     script = _preflight_script(rendered[path].decode("utf-8"), preflight_job)
     with tempfile.TemporaryDirectory(prefix="agentic-template-canary.") as raw:
         directory = Path(raw)
@@ -197,9 +202,14 @@ def test_local_canary_never_leaks_the_sentinel() -> None:
     assert written == ["github-output"]
 
 
-def test_canary_unavailable_state_is_constant_guidance() -> None:
-    rendered = render_for(("pr-agent-gemini",))
-    path, preflight_job, _privileged, secret = PREFLIGHT_WORKFLOWS[0]
+@pytest.mark.parametrize(
+    ("path", "preflight_job", "_privileged_job", "secret"),
+    PREFLIGHT_WORKFLOWS,
+)
+def test_canary_unavailable_state_is_constant_guidance(
+    path: str, preflight_job: str, _privileged_job: str, secret: str
+) -> None:
+    rendered = render_for(("pr-agent-gemini", "nix", "cachix-publish"))
     script = _preflight_script(rendered[path].decode("utf-8"), preflight_job)
     with tempfile.TemporaryDirectory(prefix="agentic-template-canary.") as raw:
         directory = Path(raw)
@@ -221,6 +231,40 @@ def test_canary_unavailable_state_is_constant_guidance() -> None:
     assert "available=false" in content
     assert "docs/github-setup.md" in content
     assert "available=true" not in content
+
+
+def test_privileged_jobs_check_out_the_repository() -> None:
+    """Nix and Cachix jobs build from the repository, not an empty workspace."""
+    rendered = render_for(("nix", "cachix-publish"))
+    for path, job in (
+        (".github/workflows/nix.yml", "nix-check"),
+        (".github/workflows/cachix-publish.yml", "publish"),
+    ):
+        block = _job_block(rendered[path].decode("utf-8"), job)
+        assert "actions/checkout" in block, f"{path}: {job} never checks out"
+        assert "persist-credentials: false" in block, (
+            f"{path}: {job} persists credentials"
+        )
+
+
+def test_cachix_caller_forwards_the_auth_token_secret() -> None:
+    """The caller must pass the token into the reusable workflow."""
+    rendered = render_for(("nix", "cachix-publish"))
+    ci = rendered[".github/workflows/ci.yml"].decode("utf-8")
+    block = _job_block(ci, "cachix-publish")
+    assert "secrets: inherit" in block
+
+
+def test_cachix_run_block_never_interpolates_the_cache_name() -> None:
+    """The cache name reaches the shell only through an environment variable."""
+    rendered = render_for(("nix", "cachix-publish"))
+    text = rendered[".github/workflows/cachix-publish.yml"].decode("utf-8")
+    publish = _job_block(text, "publish")
+    run_block = publish.split("run: |", 1)[-1]
+    assert "CACHIX_CACHE_NAME" in run_block
+    assert "agentic-template:value:" not in run_block
+    assert "cachix push" in run_block
+    assert "$CACHIX_CACHE_NAME" in run_block
 
 
 def test_cachix_preflight_shares_the_fixed_trusted_shape() -> None:

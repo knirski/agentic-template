@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -27,6 +28,7 @@ class ResolutionErrorKind(StrEnum):
     SECRET_SETTING = "secret_setting"
     TYPE_VIOLATION = "type_violation"
     ENUM_VIOLATION = "enum_violation"
+    PATTERN_VIOLATION = "pattern_violation"
     UNSELECTED_SETTINGS = "unselected_settings"
     RECONFIGURE_SETTINGS = "reconfigure_settings"
 
@@ -113,6 +115,16 @@ def _setting_value(
                 return Err(
                     ResolutionFailure(
                         ResolutionErrorKind.TYPE_VIOLATION, definition.name
+                    )
+                )
+            normalized = value.strip()
+            if (
+                definition.pattern is not None
+                and re.fullmatch(definition.pattern, normalized) is None
+            ):
+                return Err(
+                    ResolutionFailure(
+                        ResolutionErrorKind.PATTERN_VIOLATION, definition.name
                     )
                 )
         case "boolean":

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import model_validator
@@ -19,6 +20,9 @@ class SettingDefinition(StrictModel):
     default: str | bool | None = None
     choices: tuple[str, ...] = ()
     secret: bool = False
+    # Full-match regex for string values used in structured output contexts;
+    # the design requires validation constraints for every such string.
+    pattern: str | None = None
 
     @model_validator(mode="after")
     def validate_shape(self) -> SettingDefinition:
@@ -48,6 +52,15 @@ class SettingDefinition(StrictModel):
             raise ValueError("enum defaults must be one of the choices")
         if self.secret:
             raise ValueError("secret settings are not supported")
+        if self.pattern is not None:
+            if self.type != "string":
+                raise ValueError("only string settings may declare a pattern")
+            try:
+                _ = re.compile(self.pattern)
+            except re.error as error:
+                raise ValueError(
+                    f"setting pattern is not a valid regex: {error}"
+                ) from error
         return self
 
 
@@ -229,6 +242,10 @@ CATALOG: dict[str, CapabilityDefinition] = {
                 name="cache_name",
                 type="string",
                 required=True,
+                # The value flows into the compiled Cachix workflow, including
+                # shell-run contexts; the character class excludes every shell
+                # metacharacter.
+                pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
             ),
         ),
         artifacts=(
@@ -299,6 +316,7 @@ def catalog_surface() -> dict[str, dict[str, object]]:
                     "required": setting.required,
                     "default": setting.default,
                     "choices": list(setting.choices),
+                    "pattern": setting.pattern,
                 }
                 for setting in definition.settings
             ],
