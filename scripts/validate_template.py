@@ -30,7 +30,7 @@ def validate_catalog_surface(root: Path) -> tuple[str, ...]:
     fixture_path = root / CATALOG_SURFACE_FIXTURE
     try:
         fixture = decode_json(fixture_path.read_bytes())
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return ("catalog surface fixture is missing or invalid",)
     if not isinstance(fixture, dict):
         return ("catalog surface fixture is not a JSON object",)
