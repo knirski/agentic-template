@@ -6,8 +6,10 @@ shared pure boundary (``core_definition`` + ``capability_definitions`` from
 capabilities emit no artifacts or workflow jobs, the release graph waits on
 every selected managed capability check, the compiled workflow fixtures in
 ``scripts/fixtures/workflows`` stay byte-identical to the canonical render,
-and the source ``ci.yml`` stays byte-identical to the compiled portable
-baseline.
+and the source's committed workflow files stay byte-identical to their
+canonical compiled renders (the source ci is the portable baseline).  The
+source never commits Nix workflow files, so generated projects can only
+receive them through an explicit capability selection compiled by apply.
 """
 
 from __future__ import annotations
@@ -21,42 +23,16 @@ from typing import cast
 
 import pytest
 
-from scripts.bootstrap.blobs import VerifiedBlobStore
-from scripts.bootstrap.capability_fragments import (
-    CORE_CI_PATH,
-    capability_definitions,
-    core_definition,
-    template_bodies,
-)
+from scripts.bootstrap.capability_fragments import CORE_CI_PATH, capability_definitions
 from scripts.bootstrap.catalog import CATALOG, catalog_surface
-from scripts.bootstrap.contributions import (
-    compose_contributions,
-    compose_document_bodies,
-)
-from scripts.bootstrap.intents import GenerationPath
-from scripts.bootstrap.render import (
-    LicensingInfo,
-    MaintenanceInfo,
-    ProfileInfo,
-    ProjectInfo,
-    RenderInput,
-    render_managed,
-)
+from scripts.bootstrap.contributions import render_source_fixture
 from scripts.bootstrap.result import Err, Ok
+from scripts.bootstrap.template_contract import SOURCE_WORKFLOW_SELECTIONS
+from tests.fixtures import ALL_CAPABILITIES, render_for
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW_FIXTURES = ROOT / "scripts/fixtures/workflows"
-SOURCE_CI = ROOT / ".github/workflows/ci.yml"
 CATALOG_SURFACE_FIXTURE = ROOT / "scripts/fixtures/catalog-surface-v1.json"
-
-ALL_CAPABILITIES = ("semantic-release", "nix", "cachix-publish", "pr-agent-gemini")
-PROJECT = ProjectInfo(name="example", default_branch="main")
-LICENSING = LicensingInfo(mode="retain-apache-2.0", content_sha256=None)
-PROFILE = ProfileInfo(id="integrated", frozen=ALL_CAPABILITIES)
-MAINTENANCE = MaintenanceInfo(status="clean", retained_paths=())
-
-# The canonical Cachix cache name used by the frozen workflow fixture.
-CANONICAL_CACHE_NAME = "example"
 
 # Every capability artifact path, keyed by capability id.
 CAPABILITY_ARTIFACT_PATHS: dict[str, tuple[str, ...]] = {
@@ -77,79 +53,6 @@ CAPABILITY_CONTRIBUTIONS: dict[str, tuple[str, ...]] = {
     "cachix-publish": ("cachix-publish",),
     "pr-agent-gemini": (),
 }
-
-
-def _ok[Value, Failure](result: Err[Failure] | Ok[Value]) -> Value:
-    match result:
-        case Ok(value):
-            return value
-        case Err(failure):
-            raise AssertionError(f"unexpected failure: {failure}")
-
-
-def blob_store() -> VerifiedBlobStore:
-    store = VerifiedBlobStore.empty()
-    for content in template_bodies().values():
-        store = _ok(store.intern(content))[1]
-    return store
-
-
-def render_for(
-    effective: tuple[str, ...],
-    *,
-    settings: dict[str, dict[str, str | bool]] | None = None,
-) -> dict[str, bytes]:
-    """Render the compiled managed outputs for one effective capability set."""
-    store = blob_store()
-    core = core_definition()
-    definitions = capability_definitions()
-    resolved_settings: dict[str, dict[str, str | bool]] = {}
-    if "cachix-publish" in effective:
-        resolved_settings["cachix-publish"] = {"cache_name": CANONICAL_CACHE_NAME}
-    if settings is not None:
-        resolved_settings.update(settings)
-    contributions = _ok(
-        compose_contributions(
-            core,
-            definitions,
-            effective,
-            resolved_settings,
-            PROJECT,
-            MAINTENANCE,
-            store,
-        )
-    )
-    documents = dict(
-        _ok(
-            compose_document_bodies(
-                core,
-                definitions,
-                effective,
-                resolved_settings,
-                PROJECT,
-                MAINTENANCE,
-                store,
-            )
-        )
-    )
-    render_input = RenderInput(
-        render_input_version=1,
-        generation_path=GenerationPath.GITHUB,
-        project=PROJECT,
-        licensing=LICENSING,
-        profile=PROFILE,
-        additions=(),
-        effective=effective,
-        definitions=definitions,
-        core=core,
-        settings=resolved_settings,
-        contributions=contributions,
-        documents=documents,
-        maintenance=MAINTENANCE,
-        slots={},
-    )
-    managed = _ok(render_managed(render_input, store))
-    return {file.path.value: file.content for file in managed}
 
 
 def _ci_job_names(rendered: dict[str, bytes]) -> list[str]:
@@ -378,9 +281,35 @@ def test_frozen_workflow_fixtures_are_complete() -> None:
     ]
 
 
-def test_source_ci_is_the_compiled_portable_baseline() -> None:
-    rendered = render_for(())
-    assert rendered[CORE_CI_PATH] == SOURCE_CI.read_bytes()
+def test_source_workflows_match_the_compiled_render() -> None:
+    # The same shared render implementation behind the shipped
+    # validate_template.py pin, so the test and the validator cannot drift from
+    # each other or from the frozen source-fixture inputs.
+    for path, selection in SOURCE_WORKFLOW_SELECTIONS.items():
+        match render_source_fixture(selection):
+            case Ok(compiled):
+                pass
+            case Err(error):
+                pytest.fail(
+                    f"{path} failed to render: {error.kind.value}:{error.subject}"
+                )
+        assert (ROOT / path).read_bytes() == compiled[path], (
+            f"{path} drifted from the compiled source render; "
+            "restore it from the compiled output"
+        )
+
+
+def test_source_never_commits_nix_capability_workflows() -> None:
+    # Copier and snapshot apply copy every committed source workflow into
+    # generated projects' pre-apply trees, so committing Nix workflow files
+    # would leak them into adopters that never selected Nix.  Nix stays
+    # optional: only an explicit capability selection compiles these
+    # artifacts through apply.
+    for path in (
+        ".github/workflows/nix.yml",
+        ".github/workflows/cachix-publish.yml",
+    ):
+        assert not (ROOT / path).exists(), f"{path} must not be committed"
 
 
 def test_catalog_surface_matches_the_frozen_fixture() -> None:

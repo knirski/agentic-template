@@ -9,6 +9,11 @@ from typing import Literal, cast
 
 from scripts.bootstrap.blobs import VerifiedBlobStore
 from scripts.bootstrap.canonical_json import canonical_json, decode_json
+from scripts.bootstrap.capability_fragments import (
+    capability_definitions,
+    core_definition,
+)
+from scripts.bootstrap.contributions import render_generation
 from scripts.bootstrap.errors import (
     CommandError,
     ContractError,
@@ -48,13 +53,10 @@ from scripts.bootstrap.planner import (
 )
 from scripts.bootstrap.readiness import MechanicalReadinessResult
 from scripts.bootstrap.render import (
-    CoreDefinition,
     LicensingInfo,
     MaintenanceInfo,
     ProfileInfo,
     ProjectInfo,
-    RenderInput,
-    render_managed,
 )
 from scripts.bootstrap.resolver import ResolvedBundle, resolve_bundle
 from scripts.bootstrap.result import Err, Ok, Result
@@ -380,9 +382,16 @@ def compile_initial_install(
         ),
     )
     profile = ProfileInfo(id=resolved.profile_id, frozen=resolved.requested)
-    render_input = RenderInput(
-        render_input_version=1,
+    # The generated ci.yml and every selected capability workflow are compiled
+    # per-profile managed output: adopters receive only their selected profile,
+    # and drift in the managed CI is detected by the standard status/restore
+    # machinery rather than by a conformance fixture.
+    match render_generation(
         generation_path=generation,
+        core=core_definition(),
+        definitions=capability_definitions(),
+        effective=resolved.effective,
+        settings=resolved.settings,
         project=project,
         licensing=LicensingInfo(
             mode=licensing.mode,
@@ -393,22 +402,15 @@ def compile_initial_install(
             ),
         ),
         profile=profile,
-        additions=(),
-        effective=resolved.effective,
-        definitions={},
-        core=CoreDefinition(),
-        settings=resolved.settings,
-        contributions=(),
-        documents={},
         maintenance=maintenance_info,
         slots=answers.slots,
-    )
-    match render_managed(render_input, blobs):
+        blobs=blobs,
+    ):
         case Err(error):
             return Err(
                 ContractError(
                     ContractErrorKind.RENDER_CONTRACT_VIOLATION,
-                    f"{error.kind.value}:{error.subject}",
+                    f"{error.kind.value}:{error.reason or ''}:{error.subject}",
                 )
             )
         case Ok(managed):

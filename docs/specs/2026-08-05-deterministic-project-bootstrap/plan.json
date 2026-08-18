@@ -963,20 +963,49 @@
           "inputs": [
             "design template-source CI section (revision 16); maintainer-only source CI separation; capability-matrix security fixtures."
           ],
-          "description": "Remove the Actions YAML loader, semantic workflow normal form, raw SHA-comment checks, trust predicates, allowlist, and source-versus-rendered comparison from the plan; PyYAML is not a source dependency. Wire the source repository as the `integrated`-profile fixture at activation: its `ci.yml` is a compiled managed artifact, maintainer-only jobs (uv sync, source canaries, actionlint) live in a source-maintainer-owned workflow file excluded from generated projects by Copier and snapshot cleanup, and drift in the managed artifact is detected by the standard `status`/`restore` machinery. Pin generated-workflow security properties through capability-matrix and structural-policy fixtures. The unwired compatibility and comparison modules landed in the revision-16 alignment (PR #41), and revision 17 restores PyYAML as a runtime dependency for the render boundary's scalar encoder only; remaining work is the integrated-fixture wiring, maintainer-only job separation, and security fixtures.",
+          "description": "Remove the Actions YAML loader, semantic workflow normal form, raw SHA-comment checks, trust predicates, allowlist, and source-versus-rendered comparison from the plan; PyYAML is a declared runtime dependency used only for scalar emission in the render boundary. Wire the `apply` pipeline to compile per-profile CI as managed output so adopting projects receive exactly their selected profile's workflows, with drift in the managed CI detected by the standard `status`/`restore` machinery (`restore` is a later lifecycle task). Pin the source tree's committed workflows byte-for-byte to their canonical compiled renders; the source `ci.yml` stays the compiled portable baseline and Nix/Cachix workflow files are never committed, so adopters cannot inherit Nix. Capability workflow files are source-maintainer artifacts excluded from generated projects by Copier and snapshot cleanup and compiled per-profile by `apply` when selected. Fix the source's `pr-agent.yml`/`pr-agent-commands.yml` drift to the compiled security fixtures; keep maintainer-only jobs in `template-ci.yml`, excluded from generated projects. Implementation revised the original 'integrated-profile fixture' wording during execution (user-approved): the engine previously copied the source's committed workflows verbatim into adopters, so the source committed set stays portable/no-Nix and apply-pipeline compilation is where adopters receive workflows.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-17",
+              "commits": [
+                "a30fc37"
+              ],
+              "evidence": [
+                "uv run pytest (all suites pass, including new tests/test_source_bootstrap.py: maintainer-only + capability exclusion, security fixtures, no conformance tooling, and two real activations proving per-profile CI is compiled + managed with status detecting ci.yml drift; plus the full profile/custom-selection matrix)",
+                "uv run ruff check (clean); uv run ruff format --check (clean)",
+                "uv run basedpyright (0 errors, 0 warnings, 0 notes) - the repository-declared type-check gate",
+                "uv lock --check (passed); git diff --check (clean)",
+                "uv run --python 3.14 scripts/validate_repository.py (expected template-source exit 1; template contract passed and readiness findings emitted in canonical order)",
+                "stdlib lanes (test_project_readiness, test_repository_validation, test_delivery_contract) exit 0",
+                "actionlint on the source workflows and every compiled workflow fixture (clean)",
+                "real Copier 9.17.0 suites pass (copier contract: ok; copier bootstrap contract: ok)",
+                "maintenance inventory regenerated from the tracked source after the new test file and test edits",
+                "code-review (Simplicity, Correctness, Security, Maintainability, Architect, Challenge): extracted a shared render_generation boundary in contributions.py (removing the triplicated pipeline), moved SOURCE_WORKFLOW_SELECTIONS to template_contract.py, dropped two duplicated tests, made capability workflow files source-maintainer artifacts excluded from generated projects (flake.nix pattern) and dropped them from REQUIRED_FILES, rendered the e2e expectation via the resolved effective order, hardened validate_source_workflows and the ContractError subject, and amended the design.md conformance section; the pr-agent preflight shape was kept as the compiled fixture's documented fixed-trusted design"
+              ]
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/72"
+            ]
           },
           "files": {
             "create": [
               "tests/test_source_bootstrap.py"
             ],
             "modify": [
+              ".agentic-template/maintenance-artifacts.json",
+              ".agentic-template/source-ownership.json",
+              ".github/workflows/pr-agent-commands.yml",
+              ".github/workflows/pr-agent.yml",
+              "copier.yml",
+              "docs/specs/2026-08-05-deterministic-project-bootstrap/design.md",
+              "scripts/bootstrap/bundles.py",
+              "scripts/bootstrap/contributions.py",
+              "scripts/bootstrap/template_contract.py",
               "scripts/validate_template.py",
-              ".github/workflows/ci.yml",
-              ".github/workflows/template-ci.yml"
+              "tests/fixtures.py",
+              "tests/test_capability_matrix.py"
             ],
             "remove": []
           },

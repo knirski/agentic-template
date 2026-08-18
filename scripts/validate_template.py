@@ -13,10 +13,23 @@ sys.path.insert(0, str(ROOT))
 from scripts.bootstrap import template_contract  # noqa: E402
 from scripts.bootstrap.canonical_json import decode_json  # noqa: E402
 from scripts.bootstrap.catalog import catalog_surface  # noqa: E402
+from scripts.bootstrap.contributions import render_source_fixture  # noqa: E402
 from scripts.bootstrap.entrypoint import reject_arguments  # noqa: E402
+from scripts.bootstrap.result import Err, Ok  # noqa: E402
+from scripts.bootstrap.template_contract import SOURCE_WORKFLOW_SELECTIONS  # noqa: E402
 
 CATALOG_SURFACE_FIXTURE = "scripts/fixtures/catalog-surface-v1.json"
 CATALOG_SURFACE_SCHEMA_VERSION = 1
+
+# Present only in the template source; generated projects remove it, so the
+# drift check below never mistakes an adopter's compiled CI for source CI.
+# It is not reliable on its own: the documented ``apply
+# --leave-maintenance-artifacts`` repair retains this inventory in adopters.
+SOURCE_FIXTURE_MARKER = ".agentic-template/maintenance-artifacts.json"
+# The managed manifest apply always writes and the source never commits.  Its
+# presence marks a managed adopter (including the repair path above), whose
+# per-profile compiled ci.yml legitimately differs from the source baseline.
+MANAGED_ADOPTER_MARKER = ".agentic-template/project.json"
 
 
 def validate_catalog_surface(root: Path) -> tuple[str, ...]:
@@ -74,6 +87,49 @@ def validate_catalog_surface(root: Path) -> tuple[str, ...]:
     )
 
 
+def validate_source_workflows(root: Path) -> tuple[str, ...]:
+    """The source's committed workflows are compiled managed output.
+
+    Each committed ``.github/workflows`` file is compared byte-for-byte against
+    its canonical compiled render (the source ci is the portable baseline so
+    unselected capabilities never reach adopters' active CI).  Managed adopter
+    projects are skipped -- their per-profile compiled CI is meant to differ
+    from the source baseline -- detected by the managed manifest, which also
+    covers the ``--leave-maintenance-artifacts`` repair path that retains the
+    source marker.
+    """
+    if not (root / SOURCE_FIXTURE_MARKER).is_file():
+        return ()
+    if (root / MANAGED_ADOPTER_MARKER).is_file():
+        return ()
+    failures: list[str] = []
+    for relative, selection in SOURCE_WORKFLOW_SELECTIONS.items():
+        committed = root / relative
+        if not committed.is_file():
+            failures.append(f"source workflow {relative} is missing")
+            continue
+        match render_source_fixture(selection):
+            case Err(error):
+                failures.append(
+                    f"source workflow {relative} failed to render: "
+                    + f"{error.kind.value}:{error.subject}"
+                )
+                continue
+            case Ok(compiled):
+                expected = compiled.get(relative)
+        if expected is None:
+            failures.append(
+                f"source workflow {relative} is not produced by its compiled render"
+            )
+            continue
+        if committed.read_bytes() != expected:
+            failures.append(
+                f"source workflow {relative} drifted from the compiled render; "
+                + "next: restore it from the compiled output"
+            )
+    return tuple(failures)
+
+
 def validate_contract(
     root: Path, skill_texts: tuple[tuple[Path, str], ...]
 ) -> tuple[str, ...]:
@@ -89,7 +145,11 @@ def validate_contract(
     failures = template_contract.required_contract_failures(
         present_files, observed_skills
     )
-    return (*failures, *validate_catalog_surface(root))
+    return (
+        *failures,
+        *validate_catalog_surface(root),
+        *validate_source_workflows(root),
+    )
 
 
 def main(argv: list[str]) -> int:

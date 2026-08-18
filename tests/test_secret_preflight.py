@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_capability_matrix import render_for
+from tests.fixtures import render_for
 
 # (workflow path, preflight job, privileged job, secret name)
 PREFLIGHT_WORKFLOWS: tuple[tuple[str, str, str, str], ...] = (
