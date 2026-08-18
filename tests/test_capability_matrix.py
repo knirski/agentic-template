@@ -25,6 +25,8 @@ import pytest
 
 from scripts.bootstrap.capability_fragments import CORE_CI_PATH, capability_definitions
 from scripts.bootstrap.catalog import CATALOG, catalog_surface
+from scripts.bootstrap.contributions import render_source_fixture
+from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.template_contract import SOURCE_WORKFLOW_SELECTIONS
 from tests.fixtures import ALL_CAPABILITIES, render_for
 
@@ -280,8 +282,17 @@ def test_frozen_workflow_fixtures_are_complete() -> None:
 
 
 def test_source_workflows_match_the_compiled_render() -> None:
+    # The same shared render implementation behind the shipped
+    # validate_template.py pin, so the test and the validator cannot drift from
+    # each other or from the frozen source-fixture inputs.
     for path, selection in SOURCE_WORKFLOW_SELECTIONS.items():
-        compiled = render_for(selection)
+        match render_source_fixture(selection):
+            case Ok(compiled):
+                pass
+            case Err(error):
+                pytest.fail(
+                    f"{path} failed to render: {error.kind.value}:{error.subject}"
+                )
         assert (ROOT / path).read_bytes() == compiled[path], (
             f"{path} drifted from the compiled source render; "
             "restore it from the compiled output"

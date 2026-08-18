@@ -31,6 +31,7 @@ from scripts.bootstrap.schemas import BootstrapBundle  # noqa: E402
 from scripts.bootstrap.template_contract import SOURCE_WORKFLOW_SELECTIONS  # noqa: E402
 from tests.fixtures import (  # noqa: E402
     ALL_CAPABILITIES,
+    CLEANUP_PATHS,
     SCAFFOLD_CONTRIBUTING,
     SCAFFOLD_SECURITY,
     copy_tracked,
@@ -43,20 +44,25 @@ from tests.fixtures import (  # noqa: E402
 # The source-maintainer-only workflows: excluded from generated projects by
 # the Copier _exclude list and removed from GitHub snapshots by the cleanup
 # contract, so adopters never receive the maintainer check suite.
-MAINTAINER_WORKFLOWS = {
-    ".github/workflows/template-ci.yml",
-    ".github/workflows/copier-smoke.yml",
-    ".github/workflows/mutation.yml",
-}
+MAINTAINER_WORKFLOWS = frozenset(
+    {
+        ".github/workflows/template-ci.yml",
+        ".github/workflows/copier-smoke.yml",
+        ".github/workflows/mutation.yml",
+    }
+)
 # Capability artifacts are source-maintainer files too: committed for the
 # source's own use but excluded from generated projects and compiled per-profile
-# by apply, so unselected adopters never receive them.
-CAPABILITY_FILES = (
-    ".github/workflows/pr-agent.yml",
-    ".github/workflows/pr-agent-commands.yml",
-    ".github/workflows/semantic-release.yml",
-    ".pr_agent.toml",
-    ".releaserc",
+# by apply, so unselected adopters never receive them.  The set spans workflow
+# and non-workflow outputs, hence the name.
+CAPABILITY_ARTIFACTS = frozenset(
+    {
+        ".github/workflows/pr-agent.yml",
+        ".github/workflows/pr-agent-commands.yml",
+        ".github/workflows/semantic-release.yml",
+        ".pr_agent.toml",
+        ".releaserc",
+    }
 )
 # The maintainer-only jobs in template-ci.yml.  None may appear in any
 # compiled render that generated projects receive.
@@ -85,9 +91,15 @@ def test_maintainer_only_jobs_are_excluded_from_generated_projects() -> None:
     )
     cleanup_paths = cast(list[str], source_ownership["snapshot_cleanup_paths"])
     excludes = set(cast(list[str], copier_config["_exclude"]))
-    for relative in (*MAINTAINER_WORKFLOWS, *CAPABILITY_FILES):
+    for relative in (*MAINTAINER_WORKFLOWS, *CAPABILITY_ARTIFACTS):
         assert relative in cleanup_paths
         assert relative in excludes
+    # The snapshot declaration is the single source of truth: the test-side
+    # mirror and the cleanup set must stay in lockstep, and the Copier _exclude
+    # list must cover every declared cleanup path (plus the inventory itself).
+    assert set(CLEANUP_PATHS) == set(cleanup_paths)
+    assert set(CLEANUP_PATHS) <= excludes
+    assert ".agentic-template/maintenance-artifacts.json" in excludes
 
     maintainer = (ROOT / ".github/workflows/template-ci.yml").read_text(
         encoding="utf-8"
@@ -114,17 +126,62 @@ def test_source_workflows_match_the_frozen_security_fixtures() -> None:
     ).read_bytes()
 
 
+# The modules that own workflow rendering; the conformance-free pin below is
+# scoped to them rather than the whole scripts tree, so unrelated prose or
+# future legitimate YAML use elsewhere cannot trip it.
+WORKFLOW_RENDER_MODULES = (
+    ROOT / "scripts/bootstrap/capability_fragments.py",
+    ROOT / "scripts/bootstrap/contributions.py",
+    ROOT / "scripts/bootstrap/render.py",
+    ROOT / "scripts/validate_template.py",
+)
+
+
 def test_no_actions_yaml_parser_or_conformance_fixture_remains() -> None:
     # No Actions YAML parser, semantic workflow normal form, allowlist, or
-    # trust-predicate fixture is defined; PyYAML is limited to scalar emission
-    # in the render boundary and never parses workflows.
-    for path in sorted((ROOT / "scripts").rglob("*.py")):
+    # trust-predicate fixture is defined in the workflow-rendering modules;
+    # PyYAML is limited to scalar emission in the render boundary and never
+    # parses workflows.
+    for path in WORKFLOW_RENDER_MODULES:
         text = path.read_text(encoding="utf-8")
         for token in ("allowlist", "trust_predicate", "trust-predicate"):
             assert token not in text, f"{path} still references {token}"
         assert "yaml.safe_load" not in text, f"{path} still parses workflow YAML"
     render = (ROOT / "scripts/bootstrap/render.py").read_text(encoding="utf-8")
     assert "yaml.safe_dump" in render
+
+
+def test_every_committed_workflow_is_pinned_or_excluded() -> None:
+    """Every committed workflow is either source-pinned or excluded from adopters.
+
+    A newly committed workflow must be added to ``SOURCE_WORKFLOW_SELECTIONS``
+    (pinned byte-for-byte as source CI) or to the snapshot cleanup/Copier
+    exclude sets -- otherwise it silently ships into every generated project and
+    the "adopters receive exactly their selection" guarantee rots.
+    """
+    source_ownership = cast(
+        dict[str, object],
+        json.loads(
+            (ROOT / ".agentic-template/source-ownership.json").read_text(
+                encoding="utf-8"
+            )
+        ),
+    )
+    copier_config = cast(
+        dict[str, object],
+        yaml.safe_load((ROOT / "copier.yml").read_text(encoding="utf-8")),
+    )
+    excluded = set(cast(list[str], source_ownership["snapshot_cleanup_paths"]))
+    excluded |= set(cast(list[str], copier_config["_exclude"]))
+    pinned = set(SOURCE_WORKFLOW_SELECTIONS)
+    committed = {
+        f".github/workflows/{path.name}"
+        for path in (ROOT / ".github/workflows").glob("*.yml")
+    }
+    homeless = sorted(committed - pinned - excluded)
+    assert not homeless, (
+        "committed workflows neither pinned nor excluded: " + ", ".join(homeless)
+    )
 
 
 def _resolved_effective(bundle: BootstrapBundle) -> tuple[str, ...]:
@@ -141,8 +198,13 @@ def _activate_source(
     *,
     capabilities: tuple[str, ...] | None = None,
     capability_settings: dict[str, dict[str, str | bool]] | None = None,
+    retain_maintenance: bool = False,
 ) -> tuple[Path, Path]:
-    """Copy the tracked source, overlay the scaffold, and apply one bundle."""
+    """Copy the tracked source, overlay the scaffold, and apply one bundle.
+
+    With ``retain_maintenance`` the apply keeps the maintenance inventory (the
+    documented ``--leave-maintenance-artifacts`` repair path).
+    """
     project = parent / "project"
     copy_tracked(ROOT, project)
     record = parent / "hook-runs"
@@ -177,17 +239,18 @@ def _activate_source(
         capabilities=capabilities,
         capability_settings=capability_settings,
     )
-    applied = run(
-        [
-            sys.executable,
-            str(project / "scripts/bootstrap_project.py"),
-            "apply",
-            "--bundle",
-            str(bundle),
-            "--target",
-            str(project),
-        ]
-    )
+    apply_argv = [
+        sys.executable,
+        str(project / "scripts/bootstrap_project.py"),
+        "apply",
+        "--bundle",
+        str(bundle),
+        "--target",
+        str(project),
+    ]
+    if retain_maintenance:
+        apply_argv.append("--leave-maintenance-artifacts")
+    applied = run(apply_argv)
     assert applied.returncode == 0, applied.stdout + applied.stderr
     return project, record
 
@@ -220,7 +283,7 @@ def test_apply_compiles_and_manages_per_profile_ci() -> None:
         # Maintainer-only and capability workflows are removed by snapshot
         # cleanup, and Nix workflows are never present because the source never
         # commits them: an unselected adopter receives no capability artifact.
-        for relative in (*MAINTAINER_WORKFLOWS, *CAPABILITY_FILES):
+        for relative in (*MAINTAINER_WORKFLOWS, *CAPABILITY_ARTIFACTS):
             assert not (project / relative).exists(), relative
         for relative in (
             ".github/workflows/nix.yml",
@@ -263,7 +326,7 @@ def test_apply_compiles_selected_capability_workflows() -> None:
             json.loads((parent / "bundle/bootstrap.json").read_text(encoding="utf-8"))
         )
         compiled = render_for(_resolved_effective(bundle))
-        workflows = {
+        workflow_names = {
             ".github/workflows/ci.yml",
             ".github/workflows/semantic-release.yml",
             ".github/workflows/nix.yml",
@@ -271,6 +334,44 @@ def test_apply_compiles_selected_capability_workflows() -> None:
             ".github/workflows/pr-agent.yml",
             ".github/workflows/pr-agent-commands.yml",
         }
-        for relative in workflows:
+        assert workflow_names <= set(compiled)
+        for relative in workflow_names:
+            assert (project / relative).read_bytes() == compiled[relative], relative
+        # Exactly the selected workflow set and no more: the maintainer-only
+        # workflows must never leak into an adopter's .github/workflows.
+        installed = {
+            f".github/workflows/{path.name}"
+            for path in (project / ".github/workflows").iterdir()
+            if path.suffix == ".yml"
+        }
+        assert installed == workflow_names, (
+            "adopter received unexpected workflows: "
+            + ", ".join(sorted(installed - workflow_names))
+        )
+        # The non-workflow capability artifacts compile per-profile too.
+        for relative in (".releaserc", ".pr_agent.toml", "flake.nix", "flake.lock"):
+            assert relative in compiled, f"{relative} missing from the compiled render"
             assert (project / relative).read_bytes() == compiled[relative], relative
         assert (ROOT / ".github/workflows/nix.yml").exists() is False
+
+
+def test_leave_maintenance_artifacts_retains_and_still_validates() -> None:
+    """A repaired adopter that retains the maintenance inventory validates.
+
+    ``apply --leave-maintenance-artifacts`` keeps
+    ``.agentic-template/maintenance-artifacts.json``, so the shipped
+    ``scripts/validate_template.py`` must not mistake a managed adopter for the
+    template source and pin its per-profile compiled CI against the source's
+    portable baseline.
+    """
+    with tempfile.TemporaryDirectory(prefix="agentic-template-source.") as raw:
+        project, _record = _activate_source(
+            Path(raw),
+            capabilities=tuple(sorted(ALL_CAPABILITIES)),
+            capability_settings={"cachix-publish": {"cache_name": "example"}},
+            retain_maintenance=True,
+        )
+        assert (project / ".agentic-template/maintenance-artifacts.json").is_file()
+        assert (project / ".agentic-template/project.json").is_file()
+        validated = run([sys.executable, str(project / "scripts/validate_template.py")])
+        assert validated.returncode == 0, validated.stdout + validated.stderr

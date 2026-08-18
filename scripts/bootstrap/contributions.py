@@ -11,7 +11,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from scripts.bootstrap.blobs import VerifiedBlobStore
-from scripts.bootstrap.capability_fragments import template_bodies
+from scripts.bootstrap.capability_fragments import (
+    capability_definitions,
+    core_definition,
+    template_bodies,
+)
 from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.manifest import SlotContent
 from scripts.bootstrap.paths import RepoPath
@@ -429,3 +433,34 @@ def render_generation(
         slots=slots,
     )
     return render_managed(render_input, interned)
+
+
+def render_source_fixture(
+    selection: tuple[str, ...],
+) -> Result[dict[str, bytes], RenderError]:
+    """Render one pinned source workflow with the canonical source fixture.
+
+    The source commits its ``.github/workflows`` files byte-for-byte to these
+    renders, so both the shipped ``validate_template.py`` pin and the test
+    suites share this single implementation and the frozen inputs (example
+    project, retain-Apache-2.0, clean maintenance, custom profile, empty
+    settings) never drift between them.
+    """
+    store = VerifiedBlobStore.empty()
+    match render_generation(
+        generation_path=GenerationPath.GITHUB,
+        core=core_definition(),
+        definitions=capability_definitions(),
+        effective=selection,
+        settings={},
+        project=ProjectInfo(name="example", default_branch="main"),
+        licensing=LicensingInfo(mode="retain-apache-2.0", content_sha256=None),
+        profile=ProfileInfo(id="custom", frozen=selection),
+        maintenance=MaintenanceInfo(status="clean", retained_paths=()),
+        slots={},
+        blobs=store,
+    ):
+        case Err(error):
+            return Err(error)
+        case Ok(managed):
+            return Ok({file.path.value: file.content for file in managed})
