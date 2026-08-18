@@ -30,12 +30,15 @@ REQUIRED_FILES: tuple[str, ...] = (
 )
 
 # The source tree is the compiled-managed-artifact fixture: every committed
-# ``.github/workflows`` file is pinned to its canonical compiled render.  The
-# source ci.yml stays the compiled portable baseline (the source repo releases
-# through the maintainer workflow and runs no capability job); capability
-# workflow files are source-maintainer artifacts excluded from generated
-# projects and compiled per-profile by apply, so unselected adopters never
-# receive them.  The source never ships Nix workflow files.
+# ``.github/workflows`` file is either pinned by ``SOURCE_WORKFLOW_SELECTIONS``
+# to its canonical compiled render or a source-maintainer artifact excluded from
+# generated projects (``test_every_committed_workflow_is_pinned_or_excluded``
+# reconciles the committed tree against both sets).  The source ci.yml stays the
+# compiled portable baseline (the source repo releases through the maintainer
+# workflow and runs no capability job); capability workflow files are
+# source-maintainer artifacts excluded from generated projects and compiled
+# per-profile by apply, so unselected adopters never receive them.  The source
+# never ships Nix workflow files.
 SOURCE_WORKFLOW_SELECTIONS: dict[str, tuple[str, ...]] = {
     ".github/workflows/ci.yml": (),
     ".github/workflows/semantic-release.yml": ("semantic-release",),
