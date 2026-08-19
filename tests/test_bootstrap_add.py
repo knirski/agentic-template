@@ -57,7 +57,7 @@ from scripts.bootstrap.source_baseline import (
     GitHubSourceBaseline,
     LifecycleSourceEntry,
 )
-from scripts.bootstrap.values import DEFAULT_LIMITS
+from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
 
 TARGET = target_identity(b"/work/example", device=1, inode=2)
 PROJECT = ProjectInfo(name="example", default_branch="main")
@@ -417,3 +417,106 @@ class TestCompileAddPlan:
         assert gate.template_contract is True
         assert gate.readiness_rule == ReadinessRule.NO_WORSE_BLOCKING
         assert gate.expected_placeholder == ()
+
+    def test_snapshot_validation_rejects_duplicate_paths(self) -> None:
+        managed_old, _blobs_old = _render_for(())
+        managed_new, _blobs_new = _render_for(())
+        existing_inventory = derive_managed_inventory(managed_old)
+
+        dup_file = ObservedFileEntry(
+            path=RepoPath("README.md"),
+            state=file_state_identity(b"content", text=True, mode=PosixMode.FILE),
+            content=b"content",
+        )
+        snapshot = TargetSnapshot(
+            files=(dup_file, dup_file),
+            directories=(),
+        )
+
+        result = compile_add_plan(
+            generation=GenerationPath.GITHUB,
+            target_identity=TARGET,
+            answers=_fixture_answers(),
+            existing_additions=ManifestAdditions(),
+            new_addition_ids=(),
+            new_settings=MappingProxyType({}),
+            old_render=managed_old,
+            new_managed=managed_new,
+            existing_inventory=existing_inventory,
+            source_baseline=_source_baseline(),
+            maintenance=MaintenanceRecord(status="clean"),
+            snapshot=snapshot,
+            limits=DEFAULT_LIMITS,
+        )
+        assert isinstance(result, Err)
+        assert result.error.kind == CompileErrorKind.INVALID_TARGET
+
+    def test_path_limit_exceeded(self) -> None:
+        managed_old, _blobs_old = _render_for(())
+        managed_new, _blobs_new = _render_for(("semantic-release",))
+        existing_inventory = derive_managed_inventory(managed_old)
+
+        tiny_limits = ResourceLimits(
+            max_file_bytes=1024 * 1024,
+            max_unique_bytes=1024 * 1024 * 10,
+            max_paths=1,
+            max_operations=1000,
+        )
+
+        result = compile_add_plan(
+            generation=GenerationPath.GITHUB,
+            target_identity=TARGET,
+            answers=_fixture_answers(),
+            existing_additions=ManifestAdditions(),
+            new_addition_ids=("semantic-release",),
+            new_settings=MappingProxyType({}),
+            old_render=managed_old,
+            new_managed=managed_new,
+            existing_inventory=existing_inventory,
+            source_baseline=_source_baseline(),
+            maintenance=MaintenanceRecord(status="clean"),
+            snapshot=TargetSnapshot(files=(), directories=()),
+            limits=tiny_limits,
+        )
+        assert isinstance(result, Err)
+        assert result.error.kind == CompileErrorKind.PLAN_LIMIT_EXCEEDED
+
+    def test_oracle_rejects_path_mismatch(self) -> None:
+        from scripts.bootstrap.manifest import ManagedInventoryEntry
+
+        managed_old, _blobs_old = _render_for(())
+        wrong_inventory = tuple(
+            ManagedInventoryEntry(
+                path=RepoPath("nonexistent.txt"),
+                kind="text",
+                mode=PosixMode.FILE,
+                sha256="wrong",
+            )
+            for _ in derive_managed_inventory(managed_old)
+        )
+        result = verify_old_render_oracle(managed_old, wrong_inventory)
+        assert isinstance(result, Err)
+        assert result.error.kind == CompileErrorKind.RENDER_CONTRACT_VIOLATION
+        assert "entry_mismatch" in result.error.subject
+
+    def test_new_capability_settings_recorded(self) -> None:
+        managed_old, _blobs_old = _render_for(())
+        managed_new, _blobs_new = _render_for(())
+        existing_inventory = derive_managed_inventory(managed_old)
+
+        result = compile_add_plan(
+            generation=GenerationPath.GITHUB,
+            target_identity=TARGET,
+            answers=_fixture_answers(),
+            existing_additions=ManifestAdditions(),
+            new_addition_ids=("semantic-release",),
+            new_settings=MappingProxyType({"semantic-release": {"channel": "main"}}),
+            old_render=managed_old,
+            new_managed=managed_new,
+            existing_inventory=existing_inventory,
+            source_baseline=_source_baseline(),
+            maintenance=MaintenanceRecord(status="clean"),
+            snapshot=TargetSnapshot(files=(), directories=()),
+            limits=DEFAULT_LIMITS,
+        )
+        assert isinstance(result, Ok)
