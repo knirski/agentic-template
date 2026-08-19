@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Literal, assert_never
 
 from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
@@ -42,6 +43,7 @@ from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.manifest import (
     MANIFEST_PATH,
     MaintenanceRecord,
+    ManagedInventory,
     ManifestAdditions,
     ManifestAnswers,
     ProvenanceRecord,
@@ -77,6 +79,7 @@ from scripts.bootstrap.vocabulary import LICENSING_MODES, PATH_BEARING_LICENSING
 
 PLAN_SCHEMA_VERSION = 1
 PLAN_OPERATION_KIND: Literal["initial"] = "initial"
+ADD_OPERATION_KIND: Literal["add"] = "add"
 MAINTENANCE_INVENTORY_PATH = RepoPath(".agentic-template/maintenance-artifacts.json")
 
 
@@ -89,6 +92,7 @@ class CompileErrorKind(StrEnum):
     INVALID_SOURCE_BASELINE = "invalid_source_baseline"
     INVALID_MANIFEST = "invalid_manifest"
     PLAN_LIMIT_EXCEEDED = "plan_limit_exceeded"
+    RENDER_CONTRACT_VIOLATION = "render_contract_violation"
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,7 +260,7 @@ class GateSpecification:
 @dataclass(frozen=True, slots=True)
 class OperationPlan:
     plan_schema: int
-    operation_kind: Literal["initial"]
+    operation_kind: Literal["initial", "add"]
     target_identity: TargetIdentity
     generation_path: GenerationPath
     source_before: SourceBaseline | None
@@ -1232,6 +1236,209 @@ def compile_initial_plan(
                 template_contract=True,
                 readiness_rule=ReadinessRule.INITIAL_EQUALITY,
                 expected_placeholder=predicted_placeholder_findings(answers.slots),
+            ),
+        )
+    )
+
+
+def verify_old_render_oracle(
+    old_render: ManagedRender,
+    existing_inventory: ManagedInventory,
+) -> Result[None, CompileError]:
+    """Verify the old selection renders identically to the recorded inventory.
+
+    Phase 1 of the add render oracle: render the recorded (pre-add) selection
+    and require complete equality with the existing ManagedInventory. Any
+    divergence indicates a render contract violation.
+    """
+    observed = derive_managed_inventory(old_render)
+    if len(observed) != len(existing_inventory):
+        return Err(
+            CompileError(
+                CompileErrorKind.RENDER_CONTRACT_VIOLATION,
+                f"entry_count_mismatch:{len(observed)}:{len(existing_inventory)}",
+            )
+        )
+    for obs, exp in zip(observed, existing_inventory, strict=True):
+        if obs.path != exp.path or obs.kind != exp.kind or obs.mode != exp.mode:
+            return Err(
+                CompileError(
+                    CompileErrorKind.RENDER_CONTRACT_VIOLATION,
+                    f"entry_mismatch:{obs.path.value}",
+                )
+            )
+        if obs.sha256 != exp.sha256:
+            return Err(
+                CompileError(
+                    CompileErrorKind.RENDER_CONTRACT_VIOLATION,
+                    f"hash_mismatch:{obs.path.value}",
+                )
+            )
+    return Ok(None)
+
+
+def compile_add_plan(
+    *,
+    generation: GenerationPath,
+    target_identity: TargetIdentity,
+    answers: ManifestAnswers,
+    existing_additions: ManifestAdditions,
+    new_addition_ids: tuple[str, ...],
+    new_settings: Mapping[str, Mapping[str, str | bool]],
+    old_render: ManagedRender,
+    new_managed: ManagedRender,
+    existing_inventory: ManagedInventory,
+    source_baseline: SourceBaseline,
+    maintenance: MaintenanceRecord,
+    snapshot: TargetSnapshot,
+    limits: ResourceLimits = DEFAULT_LIMITS,
+) -> Result[OperationPlan, CompileError]:
+    """Compile the add plan: verify old render, then render the expanded selection.
+
+    Phase 1 (old oracle): verify old_render produces identical inventory.
+    Phase 2 (expanded): compile the plan with the new managed render.
+    """
+    match _validate_snapshot(snapshot):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
+    match verify_old_render_oracle(old_render, existing_inventory):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
+
+    match _validate_managed(new_managed, limits):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
+
+    extended_requested = tuple(
+        sorted(set(existing_additions.requested) | set(new_addition_ids))
+    )
+    merged_settings: dict[str, Mapping[str, str | bool]] = dict(
+        existing_additions.settings
+    )
+    for cap_id, cap_settings in new_settings.items():
+        if cap_id in merged_settings:
+            existing = merged_settings[cap_id]
+            if dict(existing) != dict(cap_settings):
+                return Err(
+                    _compile_error(
+                        CompileErrorKind.INVALID_MANIFEST,
+                        f"settings_conflict:{cap_id}",
+                    )
+                )
+        else:
+            merged_settings[cap_id] = MappingProxyType(dict(cap_settings))
+    extended_additions = ManifestAdditions(
+        requested=extended_requested,
+        settings=MappingProxyType(merged_settings),
+    )
+
+    new_inventory = derive_managed_inventory(new_managed)
+    provenance = ProvenanceRecord(generation, maintenance, source_baseline)
+    match build_candidate_manifest(
+        answers=answers,
+        additions=extended_additions,
+        provenance=provenance,
+        managed=new_inventory,
+    ):
+        case Err(error):
+            return Err(_compile_error(CompileErrorKind.INVALID_MANIFEST, error.subject))
+        case Ok(candidate):
+            pass
+    document = manifest_document(candidate)
+    manifest_bytes = encode_manifest(candidate)
+    manifest_after = ManifestIdentity(
+        payload=manifest_bytes, digest=manifest_checksum(document)
+    )
+
+    store = VerifiedBlobStore.empty(limits)
+    managed_outputs: list[_PlannedOutput] = []
+    for file in new_managed:
+        match _intern_output(file.content, store):
+            case Err(error):
+                return Err(error)
+            case Ok((content_id, updated)):
+                store = updated
+        managed_outputs.append(
+            _PlannedOutput(file.path, file.kind, file.mode, content_id)
+        )
+    match _intern_output(manifest_bytes, store):
+        case Err(error):
+            return Err(error)
+        case Ok((manifest_content_id, updated)):
+            store = updated
+    manifest_outputs = (
+        _PlannedOutput(MANIFEST_PATH, "text", PosixMode.FILE, manifest_content_id),
+    )
+
+    all_managed_and_manifest = tuple((*managed_outputs, *manifest_outputs))
+    if any(output.path == MANIFEST_PATH for output in managed_outputs):
+        return Err(_compile_error(CompileErrorKind.PATH_COLLISION, MANIFEST_PATH.value))
+    match _validate_no_nested_outputs(all_managed_and_manifest):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
+
+    observed_files = {entry.path.value: entry for entry in snapshot.files}
+    observed_dirs = {entry.path.value: entry for entry in snapshot.directories}
+
+    match _classify_outputs(
+        all_managed_and_manifest,
+        observed_files,
+        observed_dirs,
+        store,
+        refuse_present_old=False,
+    ):
+        case Err(error):
+            return Err(error)
+        case Ok(plain_ops):
+            pass
+
+    ordered_operations = plain_ops
+    planned_paths = {operation.path for operation in ordered_operations}
+    match check_limit(LimitKind.PATHS, len(planned_paths), limits):
+        case Err(violation):
+            return Err(
+                _compile_error(
+                    CompileErrorKind.PLAN_LIMIT_EXCEEDED, violation.kind.value
+                )
+            )
+        case Ok(_):
+            pass
+    match check_limit(LimitKind.OPERATIONS, len(ordered_operations), limits):
+        case Err(violation):
+            return Err(
+                _compile_error(
+                    CompileErrorKind.PLAN_LIMIT_EXCEEDED, violation.kind.value
+                )
+            )
+        case Ok(_):
+            pass
+
+    return Ok(
+        OperationPlan(
+            plan_schema=PLAN_SCHEMA_VERSION,
+            operation_kind=ADD_OPERATION_KIND,
+            target_identity=target_identity,
+            generation_path=generation,
+            source_before=source_baseline,
+            source_after=source_baseline,
+            manifest_before=None,
+            manifest_after=manifest_after,
+            ordered_operations=ordered_operations,
+            blob_store=store,
+            gate_specification=GateSpecification(
+                operation="add",
+                artifact_verification=True,
+                template_contract=True,
+                readiness_rule=ReadinessRule.NO_WORSE_BLOCKING,
+                expected_placeholder=(),
             ),
         )
     )
