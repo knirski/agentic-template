@@ -1394,17 +1394,10 @@ def compile_add_plan(
         case Ok(plain_ops):
             pass
 
-    ordered_operations: tuple[FileOperation | DirectoryOperation, ...] = plain_ops
+    ordered_operations = plain_ops
     planned_paths: set[RepoPath] = set()
     for operation in ordered_operations:
-        match operation:
-            case CreateFileOperation() | ReplaceFileOperation():
-                planned_paths.add(operation.path)
-            case CreateTreeOperation():
-                planned_paths.add(operation.root)
-                planned_paths.update(
-                    entry.path for entry in operation.planned_new.entries
-                )
+        planned_paths.add(operation.path)
     match check_limit(LimitKind.PATHS, len(planned_paths), limits):
         case Err(violation):
             return Err(

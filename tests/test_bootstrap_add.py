@@ -241,7 +241,7 @@ class TestCompileAddPlan:
         managed_new, blobs_new = _render_for(("semantic-release",))
         existing_inventory = derive_managed_inventory(managed_old)
 
-        snapshot_files = []
+        snapshot_files: list[ObservedFileEntry] = []
         for file in managed_old:
             snapshot_files.append(
                 ObservedFileEntry(

@@ -69,7 +69,7 @@
     {
       "path": "tests",
       "kind": "directory",
-      "sha256": "6f9c015bc11747224d5993977118a9d064585ed1bb572af997af20bfda89461c"
+      "sha256": "3da29eefcdc85a22da58aa1c2614fdec27eb9cad3e12090143183460ffc330ee"
     },
     {
       "path": "uv.lock",
