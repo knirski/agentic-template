@@ -49,7 +49,7 @@
     {
       "path": "docs/specs",
       "kind": "directory",
-      "sha256": "b1a5ccc9d13713735b98660166111d8147c50308196e095fc7076ebe6df96c09"
+      "sha256": "78403f9a0804dd90f376b95b957ada852c78d54b46d8ae8b4b32712d71d6dcd7"
     },
     {
       "path": "flake.lock",
@@ -64,7 +64,7 @@
     {
       "path": "pyproject.toml",
       "kind": "file",
-      "sha256": "c79b95f67ee907cca245c7b76790e4b620fa6239ba31804f3461844febb982cd"
+      "sha256": "2f55aa17710b3e87f9243c4e637cda795341589e542b5606b691852b7b4fcfe2"
     },
     {
       "path": "tests",
@@ -74,7 +74,7 @@
     {
       "path": "uv.lock",
       "kind": "file",
-      "sha256": "70c3d96ac2150c3d035fa1ee5918c90273e78c66b704b0d585e4154ae0bf89cb"
+      "sha256": "efbf509dcd58e6aa9fc54577e0df23318b45b95f6af88662377b8e6e31481ae2"
     }
   ]
 }
