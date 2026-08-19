@@ -156,3 +156,10 @@ def evaluate_readiness(
     findings: tuple[Finding, ...] = (),
 ) -> MechanicalReadinessResult:
     return MechanicalReadinessResult(1, findings)
+
+
+def finding_matches_catalog(code: str) -> bool:
+    """Return ``True`` if the finding code belongs to the frozen catalog."""
+    from scripts.bootstrap.readiness_rules import finding_code_is_known
+
+    return finding_code_is_known(code)
