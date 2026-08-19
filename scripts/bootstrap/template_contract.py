@@ -25,6 +25,7 @@ REQUIRED_FILES: tuple[str, ...] = (
     "scripts/bootstrap/canonical_json.py",
     "scripts/bootstrap/presentation.py",
     "scripts/bootstrap/readiness.py",
+    "scripts/bootstrap/readiness_rules.py",
     "scripts/bootstrap/template_contract.py",
     "scripts/bootstrap/validation_program.py",
 )
@@ -78,6 +79,37 @@ def valid_skill_frontmatter(text: str) -> bool:
     )
 
 
+def readiness_rule_catalog_failures() -> tuple[str, ...]:
+    """Validate readiness-rule catalog invariants as part of the template contract.
+
+    The catalog is a generated-lifecycle source artifact.  These checks ensure
+    internal consistency; no baseline comparison or corpus machinery is
+    introduced.
+    """
+    from scripts.bootstrap.readiness_rules import (
+        FROZEN_CATALOG_V1,
+    )
+
+    failures: list[str] = []
+    if not FROZEN_CATALOG_V1:
+        failures.append("readiness-rule catalog is empty")
+        return tuple(failures)
+    codes = tuple(rule.code for rule in FROZEN_CATALOG_V1)
+    if len(set(codes)) != len(codes):
+        duplicates = [c for c in codes if codes.count(c) > 1]
+        failures.append(f"duplicate readiness-rule codes: {sorted(set(duplicates))}")
+    identities = tuple(
+        (rule.code, rule.subject_kind, rule.rule) for rule in FROZEN_CATALOG_V1
+    )
+    if len(set(identities)) != len(identities):
+        failures.append("duplicate readiness-rule identities")
+    satisfiers = {rule.satisfier for rule in FROZEN_CATALOG_V1}
+    if satisfiers != {"adopter-edit"}:
+        unexpected = sorted(satisfiers - {"adopter-edit"})
+        failures.append(f"unexpected v1 satisfier values: {unexpected}")
+    return tuple(failures)
+
+
 def required_contract_failures(
     present_files: tuple[str, ...],
     skill_texts: tuple[tuple[str, str], ...],
@@ -99,4 +131,5 @@ def required_contract_failures(
         for path, text in skill_texts
         if not valid_skill_frontmatter(text)
     )
+    failures.extend(readiness_rule_catalog_failures())
     return tuple(failures)
