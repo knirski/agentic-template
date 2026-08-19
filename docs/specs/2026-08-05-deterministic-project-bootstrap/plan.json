@@ -1110,7 +1110,10 @@
                 "uv run basedpyright (0 errors, 0 warnings)",
                 "PR #76 merged to main"
               ]
-            }
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/76"
+            ]
           },
           "files": {
             "create": [
