@@ -1401,9 +1401,7 @@ def compile_add_plan(
             pass
 
     ordered_operations = plain_ops
-    planned_paths: set[RepoPath] = set()
-    for operation in ordered_operations:
-        planned_paths.add(operation.path)
+    planned_paths = {operation.path for operation in ordered_operations}
     match check_limit(LimitKind.PATHS, len(planned_paths), limits):
         case Err(violation):
             return Err(
