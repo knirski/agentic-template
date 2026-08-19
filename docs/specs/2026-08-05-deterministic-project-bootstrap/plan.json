@@ -581,7 +581,7 @@
                 "uv run pytest (656 passed, including 65 new transaction-machine tests)",
                 "uv run ruff check (clean)",
                 "uv run ruff format --check (clean)",
-                "uv run basedpyright (clean) — the repository-declared type-check gate",
+                "uv run basedpyright (clean) \u2014 the repository-declared type-check gate",
                 "coverage: scripts/bootstrap/transaction.py 96%; remaining gaps are defensive contract guards",
                 "python3 scripts/validate_repository.py (expected template-source findings; template contract passed)"
               ]
@@ -632,7 +632,7 @@
                 "uv run pytest (738 passed, including 61 new recovery tests)",
                 "uv run ruff check (clean)",
                 "uv run ruff format --check (clean)",
-                "uv run basedpyright (clean) — the repository-declared type-check gate",
+                "uv run basedpyright (clean) \u2014 the repository-declared type-check gate",
                 "coverage: scripts/bootstrap/rollback.py 100%, scripts/bootstrap/recovery.py 100%",
                 "python3 scripts/validate_repository.py (expected template-source exit 1; template contract passed)"
               ]
@@ -693,7 +693,7 @@
                 "uv run pytest (766 passed, including 28 new CLI end-to-end tests covering every command family, exit mappings, hook counts, cleanup valid/leave paths, phase recovery, and text/JSON parity)",
                 "uv run ruff check (clean)",
                 "uv run ruff format --check (69 files already formatted)",
-                "uv run basedpyright (0 errors, 0 warnings, 0 notes) — the repository-declared type-check gate",
+                "uv run basedpyright (0 errors, 0 warnings, 0 notes) \u2014 the repository-declared type-check gate",
                 "python3 scripts/validate_repository.py (expected template-source exit 1; template contract passed and readiness findings emitted in canonical order)",
                 "multi-agent review: 15 confirmed design-contract findings fixed with reproductions (exception boundary, status evidence exits, stage litter, recovery token reconstruction, fd-based tree capture, umask-deterministic modes, cleanup fixture digest, protected recover, cleanup-mismatch diagnostic, status hook line, usage-kind classification, observation-to-contract mapping, fsync coverage, explain/color presentation, closed decision gates)",
                 "dead-code removal and closed-union typing hardening after review (snapshot_from_pass, InitOptions.source, unreplaced_slot_markers, lifecycle decodes, unused constants and parameters; RecoveryDecision-typed recovery dispatch, match-based condition changes)"
@@ -758,14 +758,14 @@
                 "copier.yml excludes exactly the declared maintenance-artifact set plus the cleanup inventory (and re-declares Copier's own safety exclusions, which any custom _exclude list replaces), with no stale excludes and no skip-if-exists rule; seed-once files still ship in the Copier copy until the scaffold blob-path infrastructure lands, so `copier update` remains the upgrade path for future adopting projects with Copier's merge/conflict handling preserving adopter edits",
                 "GitHub snapshot and Copier fixtures install supplied and all-scaffold bundles through the real CLI entry point; snapshot apply removes the declared maintenance paths and the inventory itself, and --leave-maintenance-artifacts retains them",
                 "uv run pytest (951 passed, including 10 new GitHub-snapshot/source-contract tests, a new capture_plan_snapshot regression test for nested deleted directories, in-process release-eligibility branch tests, and updated scaffold/observation/CLI fixtures)",
-                "uv run ruff check (clean); uv run ruff format --check (78 files already formatted); uv run basedpyright (0 errors, 0 warnings, 0 notes) — the repository-declared type-check gate",
+                "uv run ruff check (clean); uv run ruff format --check (78 files already formatted); uv run basedpyright (0 errors, 0 warnings, 0 notes) \u2014 the repository-declared type-check gate",
                 "uv lock --check (passed); actionlint on all workflows (clean); git diff --check (clean)",
                 "python3 scripts/validate_template.py (exit 0); python3 scripts/validate_repository.py (expected template-source exit 1; template contract passed and readiness findings emitted in canonical order)",
                 "stdlib lanes: test_project_readiness, test_repository_validation, test_delivery_contract, test_template_contract all exit 0",
                 "tests/test_copier.py and tests/test_copier_bootstrap.py pass against a real Copier 9.17.0 copy/update (copier contract: ok; copier bootstrap contract: ok)",
                 "transaction_machine.py fix: post-mutation plan-snapshot capture treats a missing intermediate directory as absence so nested cleanup trees (docs/specs) verify after deletion",
                 "review-fix batch: release gating split between the portable ci.yml release (generated projects) and a source-only template-ci.yml release job; shared tests/fixtures.py extracted so the two generation-path suites no longer import each other's internals; maintenance inventory regenerated from the tracked source (tests/ digest refreshed for the fixture extraction); basedpyright cleared to 0 errors and 0 warnings (typed JSON/YAML document decoders, no reportPrivateUsage, no reportAny); release-eligibility script hardened (repository-shape regex, 30s timeout, OSError handling); .sh workflow scan extended textually to multiline run continuations without YAML parsing; retained-cleanup sentinel fixed so a valid empty ownership declaration is honored and covered by prefer/empty-declaration tests; copier smoke scripts fall back to `uvx --from copier==9.17.0` when the system copier version mismatches",
-                "second review round (CodeRabbit full review): copier safety exclusions restored (a custom _exclude list replaces Copier's defaults; .git no longer leaks into generated projects — verified by reproduction); the .sh workflow guard now detects indented run: keys and scans their multiline continuations; the in-process eligibility harness pins GITHUB_OUTPUT so CI runs never write the live job output; cleanup digests canonicalize file/directory modes (0o644 plus the executable bit / 0o755) so unchanged snapshots verify under any umask — reproduced failing under umask 077, then verified passing under both umasks; README regeneration instructions re-stage the rewritten inventory"
+                "second review round (CodeRabbit full review): copier safety exclusions restored (a custom _exclude list replaces Copier's defaults; .git no longer leaks into generated projects \u2014 verified by reproduction); the .sh workflow guard now detects indented run: keys and scans their multiline continuations; the in-process eligibility harness pins GITHUB_OUTPUT so CI runs never write the live job output; cleanup digests canonicalize file/directory modes (0o644 plus the executable bit / 0o755) so unchanged snapshots verify under any umask \u2014 reproduced failing under umask 077, then verified passing under both umasks; README regeneration instructions re-stage the rewritten inventory"
               ]
             },
             "github_prs": [
@@ -1098,8 +1098,19 @@
           "description": "Implement plan/apply add transitions, old-selection inventory verification, expanded selection compilation, persisted capability additions/settings, and incomplete-project gating where pre-existing placeholders are retained but new findings are rejected.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-19",
+              "commits": [
+                "82d4632"
+              ],
+              "evidence": [
+                "uv run pytest tests/ (1097 passed)",
+                "uv run ruff check (clean)",
+                "uv run basedpyright (0 errors, 0 warnings)",
+                "PR #76 merged to main"
+              ]
+            }
           },
           "files": {
             "create": [
@@ -1115,7 +1126,7 @@
           },
           "validation": {
             "tests": [
-              "`apply → add` then `status` reports healthy",
+              "`apply \u2192 add` then `status` reports healthy",
               "shared-output changes",
               "removal/reconfiguration refusal",
               "changed source refusal",
