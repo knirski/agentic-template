@@ -1032,8 +1032,29 @@
           "description": "Implement the declarative `ReadinessRuleDefinition` catalog carrying every readiness v1 rule unchanged: PRD marker/boilerplate and exactly-once ordered level-two headings, REQ-### declaration format, README marker/title/Setup/Validation contract, hook presence/mode/sentinel, and the bootstrap security/contributing slot rules. The old checker's rule constants become derived from this catalog; the four-argument Finding adapter contract remains only until activation. The baseline comparison and compatibility corpus are deferred to post-v1: no comparison machinery is introduced, and catalog immutability for manifest schema v1 is enforced by review.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-19",
+              "commits": [
+                "71d98bd",
+                "b8b9205",
+                "42c9922",
+                "270efbb"
+              ],
+              "evidence": [
+                "uv run pytest tests/test_bootstrap_readiness_rules.py (32 passed)",
+                "uv run pytest tests/test_bootstrap_readiness.py tests/test_script_cores.py tests/test_project_readiness.py tests/test_bootstrap_planner.py (348 passed)",
+                "uv run ruff check (clean)",
+                "uv run ruff format --check (clean)",
+                "uv run basedpyright (0 errors, 0 warnings, 0 notes)",
+                "maintenance-artifacts.json regenerated and verified",
+                "all 8 CI checks passing on PR #73",
+                "4 CodeRabbit review threads addressed and resolved"
+              ]
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/73"
+            ]
           },
           "files": {
             "create": [
