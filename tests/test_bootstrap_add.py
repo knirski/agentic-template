@@ -180,7 +180,7 @@ class TestVerifyOldRenderOracle:
 class TestCompileAddPlan:
     def test_add_empty_to_empty(self) -> None:
         managed_old, _blobs_old = _render_for(())
-        managed_new, blobs_new = _render_for(())
+        managed_new, _blobs_new = _render_for(())
         existing_inventory = derive_managed_inventory(managed_old)
 
         result = compile_add_plan(
@@ -193,7 +193,6 @@ class TestCompileAddPlan:
             old_render=managed_old,
             new_managed=managed_new,
             existing_inventory=existing_inventory,
-            blobs=blobs_new,
             source_baseline=_source_baseline(),
             maintenance=MaintenanceRecord(status="clean"),
             snapshot=TargetSnapshot(files=(), directories=()),
@@ -207,7 +206,7 @@ class TestCompileAddPlan:
 
     def test_add_capability_produces_new_files(self) -> None:
         managed_old, _blobs_old = _render_for(())
-        managed_new, blobs_new = _render_for(("semantic-release",))
+        managed_new, _blobs_new = _render_for(("semantic-release",))
         existing_inventory = derive_managed_inventory(managed_old)
 
         result = compile_add_plan(
@@ -220,7 +219,6 @@ class TestCompileAddPlan:
             old_render=managed_old,
             new_managed=managed_new,
             existing_inventory=existing_inventory,
-            blobs=blobs_new,
             source_baseline=_source_baseline(),
             maintenance=MaintenanceRecord(status="clean"),
             snapshot=TargetSnapshot(files=(), directories=()),
@@ -238,7 +236,7 @@ class TestCompileAddPlan:
 
     def test_add_replaces_existing_managed_files(self) -> None:
         managed_old, _blobs_old = _render_for(())
-        managed_new, blobs_new = _render_for(("semantic-release",))
+        managed_new, _blobs_new = _render_for(("semantic-release",))
         existing_inventory = derive_managed_inventory(managed_old)
 
         snapshot_files: list[ObservedFileEntry] = []
@@ -269,7 +267,6 @@ class TestCompileAddPlan:
             old_render=managed_old,
             new_managed=managed_new,
             existing_inventory=existing_inventory,
-            blobs=blobs_new,
             source_baseline=_source_baseline(),
             maintenance=MaintenanceRecord(status="clean"),
             snapshot=snapshot,
@@ -286,7 +283,7 @@ class TestCompileAddPlan:
 
     def test_old_render_mismatch_fails(self) -> None:
         managed_old, _blobs_old = _render_for(())
-        managed_new, blobs_new = _render_for(("semantic-release",))
+        managed_new, _blobs_new = _render_for(("semantic-release",))
         wrong_inventory: ManagedInventory = ()
 
         result = compile_add_plan(
@@ -299,7 +296,6 @@ class TestCompileAddPlan:
             old_render=managed_old,
             new_managed=managed_new,
             existing_inventory=wrong_inventory,
-            blobs=blobs_new,
             source_baseline=_source_baseline(),
             maintenance=MaintenanceRecord(status="clean"),
             snapshot=TargetSnapshot(files=(), directories=()),
@@ -310,7 +306,7 @@ class TestCompileAddPlan:
 
     def test_add_preserves_existing_additions(self) -> None:
         managed_old, _blobs_old = _render_for(())
-        managed_new, blobs_new = _render_for(("semantic-release",))
+        managed_new, _blobs_new = _render_for(("semantic-release",))
         existing_inventory = derive_managed_inventory(managed_old)
         existing_additions = ManifestAdditions(
             requested=("existing-cap",),
@@ -327,7 +323,6 @@ class TestCompileAddPlan:
             old_render=managed_old,
             new_managed=managed_new,
             existing_inventory=existing_inventory,
-            blobs=blobs_new,
             source_baseline=_source_baseline(),
             maintenance=MaintenanceRecord(status="clean"),
             snapshot=TargetSnapshot(files=(), directories=()),
@@ -337,7 +332,7 @@ class TestCompileAddPlan:
 
     def test_conflicting_settings_rejected(self) -> None:
         managed_old, _blobs_old = _render_for(())
-        managed_new, blobs_new = _render_for(())
+        managed_new, _blobs_new = _render_for(())
         existing_inventory = derive_managed_inventory(managed_old)
         existing_additions = ManifestAdditions(
             requested=("existing-cap",),
@@ -354,7 +349,6 @@ class TestCompileAddPlan:
             old_render=managed_old,
             new_managed=managed_new,
             existing_inventory=existing_inventory,
-            blobs=blobs_new,
             source_baseline=_source_baseline(),
             maintenance=MaintenanceRecord(status="clean"),
             snapshot=TargetSnapshot(files=(), directories=()),
@@ -366,7 +360,7 @@ class TestCompileAddPlan:
 
     def test_add_updates_manifest_additions(self) -> None:
         managed_old, _blobs_old = _render_for(())
-        managed_new, blobs_new = _render_for(("semantic-release",))
+        managed_new, _blobs_new = _render_for(("semantic-release",))
         existing_inventory = derive_managed_inventory(managed_old)
 
         result = compile_add_plan(
@@ -379,7 +373,6 @@ class TestCompileAddPlan:
             old_render=managed_old,
             new_managed=managed_new,
             existing_inventory=existing_inventory,
-            blobs=blobs_new,
             source_baseline=_source_baseline(),
             maintenance=MaintenanceRecord(status="clean"),
             snapshot=TargetSnapshot(files=(), directories=()),
@@ -399,7 +392,7 @@ class TestCompileAddPlan:
 
     def test_gate_specification_for_add(self) -> None:
         managed_old, _blobs_old = _render_for(())
-        managed_new, blobs_new = _render_for(())
+        managed_new, _blobs_new = _render_for(())
         existing_inventory = derive_managed_inventory(managed_old)
 
         result = compile_add_plan(
@@ -412,7 +405,6 @@ class TestCompileAddPlan:
             old_render=managed_old,
             new_managed=managed_new,
             existing_inventory=existing_inventory,
-            blobs=blobs_new,
             source_baseline=_source_baseline(),
             maintenance=MaintenanceRecord(status="clean"),
             snapshot=TargetSnapshot(files=(), directories=()),

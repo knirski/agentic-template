@@ -1288,7 +1288,6 @@ def compile_add_plan(
     old_render: ManagedRender,
     new_managed: ManagedRender,
     existing_inventory: ManagedInventory,
-    blobs: VerifiedBlobStore,
     source_baseline: SourceBaseline,
     maintenance: MaintenanceRecord,
     snapshot: TargetSnapshot,
@@ -1299,6 +1298,11 @@ def compile_add_plan(
     Phase 1 (old oracle): verify old_render produces identical inventory.
     Phase 2 (expanded): compile the plan with the new managed render.
     """
+    match _validate_snapshot(snapshot):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
     match verify_old_render_oracle(old_render, existing_inventory):
         case Err(error):
             return Err(error)
@@ -1352,7 +1356,7 @@ def compile_add_plan(
         payload=manifest_bytes, digest=manifest_checksum(document)
     )
 
-    store = blobs
+    store = VerifiedBlobStore.empty(limits)
     managed_outputs: list[_PlannedOutput] = []
     for file in new_managed:
         match _intern_output(file.content, store):
@@ -1373,6 +1377,8 @@ def compile_add_plan(
     )
 
     all_managed_and_manifest = tuple((*managed_outputs, *manifest_outputs))
+    if any(output.path == MANIFEST_PATH for output in managed_outputs):
+        return Err(_compile_error(CompileErrorKind.PATH_COLLISION, MANIFEST_PATH.value))
     match _validate_no_nested_outputs(all_managed_and_manifest):
         case Err(error):
             return Err(error)
