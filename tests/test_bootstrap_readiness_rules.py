@@ -77,8 +77,11 @@ class CatalogCompleteness(unittest.TestCase):
                 f"shared-core code not in catalog: {code}",
             )
 
-    def test_catalog_count_is_at_least_22(self) -> None:
-        self.assertGreaterEqual(len(FROZEN_CATALOG_V1), 22)
+    def test_catalog_codes_match_frozen_v1_baseline(self) -> None:
+        expected_codes = set(_ALL_SHARED_CORE_CODES)
+        catalog_codes = {rule.code for rule in FROZEN_CATALOG_V1}
+        self.assertSetEqual(catalog_codes, expected_codes)
+        self.assertSetEqual(set(FINDING_CODES), catalog_codes)
 
     def test_all_rules_are_blocking(self) -> None:
         for rule in FROZEN_CATALOG_V1:

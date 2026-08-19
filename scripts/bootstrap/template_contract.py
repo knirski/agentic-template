@@ -25,6 +25,7 @@ REQUIRED_FILES: tuple[str, ...] = (
     "scripts/bootstrap/canonical_json.py",
     "scripts/bootstrap/presentation.py",
     "scripts/bootstrap/readiness.py",
+    "scripts/bootstrap/readiness_rules.py",
     "scripts/bootstrap/template_contract.py",
     "scripts/bootstrap/validation_program.py",
 )
