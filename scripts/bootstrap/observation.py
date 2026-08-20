@@ -13,6 +13,7 @@ import os
 import re
 import stat
 from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 from typing import assert_never, cast
@@ -920,6 +921,222 @@ def _cleanup_observation(
         inventory=inventory_file.content,
         observed=observed,
         declared_cleanup_paths=ownership.snapshot_cleanup_paths,
+    )
+
+
+_GENERATED_STATE_DIRECTORIES = frozenset(
+    {
+        ".venv",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".hypothesis",
+        ".mypy_cache",
+        ".tox",
+        ".nox",
+        "node_modules",
+        "target",
+        "mutants",
+    }
+)
+
+
+def _template_source_entries(  # pyright: ignore[reportUnusedFunction] — shared baseline helper, imported by the cli shell
+    template_root: str,
+    *,
+    managed_paths: AbstractSet[RepoPath],
+    limits: ResourceLimits,
+) -> Result[tuple[LifecycleSourceEntry, ...], ContractError]:
+    """Inventory the retained template source a generated project receives.
+
+    The walk records every file and directory the template delivers as source:
+    it excludes the git directory, the ``.agentic-template`` state subtree, the
+    declared snapshot-cleanup paths, the seed-once slots, and bootstrap-managed
+    render outputs, and it bounds every dimension like the target capture.
+    File entries carry the raw content digest and a canonicalized mode
+    (umask-independent, as in the cleanup observation); directory entries carry
+    an opaque per-path digest because a recorded tree digest cannot be
+    re-derived from the bounded pass.
+    """
+
+    cleanup_values: set[str] = set()
+    ownership_abs = os.path.join(template_root, SOURCE_OWNERSHIP_PATH.value)
+    try:
+        with open(ownership_abs, "rb") as handle:
+            ownership_bytes = handle.read(limits.max_file_bytes + 1)
+    except OSError:
+        ownership_bytes = None
+    if ownership_bytes is not None and len(ownership_bytes) <= limits.max_file_bytes:
+        match decode_source_ownership(ownership_bytes):
+            case Err(_):
+                pass
+            case Ok(ownership):
+                cleanup_values = {
+                    path.value for path in ownership.snapshot_cleanup_paths
+                }
+    exact_excluded = {
+        path.value for path in (*SEED_ONCE_PATHS, *managed_paths)
+    }
+    # The source baseline records the template's tracked source: generated and
+    # environment state that git ignores (virtualenvs, caches) is not source.
+    # A git worktree supplies the tracked set directly; without git, a fixed
+    # generated-state denylist keeps the walk bounded to declared source.
+    tracked: set[str] | None = None
+    match run_git(("ls-files", "-z"), cwd=os.fsencode(template_root)):
+        case Ok(result) if result.returncode == 0:
+            tracked = {value for value in result.stdout.decode().split("\0") if value}
+        case _:
+            tracked = None
+    entries: list[LifecycleSourceEntry] = []
+    total_bytes = 0
+
+    def under_cleanup(value: str) -> bool:
+        return any(
+            value == path or value.startswith(path + "/")
+            for path in cleanup_values
+        )
+
+    def visit(
+        directory: str, relative: str
+    ) -> Result[None, ContractError]:
+        nonlocal total_bytes
+        try:
+            with os.scandir(directory) as iterator:
+                names = sorted(entry.name for entry in iterator)
+        except OSError as error:
+            return Err(
+                ContractError(
+                    ContractErrorKind.SOURCE_CONTRACT_INVALID,
+                    f"{relative or '.'}: {error.strerror or error}",
+                )
+            )
+        for name in names:
+            child_abs = os.path.join(directory, name)
+            child_rel = f"{relative}/{name}" if relative else name
+            if child_rel == ".git" or child_rel == ".agentic-template":
+                continue
+            try:
+                info = os.stat(child_abs, follow_symlinks=False)
+            except OSError as error:
+                return Err(
+                    ContractError(
+                        ContractErrorKind.SOURCE_CONTRACT_INVALID,
+                        f"{child_rel}: {error.strerror or error}",
+                    )
+                )
+            if stat.S_ISLNK(info.st_mode):
+                # Snapshots copy a tracked symlink as a regular file with its
+                # dereferenced content; record that content as a file entry.
+                # A dangling or untracked link contributes no source bytes.
+                if tracked is not None and child_rel not in tracked:
+                    continue
+                try:
+                    dereferenced = os.stat(child_abs)
+                except OSError:
+                    continue
+                if not stat.S_ISREG(dereferenced.st_mode):
+                    continue
+                info = dereferenced
+            elif stat.S_ISDIR(info.st_mode):
+                if name in _GENERATED_STATE_DIRECTORIES:
+                    continue
+                if tracked is not None and not any(
+                    value.startswith(child_rel + "/") for value in tracked
+                ):
+                    continue
+                if under_cleanup(child_rel):
+                    continue
+                if len(entries) >= limits.max_paths:
+                    return Err(
+                        ContractError(ContractErrorKind.SOURCE_CONTRACT_INVALID, "paths")
+                    )
+                match parse_path(child_rel):
+                    case Err(_):
+                        return Err(
+                            ContractError(
+                                ContractErrorKind.SOURCE_CONTRACT_INVALID, child_rel
+                            )
+                        )
+                    case Ok(path):
+                        pass
+                entries.append(
+                    LifecycleSourceEntry(
+                        path=path,
+                        kind="directory",
+                        mode=PosixMode.DIRECTORY,
+                        sha256=sha256_hex(b"template/source/dir:" + os.fsencode(child_rel)),
+                    )
+                )
+                match visit(child_abs, child_rel):
+                    case Err(error):
+                        return Err(error)
+                    case Ok(_):
+                        pass
+                continue
+            elif not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                return Err(
+                    ContractError(
+                        ContractErrorKind.SOURCE_CONTRACT_INVALID,
+                        f"{child_rel} is not a regular file",
+                    )
+                )
+            if tracked is not None and child_rel not in tracked:
+                continue
+            if child_rel in exact_excluded or under_cleanup(child_rel):
+                continue
+            if info.st_size > limits.max_file_bytes:
+                return Err(
+                    ContractError(ContractErrorKind.SOURCE_CONTRACT_INVALID, child_rel)
+                )
+            total_bytes += info.st_size
+            if total_bytes > limits.max_unique_bytes:
+                return Err(
+                    ContractError(
+                        ContractErrorKind.SOURCE_CONTRACT_INVALID, "unique_bytes"
+                    )
+                )
+            if len(entries) >= limits.max_paths:
+                return Err(
+                    ContractError(ContractErrorKind.SOURCE_CONTRACT_INVALID, "paths")
+                )
+            try:
+                with open(child_abs, "rb") as handle:
+                    content = handle.read()
+            except OSError as error:
+                return Err(
+                    ContractError(
+                        ContractErrorKind.SOURCE_CONTRACT_INVALID,
+                        f"{child_rel}: {error.strerror or error}",
+                    )
+                )
+            match parse_path(child_rel):
+                case Err(_):
+                    return Err(
+                        ContractError(ContractErrorKind.SOURCE_CONTRACT_INVALID, child_rel)
+                    )
+                case Ok(path):
+                    pass
+            entries.append(
+                LifecycleSourceEntry(
+                    path=path,
+                    kind="file",
+                    mode=(
+                        PosixMode.EXECUTABLE if info.st_mode & 0o100 else PosixMode.FILE
+                    ),
+                    sha256=sha256_hex(content),
+                )
+            )
+        return Ok(None)
+
+    match visit(template_root, ""):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
+    return Ok(
+        tuple(
+            sorted(entries, key=lambda entry: entry.path.value.encode("utf-8"))
+        )
     )
 
 

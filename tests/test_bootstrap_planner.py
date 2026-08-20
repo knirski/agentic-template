@@ -3334,7 +3334,7 @@ def _receipt_plan_schema(receipt: dict[str, object]) -> object:
 
 
 def _receipt_operation_kind_field(receipt: dict[str, object]) -> object:
-    return receipt.__setitem__("operation_kind", "add")
+    return receipt.__setitem__("operation_kind", "rotate")
 
 
 def _receipt_target_binding(receipt: dict[str, object]) -> object:

@@ -68,6 +68,7 @@ from scripts.bootstrap.vocabulary import COMMIT_SHA, SHA256, is_sha256
 _GENERATION_PATHS = frozenset(path.value for path in GenerationPath)
 _READINESS_RULES = frozenset(rule.value for rule in ReadinessRule)
 _OPERATIONS = frozenset(get_args(get_type_hints(GateSpecification)["operation"]))
+_OPERATION_KINDS = frozenset(get_args(get_type_hints(OperationPlan)["operation_kind"]))
 _SEVERITIES = frozenset(
     get_args(Severity.__value__)  # pyright: ignore[reportAny] — PEP 695 alias value; the closed set is pinned by the receipt round-trip tests
 )
@@ -294,7 +295,7 @@ def decode_receipt(data: bytes) -> Result[PlanReceipt, ReceiptError]:
             pass
     if value.get("plan_schema") != 1:
         return Err(_receipt_error("plan_schema"))
-    if value.get("operation_kind") != "initial":
+    if value.get("operation_kind") not in _OPERATION_KINDS:
         return Err(_receipt_error("operation_kind"))
     target_binding = value.get("target_binding")
     if not isinstance(target_binding, str) or SHA256.fullmatch(target_binding) is None:
@@ -359,6 +360,9 @@ def reconstruct_plan(
 
     if receipt.get("target_binding") != target.digest:
         return Err(_receipt_error("target_binding"))
+    operation_kind = receipt.get("operation_kind")
+    if operation_kind not in _OPERATION_KINDS:
+        return Err(_receipt_error("operation_kind"))
     try:
         generation = GenerationPath(cast(str, receipt.get("generation_path")))
     except ValueError:
@@ -401,7 +405,7 @@ def reconstruct_plan(
     return Ok(
         OperationPlan(
             plan_schema=1,
-            operation_kind="initial",
+            operation_kind=cast(Literal["initial", "add", "restore", "reconcile"], operation_kind),
             target_identity=target,
             generation_path=generation,
             source_before=source_before,

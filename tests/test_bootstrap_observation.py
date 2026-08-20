@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 import unittest
 
+from scripts.bootstrap.errors import ContractErrorKind
 from scripts.bootstrap.git_state import ResolvedGitWorktree
 from scripts.bootstrap.identity import (
     PosixMode,
@@ -44,6 +45,7 @@ from scripts.bootstrap.observation import (
     _cleanup_observation,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     _retained_cleanup_contract,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     _snapshot_evidence,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
+    _template_source_entries,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     build_system_state,
     classify_existing_project,
 )
@@ -51,6 +53,7 @@ from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.scaffold import (
     MAINTENANCE_INVENTORY_PATH,
+    SEED_ONCE_PATHS,
     SOURCE_OWNERSHIP_PATH,
 )
 from scripts.bootstrap.source_baseline import (
@@ -83,6 +86,7 @@ from scripts.bootstrap.state import (
     UnsupportedGitTarget,
     WorktreeContext,
 )
+from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
 
 TARGET = target_identity(b"/work/example", device=1, inode=2)
 
@@ -851,6 +855,173 @@ class ObservationShellContractTests(unittest.TestCase):
         reachable, path_bytes = _snapshot_evidence(worktree)
         self.assertFalse(reachable())
         self.assertIsNone(path_bytes(RepoPath("file.txt")))
+
+
+class TemplateSourceWalkerTests(unittest.TestCase):
+    """The source-baseline walker pins tracked template source with canonical modes."""
+
+    def _repo(
+        self, build: list[tuple[str, str]]
+    ) -> tuple[str, tuple[LifecycleSourceEntry, ...]]:
+        tmp = tempfile.mkdtemp()
+        root = os.path.join(tmp, "template")
+        os.mkdir(root)
+        for relative, content in build:
+            target = os.path.join(root, relative)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "w", encoding="utf-8") as handle:
+                _ = handle.write(content)
+        _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
+        _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        return root, ()
+
+    def _walk(self, root: str, managed_paths: tuple[str, ...] = ()) -> list[LifecycleSourceEntry]:
+        match _template_source_entries(
+            root,
+            managed_paths={RepoPath(value) for value in managed_paths},
+            limits=DEFAULT_LIMITS,
+        ):
+            case Ok(entries):
+                return list(entries)
+            case Err(error):
+                self.fail(f"walk failed: {error}")
+
+    def test_tracked_source_records_files_and_directories(self) -> None:
+        root, _ = self._repo(
+            [
+                ("src/lib.py", "present\n"),
+                ("src/tools/run.sh", "#!/bin/sh\n"),
+                ("scripts/validate-project", "#!/usr/bin/env python3\n"),
+                ("README.md", "# Example\n"),
+            ]
+        )
+        os.chmod(os.path.join(root, "src/tools/run.sh"), 0o755)
+        entries = self._walk(root)
+        paths = [entry.path.value for entry in entries]
+        self.assertEqual(
+            paths,
+            [
+                "scripts",
+                "src",
+                "src/lib.py",
+                "src/tools",
+                "src/tools/run.sh",
+            ],
+        )
+        by_path = {entry.path.value: entry for entry in entries}
+        self.assertEqual(by_path["src/lib.py"].kind, "file")
+        self.assertEqual(by_path["src/lib.py"].mode, PosixMode.FILE)
+        self.assertEqual(
+            by_path["src/lib.py"].sha256, sha256_hex(b"present\n")
+        )
+        self.assertEqual(by_path["src/tools"].kind, "directory")
+        self.assertEqual(by_path["src/tools"].mode, PosixMode.DIRECTORY)
+        self.assertEqual(
+            by_path["src/tools"].sha256,
+            sha256_hex(b"template/source/dir:src/tools"),
+        )
+        self.assertEqual(by_path["src/tools/run.sh"].mode, PosixMode.EXECUTABLE)
+
+    def test_untracked_and_generated_state_is_skipped(self) -> None:
+        root, _ = self._repo([("src/lib.py", "present\n")])
+        for relative, content in [
+            ("junk.tmp", "untracked\n"),
+            (".venv/site-packages/pkg.py", "env\n"),
+            ("__pycache__/lib.cpython-312.pyc", b"\x00\x01".decode("latin-1")),
+        ]:
+            target = os.path.join(root, relative)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "w", encoding="utf-8") as handle:
+                _ = handle.write(content)
+        entries = self._walk(root)
+        self.assertEqual([entry.path.value for entry in entries], ["src", "src/lib.py"])
+
+    def test_state_subtree_and_seed_once_and_managed_paths_are_excluded(self) -> None:
+        root, _ = self._repo([("src/lib.py", "present\n")])
+        state_dir = os.path.join(root, ".agentic-template")
+        os.makedirs(state_dir, exist_ok=True)
+        with open(os.path.join(state_dir, "state.json"), "w", encoding="utf-8") as handle:
+            _ = handle.write("{}")
+        for relative in ("docs/prd.md", "SECURITY.md"):
+            target = os.path.join(root, relative)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "w", encoding="utf-8") as handle:
+                _ = handle.write("seed\n")
+        os.makedirs(os.path.join(root, ".claude"), exist_ok=True)
+        with open(os.path.join(root, ".claude/settings.json"), "w", encoding="utf-8") as handle:
+            _ = handle.write("managed\n")
+        entries = self._walk(root, managed_paths=(".claude/settings.json",))
+        paths = [entry.path.value for entry in entries]
+        self.assertEqual(paths, ["src", "src/lib.py"])
+        self.assertNotIn(".agentic-template", paths)
+        for seed_once in SEED_ONCE_PATHS:
+            self.assertNotIn(seed_once.value, paths)
+
+    def test_tracked_symlink_is_recorded_as_dereferenced_file(self) -> None:
+        root = os.path.join(tempfile.mkdtemp(), "template")
+        os.mkdir(root)
+        with open(os.path.join(root, "lib.py"), "w", encoding="utf-8") as handle:
+            _ = handle.write("present\n")
+        os.symlink("lib.py", os.path.join(root, "alias.py"))
+        _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
+        _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        entries = self._walk(root)
+        by_path = {entry.path.value: entry for entry in entries}
+        self.assertIn("alias.py", by_path)
+        self.assertEqual(by_path["alias.py"].kind, "file")
+        self.assertEqual(by_path["alias.py"].mode, PosixMode.FILE)
+        self.assertEqual(by_path["alias.py"].sha256, sha256_hex(b"present\n"))
+
+    def test_dangling_or_untracked_symlink_is_skipped(self) -> None:
+        root = os.path.join(tempfile.mkdtemp(), "template")
+        os.mkdir(root)
+        with open(os.path.join(root, "lib.py"), "w", encoding="utf-8") as handle:
+            _ = handle.write("present\n")
+        os.symlink("missing.py", os.path.join(root, "broken.py"))
+        os.symlink("lib.py", os.path.join(root, "loose.py"))
+        _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
+        _ = subprocess.run(["git", "add", "lib.py", "broken.py"], cwd=root, check=True)
+        entries = self._walk(root)
+        paths = [entry.path.value for entry in entries]
+        self.assertNotIn("broken.py", paths)
+        self.assertNotIn("loose.py", paths)
+
+    def test_oversized_file_is_a_source_contract_violation(self) -> None:
+        root, _ = self._repo([("big.bin", "x" * 64)])
+        limits = ResourceLimits(max_file_bytes=16)
+        match _template_source_entries(root, managed_paths=set(), limits=limits):
+            case Err(error):
+                self.assertEqual(
+                    error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID
+                )
+                self.assertEqual(error.subject, "big.bin")
+            case Ok(_):
+                self.fail("oversized file should be refused")
+
+    def test_path_and_unique_bytes_bounds_are_enforced(self) -> None:
+        root, _ = self._repo(
+            [("a.txt", "a\n"), ("b.txt", "b\n"), ("c.txt", "c\n")]
+        )
+        match _template_source_entries(
+            root, managed_paths=set(), limits=ResourceLimits(max_paths=2)
+        ):
+            case Err(error):
+                self.assertEqual(
+                    error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID
+                )
+                self.assertEqual(error.subject, "paths")
+            case Ok(_):
+                self.fail("path bound should be enforced")
+        match _template_source_entries(
+            root, managed_paths=set(), limits=ResourceLimits(max_unique_bytes=4)
+        ):
+            case Err(error):
+                self.assertEqual(
+                    error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID
+                )
+                self.assertEqual(error.subject, "unique_bytes")
+            case Ok(_):
+                self.fail("unique-byte bound should be enforced")
 
 
 if __name__ == "__main__":

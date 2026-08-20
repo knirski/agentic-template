@@ -173,6 +173,9 @@ class ScaffoldFixture:
             "SECURITY.md",
             "CONTRIBUTING.md",
             "scripts/validate-project",
+            "LICENSE",
+            "NOTICE.md",
+            "LICENSES/Apache-2.0.txt",
         ):
             target = self.root / relative
             target.parent.mkdir(parents=True, exist_ok=True)

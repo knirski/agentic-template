@@ -28,6 +28,8 @@ from scripts.bootstrap.capability_fragments import CORE_CI_PATH  # noqa: E402
 from scripts.bootstrap.resolver import resolve_bundle  # noqa: E402
 from scripts.bootstrap.result import Err, Ok  # noqa: E402
 from scripts.bootstrap.schemas import BootstrapBundle  # noqa: E402
+
+__all__ = ["CORE_CI_PATH", "_activate_source", "render_for"]
 from scripts.bootstrap.template_contract import SOURCE_WORKFLOW_SELECTIONS  # noqa: E402
 from tests.fixtures import (  # noqa: E402
     ALL_CAPABILITIES,
