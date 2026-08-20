@@ -19,19 +19,27 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import cast, override
+from typing import cast, get_type_hints, override
 from unittest.mock import patch
 
 from scripts.bootstrap.canonical_json import canonical_json
 from scripts.bootstrap.cli import (
     ParsedCommand,
+    _decode_existing_manifest,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper type contract
     _init_failure,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
+    _manifest_identity,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper type contract
+    _recorded_render,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper type contract
     execute_command,
     main,
     parse_argv,
 )
 from scripts.bootstrap.diagnostics import RecoveryFailure
-from scripts.bootstrap.errors import ErrnoClass, TransactionError, TransactionPrimitive
+from scripts.bootstrap.errors import (
+    CommandError,
+    ErrnoClass,
+    TransactionError,
+    TransactionPrimitive,
+)
 from scripts.bootstrap.identity import PosixMode, TargetIdentity
 from scripts.bootstrap.journal import (
     JournalEnvelope,
@@ -41,17 +49,29 @@ from scripts.bootstrap.journal import (
     encode_journal,
     new_transaction_id,
 )
+from scripts.bootstrap.manifest import CandidateManifest
 from scripts.bootstrap.plan_digest import PlanReceipt, reconstruct_plan
 from scripts.bootstrap.presentation import (
     CommandResult,
     render_json,
     render_text,
 )
-from scripts.bootstrap.result import Err, Ok
+from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.transaction import derive_preparation_specs, derive_preparations
 from scripts.bootstrap.values import JournalPhase
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_lifecycle_manifest_helpers_preserve_candidate_type() -> None:
+    decode_annotations = get_type_hints(_decode_existing_manifest)
+    recorded_annotations = get_type_hints(_recorded_render)
+    identity_annotations = get_type_hints(_manifest_identity)
+
+    assert decode_annotations["return"] == Result[CandidateManifest, CommandError]
+    assert recorded_annotations["manifest"] is CandidateManifest
+    assert identity_annotations["manifest"] is CandidateManifest
+
 
 SCAFFOLD_README = "# Placeholder\n\n<!-- agentic-template:placeholder:readme -->\n"
 SCAFFOLD_PRD = "# Product\n\n<!-- agentic-template:placeholder:prd -->\n"

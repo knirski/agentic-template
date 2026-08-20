@@ -119,6 +119,7 @@ from scripts.bootstrap.journal import (
 )
 from scripts.bootstrap.manifest import (
     MANIFEST_PATH,
+    CandidateManifest,
     decode_manifest,
     encode_manifest,
     manifest_checksum,
@@ -1424,7 +1425,7 @@ def _inspection_outcome(error: CommandError) -> CommandOutcome:
 
 def _decode_existing_manifest(
     pass_: ProjectObservationPass,
-) -> Result[object, CommandError]:
+) -> Result[CandidateManifest, CommandError]:
     for entry in pass_.files:
         if entry.path == MANIFEST_PATH:
             match decode_manifest(entry.content):
@@ -1442,11 +1443,8 @@ def _decode_existing_manifest(
 
 
 def _recorded_render(
-    manifest: object, limits: ResourceLimits
+    manifest: CandidateManifest, limits: ResourceLimits
 ) -> Result[ManagedRender, ContractError]:
-    from scripts.bootstrap.manifest import CandidateManifest
-
-    manifest = cast(CandidateManifest, manifest)
     settings: dict[str, Mapping[str, str | bool]] = {
         **manifest.answers.settings,
         **manifest.additions.settings,
@@ -1502,10 +1500,7 @@ def _recorded_render(
             )
 
 
-def _manifest_identity(manifest: object) -> ManifestIdentity:
-    from scripts.bootstrap.manifest import CandidateManifest
-
-    manifest = cast(CandidateManifest, manifest)
+def _manifest_identity(manifest: CandidateManifest) -> ManifestIdentity:
     document = manifest_document(manifest)
     return ManifestIdentity(
         payload=encode_manifest(manifest), digest=manifest_checksum(document)
@@ -1541,8 +1536,6 @@ def _compile_lifecycle_plan(
 ) -> Result[OperationPlan, CommandError]:
     """Compile a lifecycle plan from one coherent observation."""
 
-    from scripts.bootstrap.manifest import CandidateManifest
-
     if observation.pass_ is None:
         return Err(
             TransitionError(
@@ -1554,7 +1547,7 @@ def _compile_lifecycle_plan(
         case Err(error):
             return Err(error)
         case Ok(manifest):
-            manifest = cast(CandidateManifest, manifest)
+            pass
     source_before_render: tuple[LifecycleSourceEntry, ...] | None = None
     if parsed.command in ("reconcile", "plan reconcile"):
         match collect_template_source_entries(
