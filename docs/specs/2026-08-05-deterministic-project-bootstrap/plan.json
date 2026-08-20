@@ -1164,7 +1164,10 @@
                 "uv run basedpyright (0 errors, 0 warnings)",
                 "PR #77 opened for review"
               ]
-            }
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/77"
+            ]
           },
           "files": {
             "create": [

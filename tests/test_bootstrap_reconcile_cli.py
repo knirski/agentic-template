@@ -14,7 +14,14 @@ from scripts.bootstrap.cli import (
 from scripts.bootstrap.errors import UsageError, UsageErrorKind
 from scripts.bootstrap.identity import ManifestIdentity, sha256_hex
 from scripts.bootstrap.intents import GenerationPath
-from scripts.bootstrap.manifest import MaintenanceRecord, ManifestAdditions
+from scripts.bootstrap.manifest import (
+    MaintenanceRecord,
+    ManifestAdditions,
+    ProvenanceRecord,
+    build_candidate_manifest,
+    decode_manifest,
+    encode_manifest,
+)
 from scripts.bootstrap.plan_digest import build_receipt, encode_receipt
 from scripts.bootstrap.planner import (
     OperationPlan,
@@ -26,6 +33,7 @@ from scripts.bootstrap.render import (
     derive_managed_inventory,
 )
 from scripts.bootstrap.result import Err, Ok
+from scripts.bootstrap.source_baseline import CopierSourceBaseline
 from scripts.bootstrap.values import DEFAULT_LIMITS
 from tests import test_source_bootstrap
 from tests.bootstrap_fixtures import (
@@ -152,9 +160,48 @@ class TestVerifyReconcileReceipt:
             assert "--plan is not a valid receipt" in result.error.subject
 
 
+def _as_copier_project(project: Path) -> None:
+    """Rewrite an activated GitHub project as a Copier project on disk.
+
+    The CLI cannot generate a Copier project in this environment (Copier
+    adoption runs outside the bundle), so the e2e converts the installed
+    snapshot project: the answers file appears and the manifest provenance
+    becomes Copier with the same recorded source entries.
+    """
+
+    answers = project / ".copier-answers.yml"
+    _ = answers.write_text("_commit: e2e-reconcile\n", encoding="utf-8")
+    manifest_path = project / ".agentic-template/project.json"
+    match decode_manifest(manifest_path.read_bytes()):
+        case Err(error):
+            raise AssertionError(f"manifest decode failed: {error}")
+        case Ok(manifest):
+            pass
+    copier = CopierSourceBaseline(
+        kind="copier",
+        fingerprint=manifest.provenance.source_baseline.fingerprint,
+        entries=manifest.provenance.source_baseline.entries,
+    )
+    match build_candidate_manifest(
+        answers=manifest.answers,
+        additions=manifest.additions,
+        provenance=ProvenanceRecord(
+            generation_path=GenerationPath.COPIER,
+            maintenance=manifest.provenance.maintenance,
+            source_baseline=copier,
+        ),
+        managed=manifest.managed,
+    ):
+        case Ok(updated):
+            _ = manifest_path.write_bytes(encode_manifest(updated))
+        case Err(error):
+            raise AssertionError(f"manifest rewrite failed: {error}")
+
+
 def test_reconcile_plan_receipt_binds_execution() -> None:
     with tempfile.TemporaryDirectory(prefix="agentic-template-reconcile.") as raw:
         project, _record = _activate_or_skip(Path(raw))
+        _as_copier_project(project)
         source = project / "docs/agents/domain.md"
         _ = source.write_text("drifted source\n", encoding="utf-8")
 
@@ -175,8 +222,13 @@ def test_reconcile_plan_receipt_binds_execution() -> None:
         # Planning must not mutate the drifted source.
         assert source.read_text(encoding="utf-8") == "drifted source\n"
 
-        # A stale receipt no longer binds once the plan changes.
-        _ = source.write_text("drifted source again\n", encoding="utf-8")
+        # A stale receipt no longer binds once the plan changes: managed drift
+        # changes the planned overwrite, so the preview receipt is refused.
+        managed = project / test_source_bootstrap.CORE_CI_PATH
+        compiled = test_source_bootstrap.render_for(())[
+            test_source_bootstrap.CORE_CI_PATH
+        ]
+        _ = managed.write_bytes(b"adopter edit\n")
         refused = run(
             [
                 *CLI,
@@ -188,13 +240,38 @@ def test_reconcile_plan_receipt_binds_execution() -> None:
                 str(receipt),
             ]
         )
-        assert refused.returncode == 1, refused.stdout + refused.stderr
+        assert refused.returncode == 2, refused.stdout + refused.stderr
         assert "--plan does not match the current reconcile" in (
             refused.stdout + refused.stderr
         )
-        assert source.read_text(encoding="utf-8") == "drifted source again\n"
+        assert managed.read_bytes() == b"adopter edit\n"
 
-        # The unbound reconcile of source-only drift succeeds and advances.
-        reconciled = run([*CLI, "reconcile", "--target", str(project)])
+        # The matching preview binds execution and repairs the managed drift.
+        receipt.unlink()
+        planned = run(
+            [
+                *CLI,
+                "plan",
+                "reconcile",
+                "--target",
+                str(project),
+                "--overwrite-drift",
+                "--out",
+                str(receipt),
+            ]
+        )
+        assert planned.returncode == 0, planned.stdout + planned.stderr
+        reconciled = run(
+            [
+                *CLI,
+                "reconcile",
+                "--target",
+                str(project),
+                "--overwrite-drift",
+                "--plan",
+                str(receipt),
+            ]
+        )
         assert reconciled.returncode == 0, reconciled.stdout + reconciled.stderr
-        assert source.read_text(encoding="utf-8") == "drifted source again\n"
+        assert managed.read_bytes() == compiled
+        assert source.read_text(encoding="utf-8") == "drifted source\n"

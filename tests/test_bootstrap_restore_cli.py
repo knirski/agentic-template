@@ -50,7 +50,7 @@ def test_restore_repairs_drifted_managed_file() -> None:
         # Drift the managed file.
         drifted = b"this is not the certified ci content\n"
         _ = managed.write_bytes(drifted)
-        assert b"managed drift" in _status(project).encode()
+        assert b"managed: drift" in _status(project).encode()
 
         # Restore repairs it.
         restored = run([*CLI, "restore", "--target", str(project)])
