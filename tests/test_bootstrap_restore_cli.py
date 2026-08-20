@@ -42,7 +42,9 @@ def test_restore_repairs_drifted_managed_file() -> None:
     with tempfile.TemporaryDirectory(prefix="agentic-template-restore.") as raw:
         project, _record = _activate_or_skip(Path(raw))
         managed = project / test_source_bootstrap.CORE_CI_PATH
-        compiled = test_source_bootstrap.render_for(())[test_source_bootstrap.CORE_CI_PATH]
+        compiled = test_source_bootstrap.render_for(())[
+            test_source_bootstrap.CORE_CI_PATH
+        ]
 
         # Sanity: apply installed the certified managed bytes.
         assert managed.read_bytes() == compiled
@@ -65,7 +67,9 @@ def test_plan_restore_does_not_mutate_and_receipt_is_written() -> None:
     with tempfile.TemporaryDirectory(prefix="agentic-template-restore.") as raw:
         project, _record = _activate_or_skip(Path(raw))
         managed = project / test_source_bootstrap.CORE_CI_PATH
-        compiled = test_source_bootstrap.render_for(())[test_source_bootstrap.CORE_CI_PATH]
+        compiled = test_source_bootstrap.render_for(())[
+            test_source_bootstrap.CORE_CI_PATH
+        ]
         _ = managed.write_bytes(b"drifted\n")
 
         receipt = Path(raw) / "restore-plan.json"
@@ -82,7 +86,9 @@ def test_plan_restore_does_not_mutate_and_receipt_is_written() -> None:
         )
         assert planned.returncode == 0, planned.stdout + planned.stderr
         assert receipt.exists()
-        document = cast(dict[str, object], json.loads(receipt.read_text(encoding="utf-8")))
+        document = cast(
+            dict[str, object], json.loads(receipt.read_text(encoding="utf-8"))
+        )
         assert document["operation_kind"] == "restore"
         # Planning must not mutate the live file.
         assert managed.read_bytes() == b"drifted\n"
@@ -97,7 +103,9 @@ def test_restore_leaves_unrelated_drift() -> None:
     with tempfile.TemporaryDirectory(prefix="agentic-template-restore.") as raw:
         project, _record = _activate_or_skip(Path(raw))
         managed = project / test_source_bootstrap.CORE_CI_PATH
-        compiled = test_source_bootstrap.render_for(())[test_source_bootstrap.CORE_CI_PATH]
+        compiled = test_source_bootstrap.render_for(())[
+            test_source_bootstrap.CORE_CI_PATH
+        ]
         _ = managed.write_bytes(b"managed drift\n")
         # A non-managed source file also drifts; restore must not touch it.
         readme = project / "README.md"
@@ -107,4 +115,3 @@ def test_restore_leaves_unrelated_drift() -> None:
         assert executed.returncode == 0, executed.stdout + executed.stderr
         assert managed.read_bytes() == compiled
         assert readme.read_text(encoding="utf-8") == "unrelated drift\n"
-

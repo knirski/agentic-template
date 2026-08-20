@@ -875,7 +875,9 @@ class TemplateSourceWalkerTests(unittest.TestCase):
         _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
         return root, ()
 
-    def _walk(self, root: str, managed_paths: tuple[str, ...] = ()) -> list[LifecycleSourceEntry]:
+    def _walk(
+        self, root: str, managed_paths: tuple[str, ...] = ()
+    ) -> list[LifecycleSourceEntry]:
         match _template_source_entries(
             root,
             managed_paths={RepoPath(value) for value in managed_paths},
@@ -911,9 +913,7 @@ class TemplateSourceWalkerTests(unittest.TestCase):
         by_path = {entry.path.value: entry for entry in entries}
         self.assertEqual(by_path["src/lib.py"].kind, "file")
         self.assertEqual(by_path["src/lib.py"].mode, PosixMode.FILE)
-        self.assertEqual(
-            by_path["src/lib.py"].sha256, sha256_hex(b"present\n")
-        )
+        self.assertEqual(by_path["src/lib.py"].sha256, sha256_hex(b"present\n"))
         self.assertEqual(by_path["src/tools"].kind, "directory")
         self.assertEqual(by_path["src/tools"].mode, PosixMode.DIRECTORY)
         self.assertEqual(
@@ -940,7 +940,9 @@ class TemplateSourceWalkerTests(unittest.TestCase):
         root, _ = self._repo([("src/lib.py", "present\n")])
         state_dir = os.path.join(root, ".agentic-template")
         os.makedirs(state_dir, exist_ok=True)
-        with open(os.path.join(state_dir, "state.json"), "w", encoding="utf-8") as handle:
+        with open(
+            os.path.join(state_dir, "state.json"), "w", encoding="utf-8"
+        ) as handle:
             _ = handle.write("{}")
         for relative in ("docs/prd.md", "SECURITY.md"):
             target = os.path.join(root, relative)
@@ -948,7 +950,9 @@ class TemplateSourceWalkerTests(unittest.TestCase):
             with open(target, "w", encoding="utf-8") as handle:
                 _ = handle.write("seed\n")
         os.makedirs(os.path.join(root, ".claude"), exist_ok=True)
-        with open(os.path.join(root, ".claude/settings.json"), "w", encoding="utf-8") as handle:
+        with open(
+            os.path.join(root, ".claude/settings.json"), "w", encoding="utf-8"
+        ) as handle:
             _ = handle.write("managed\n")
         entries = self._walk(root, managed_paths=(".claude/settings.json",))
         paths = [entry.path.value for entry in entries]
@@ -991,24 +995,18 @@ class TemplateSourceWalkerTests(unittest.TestCase):
         limits = ResourceLimits(max_file_bytes=16)
         match _template_source_entries(root, managed_paths=set(), limits=limits):
             case Err(error):
-                self.assertEqual(
-                    error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID
-                )
+                self.assertEqual(error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
                 self.assertEqual(error.subject, "big.bin")
             case Ok(_):
                 self.fail("oversized file should be refused")
 
     def test_path_and_unique_bytes_bounds_are_enforced(self) -> None:
-        root, _ = self._repo(
-            [("a.txt", "a\n"), ("b.txt", "b\n"), ("c.txt", "c\n")]
-        )
+        root, _ = self._repo([("a.txt", "a\n"), ("b.txt", "b\n"), ("c.txt", "c\n")])
         match _template_source_entries(
             root, managed_paths=set(), limits=ResourceLimits(max_paths=2)
         ):
             case Err(error):
-                self.assertEqual(
-                    error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID
-                )
+                self.assertEqual(error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
                 self.assertEqual(error.subject, "paths")
             case Ok(_):
                 self.fail("path bound should be enforced")
@@ -1016,9 +1014,7 @@ class TemplateSourceWalkerTests(unittest.TestCase):
             root, managed_paths=set(), limits=ResourceLimits(max_unique_bytes=4)
         ):
             case Err(error):
-                self.assertEqual(
-                    error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID
-                )
+                self.assertEqual(error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
                 self.assertEqual(error.subject, "unique_bytes")
             case Ok(_):
                 self.fail("unique-byte bound should be enforced")

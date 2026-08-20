@@ -89,9 +89,7 @@ def _plan() -> OperationPlan:
 def _drifted_plan() -> OperationPlan:
     managed, _blobs = render_for((), GenerationPath.COPIER)
     drifted = {managed[0].path.value: b"adopter edit\n"}
-    return _compile(
-        managed, observed_snapshot(managed, drift=drifted), overwrite=True
-    )
+    return _compile(managed, observed_snapshot(managed, drift=drifted), overwrite=True)
 
 
 def _activate_or_skip(raw: Path) -> tuple[Path, Path]:
@@ -123,7 +121,9 @@ class TestVerifyReconcileReceipt:
         with tempfile.TemporaryDirectory(prefix="agentic-template-reconcile.") as raw:
             receipt = Path(raw) / "plan.json"
             _ = receipt.write_bytes(encode_receipt(build_receipt(_plan())))
-            result = _verify_reconcile_receipt(str(receipt), _drifted_plan(), DEFAULT_LIMITS)
+            result = _verify_reconcile_receipt(
+                str(receipt), _drifted_plan(), DEFAULT_LIMITS
+            )
             assert isinstance(result, Err)
             assert isinstance(result.error, UsageError)
             assert result.error.kind == UsageErrorKind.INVALID_VALUE

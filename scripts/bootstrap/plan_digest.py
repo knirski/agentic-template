@@ -405,7 +405,9 @@ def reconstruct_plan(
     return Ok(
         OperationPlan(
             plan_schema=1,
-            operation_kind=cast(Literal["initial", "add", "restore", "reconcile"], operation_kind),
+            operation_kind=cast(
+                Literal["initial", "add", "restore", "reconcile"], operation_kind
+            ),
             target_identity=target,
             generation_path=generation,
             source_before=source_before,

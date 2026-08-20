@@ -1520,9 +1520,7 @@ def _restore_operation(
     ):
         return Ok(None)
     return Ok(
-        ReplaceFileOperation(
-            path=path, expected_old=observed, planned_new=planned
-        )
+        ReplaceFileOperation(path=path, expected_old=observed, planned_new=planned)
     )
 
 
@@ -1570,9 +1568,7 @@ def compile_restore_plan(
     if requested_paths:
         for path in requested_paths:
             if path.value not in recorded:
-                return Err(
-                    _compile_error(CompileErrorKind.INVALID_TARGET, path.value)
-                )
+                return Err(_compile_error(CompileErrorKind.INVALID_TARGET, path.value))
         selected = requested_paths
     else:
         drifted: list[RepoPath] = []
@@ -1705,9 +1701,7 @@ def _reconcile_candidate_manifest(
     maintenance: MaintenanceRecord,
     generation: GenerationPath,
 ) -> Result[ManifestIdentity, CompileError]:
-    provenance = ProvenanceRecord(
-        generation, maintenance, new_source_baseline
-    )
+    provenance = ProvenanceRecord(generation, maintenance, new_source_baseline)
     match build_candidate_manifest(
         answers=answers,
         additions=additions,
@@ -1771,9 +1765,7 @@ def compile_reconcile_plan(
     )
     if drifted and not overwrite_drift:
         return Err(
-            _compile_error(
-                CompileErrorKind.RENDER_CONTRACT_VIOLATION, "managed_drift"
-            )
+            _compile_error(CompileErrorKind.RENDER_CONTRACT_VIOLATION, "managed_drift")
         )
 
     store = VerifiedBlobStore.empty(limits)

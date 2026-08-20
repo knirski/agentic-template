@@ -142,9 +142,8 @@ class TestCompileReconcilePlan:
         assert plan.manifest_after.digest != plan.manifest_before.digest
         match decode_manifest(plan.manifest_after.payload):
             case Ok(decoded):
-                assert (
-                    decoded.provenance.source_baseline.fingerprint
-                    == sha256_hex(b"new")
+                assert decoded.provenance.source_baseline.fingerprint == sha256_hex(
+                    b"new"
                 )
             case Err(error):
                 raise AssertionError(f"manifest decode failed: {error}")
@@ -265,7 +264,9 @@ class TestCompileReconcilePlan:
                 assert decoded["operation_kind"] == "reconcile"
         match reconstruct_plan(receipt, target=plan.target_identity):
             case Err(error):
-                raise AssertionError(f"reconcile receipt reconstruction failed: {error}")
+                raise AssertionError(
+                    f"reconcile receipt reconstruction failed: {error}"
+                )
             case Ok(reconstructed):
                 assert reconstructed.operation_kind == RECONCILE_OPERATION_KIND
                 assert reconstructed.ordered_operations == plan.ordered_operations

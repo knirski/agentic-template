@@ -974,9 +974,7 @@ def _template_source_entries(  # pyright: ignore[reportUnusedFunction] — share
                 cleanup_values = {
                     path.value for path in ownership.snapshot_cleanup_paths
                 }
-    exact_excluded = {
-        path.value for path in (*SEED_ONCE_PATHS, *managed_paths)
-    }
+    exact_excluded = {path.value for path in (*SEED_ONCE_PATHS, *managed_paths)}
     # The source baseline records the template's tracked source: generated and
     # environment state that git ignores (virtualenvs, caches) is not source.
     # A git worktree supplies the tracked set directly; without git, a fixed
@@ -992,13 +990,10 @@ def _template_source_entries(  # pyright: ignore[reportUnusedFunction] — share
 
     def under_cleanup(value: str) -> bool:
         return any(
-            value == path or value.startswith(path + "/")
-            for path in cleanup_values
+            value == path or value.startswith(path + "/") for path in cleanup_values
         )
 
-    def visit(
-        directory: str, relative: str
-    ) -> Result[None, ContractError]:
+    def visit(directory: str, relative: str) -> Result[None, ContractError]:
         nonlocal total_bytes
         try:
             with os.scandir(directory) as iterator:
@@ -1048,7 +1043,9 @@ def _template_source_entries(  # pyright: ignore[reportUnusedFunction] — share
                     continue
                 if len(entries) >= limits.max_paths:
                     return Err(
-                        ContractError(ContractErrorKind.SOURCE_CONTRACT_INVALID, "paths")
+                        ContractError(
+                            ContractErrorKind.SOURCE_CONTRACT_INVALID, "paths"
+                        )
                     )
                 match parse_path(child_rel):
                     case Err(_):
@@ -1064,7 +1061,9 @@ def _template_source_entries(  # pyright: ignore[reportUnusedFunction] — share
                         path=path,
                         kind="directory",
                         mode=PosixMode.DIRECTORY,
-                        sha256=sha256_hex(b"template/source/dir:" + os.fsencode(child_rel)),
+                        sha256=sha256_hex(
+                            b"template/source/dir:" + os.fsencode(child_rel)
+                        ),
                     )
                 )
                 match visit(child_abs, child_rel):
@@ -1112,7 +1111,9 @@ def _template_source_entries(  # pyright: ignore[reportUnusedFunction] — share
             match parse_path(child_rel):
                 case Err(_):
                     return Err(
-                        ContractError(ContractErrorKind.SOURCE_CONTRACT_INVALID, child_rel)
+                        ContractError(
+                            ContractErrorKind.SOURCE_CONTRACT_INVALID, child_rel
+                        )
                     )
                 case Ok(path):
                     pass
@@ -1134,9 +1135,7 @@ def _template_source_entries(  # pyright: ignore[reportUnusedFunction] — share
         case Ok(_):
             pass
     return Ok(
-        tuple(
-            sorted(entries, key=lambda entry: entry.path.value.encode("utf-8"))
-        )
+        tuple(sorted(entries, key=lambda entry: entry.path.value.encode("utf-8")))
     )
 
 

@@ -229,7 +229,9 @@ class TestCompileRestorePlan:
         managed, _blobs = render_for((), GenerationPath.GITHUB)
         inventory = derive_managed_inventory(managed)
         snapshot = observed_snapshot(managed)
-        files = tuple(entry for entry in snapshot.files if entry.path != managed[0].path)
+        files = tuple(
+            entry for entry in snapshot.files if entry.path != managed[0].path
+        )
         directories = tuple(
             entry
             for entry in snapshot.directories

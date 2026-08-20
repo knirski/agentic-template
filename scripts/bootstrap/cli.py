@@ -1398,9 +1398,7 @@ def _decode_existing_manifest(
                     return Ok(manifest)
                 case Err(error):
                     return Err(
-                        ContractError(
-                            ContractErrorKind.INVALID_MANIFEST, error.subject
-                        )
+                        ContractError(ContractErrorKind.INVALID_MANIFEST, error.subject)
                     )
     return Err(
         TransitionError(
@@ -1583,7 +1581,9 @@ def _execute_lifecycle(
             case Ok(plan):
                 pass
     else:
-        overwrite = cast("Reconcile | PlanReconcile", parsed.intent).options.overwrite_drift
+        overwrite = cast(
+            "Reconcile | PlanReconcile", parsed.intent
+        ).options.overwrite_drift
         match _template_source_entries(
             template_root,
             managed_paths={file.path for file in rendered},
@@ -1598,7 +1598,9 @@ def _execute_lifecycle(
                 return _result(
                     command,
                     outcome_for_error(
-                        ContractError(ContractErrorKind.SOURCE_CONTRACT_INVALID, error.subject)
+                        ContractError(
+                            ContractErrorKind.SOURCE_CONTRACT_INVALID, error.subject
+                        )
                     ),
                 )
             case Ok(new_source_baseline):
@@ -1689,7 +1691,9 @@ def _verify_reconcile_receipt(
     match decode_receipt(raw):
         case Err(_):
             return Err(
-                UsageError(UsageErrorKind.INVALID_VALUE, "--plan is not a valid receipt")
+                UsageError(
+                    UsageErrorKind.INVALID_VALUE, "--plan is not a valid receipt"
+                )
             )
         case Ok(receipt):
             pass
@@ -1779,7 +1783,11 @@ def _drive_transaction(
         case Completed():
             pass
     hook_evidence = _run_hook(worktree)
-    if not findings and isinstance(hook_evidence, HookExited) and hook_evidence.status == 0:
+    if (
+        not findings
+        and isinstance(hook_evidence, HookExited)
+        and hook_evidence.status == 0
+    ):
         return _result(
             command,
             Succeeded(hook_evidence=hook_evidence),
