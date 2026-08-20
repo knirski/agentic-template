@@ -10,9 +10,8 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
+from unittest import SkipTest
 from unittest.mock import patch
-
-import pytest  # pyright: ignore[reportMissingImports]  optional local test dependency
 
 from scripts.bootstrap import cli, planner
 from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
@@ -161,9 +160,9 @@ def _activate(raw: Path) -> tuple[Path, Path]:
         return test_source_bootstrap._activate_source(raw)
     except AssertionError as error:
         if "CLEANUP_CONTRACT_INVALID" in str(error):
-            pytest.skip(  # pyright: ignore[reportUnknownMemberType]
+            raise SkipTest(
                 f"apply cannot bootstrap in this environment: {error}"
-            )
+            ) from None
         raise
 
 
