@@ -1152,8 +1152,19 @@
           "description": "Implement targeted certified restore without manifest/inventory advancement, Copier-only reconcile, destructive overwrite requiring matching preview digest, source-delta diagnostics, reachable snapshot baseline repair, and regeneration guidance when repair is unavailable.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-20",
+              "commits": [
+                "71f2138"
+              ],
+              "evidence": [
+                "uv run pytest tests/ (1124 passed, 4 skipped, 33 subtests; 5 pre-existing failures)",
+                "uv run ruff check (clean)",
+                "uv run basedpyright (0 errors, 0 warnings)",
+                "PR #77 opened for review"
+              ]
+            }
           },
           "files": {
             "create": [
