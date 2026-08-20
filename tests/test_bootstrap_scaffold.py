@@ -8,8 +8,9 @@ for absent manifests, strict ``decode_cleanup_inventory`` decoding, and
 from __future__ import annotations
 
 import unittest
+from typing import cast
 
-from scripts.bootstrap.canonical_json import canonical_json
+from scripts.bootstrap.canonical_json import StrictJsonValue, canonical_json
 from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.manifest import MANIFEST_PATH
 from scripts.bootstrap.paths import RepoPath
@@ -222,6 +223,25 @@ class CleanupInventoryTests(unittest.TestCase):
 
 
 class SourceOwnershipTests(unittest.TestCase):
+    @staticmethod
+    def _payload(
+        *,
+        lifecycle_paths: object | None = None,
+        snapshot_cleanup_paths: object | None = None,
+    ) -> bytes:
+        return canonical_json(
+            {
+                "schema_version": SOURCE_OWNERSHIP_SCHEMA_VERSION,
+                "lifecycle_paths": cast(
+                    StrictJsonValue, [] if lifecycle_paths is None else lifecycle_paths
+                ),
+                "snapshot_cleanup_paths": cast(
+                    StrictJsonValue,
+                    [] if snapshot_cleanup_paths is None else snapshot_cleanup_paths,
+                ),
+            }
+        )
+
     def test_wrong_document_shape_is_rejected(self) -> None:
         match decode_source_ownership(canonical_json({"schema_version": 1})):
             case Err(error):
@@ -230,7 +250,13 @@ class SourceOwnershipTests(unittest.TestCase):
                 self.fail("wrong-shape ownership decoded")
 
     def test_wrong_schema_version_is_rejected(self) -> None:
-        payload = canonical_json({"schema_version": 2, "snapshot_cleanup_paths": []})
+        payload = canonical_json(
+            {
+                "schema_version": 2,
+                "lifecycle_paths": [],
+                "snapshot_cleanup_paths": [],
+            }
+        )
         match decode_source_ownership(payload):
             case Err(error):
                 self.assertIsInstance(error, CleanupContractMismatch)
@@ -238,8 +264,8 @@ class SourceOwnershipTests(unittest.TestCase):
                 self.fail("future schema version decoded")
 
     def test_non_list_paths_are_rejected(self) -> None:
-        payload = canonical_json(
-            {"schema_version": 1, "snapshot_cleanup_paths": "tests"}
+        payload = self._payload(  # type: ignore[arg-type]
+            lifecycle_paths="tests"
         )
         match decode_source_ownership(payload):
             case Err(error):
@@ -250,9 +276,7 @@ class SourceOwnershipTests(unittest.TestCase):
     def test_invalid_path_entries_are_rejected(self) -> None:
         for paths in (["tests", 5], [".."], ["tests", "tests"]):
             with self.subTest(paths=paths):
-                payload = canonical_json(
-                    {"schema_version": 1, "snapshot_cleanup_paths": paths}
-                )
+                payload = self._payload(lifecycle_paths=paths)  # type: ignore[arg-type]
                 match decode_source_ownership(payload):
                     case Err(error):
                         self.assertIsInstance(error, CleanupContractMismatch)
@@ -260,11 +284,14 @@ class SourceOwnershipTests(unittest.TestCase):
                         self.fail(f"invalid paths decoded: {paths}")
 
     def test_administrative_paths_are_rejected(self) -> None:
-        for path in (MANIFEST_PATH.value, MAINTENANCE_INVENTORY_PATH.value):
+        for path in (
+            MANIFEST_PATH.value,
+            MAINTENANCE_INVENTORY_PATH.value,
+            ".agentic-template/state.json",
+            ".git/config",
+        ):
             with self.subTest(path=path):
-                payload = canonical_json(
-                    {"schema_version": 1, "snapshot_cleanup_paths": [path]}
-                )
+                payload = self._payload(lifecycle_paths=[path])
                 match decode_source_ownership(payload):
                     case Err(error):
                         self.assertIsInstance(error, CleanupContractMismatch)
@@ -272,20 +299,68 @@ class SourceOwnershipTests(unittest.TestCase):
                         self.fail(f"administrative path decoded: {path}")
 
     def test_valid_ownership_decodes_sorted(self) -> None:
-        payload = canonical_json(
-            {
-                "schema_version": SOURCE_OWNERSHIP_SCHEMA_VERSION,
-                "snapshot_cleanup_paths": ["z.txt", "a.txt"],
-            }
-        )
+        payload = self._payload(lifecycle_paths=["z.txt", "a.txt"])
         match decode_source_ownership(payload):
             case Ok(ownership):
                 self.assertEqual(
-                    tuple(path.value for path in ownership.snapshot_cleanup_paths),
+                    tuple(path.value for path in ownership.lifecycle_paths),
                     ("a.txt", "z.txt"),
                 )
             case Err(error):
                 self.fail(f"valid ownership rejected: {error}")
+
+    def test_overlapping_ownership_sets_are_rejected(self) -> None:
+        payload = self._payload(
+            lifecycle_paths=["docs/api"], snapshot_cleanup_paths=["docs/api"]
+        )
+        match decode_source_ownership(payload):
+            case Err(error):
+                self.assertIsInstance(error, CleanupContractMismatch)
+            case Ok(_):
+                self.fail("overlapping ownership decoded")
+
+    def test_nested_ownership_sets_are_rejected(self) -> None:
+        payload = self._payload(
+            lifecycle_paths=["docs"], snapshot_cleanup_paths=["docs/api"]
+        )
+        match decode_source_ownership(payload):
+            case Err(error):
+                self.assertIsInstance(error, CleanupContractMismatch)
+            case Ok(_):
+                self.fail("nested ownership decoded")
+
+    def test_case_colliding_paths_are_rejected(self) -> None:
+        payload = self._payload(lifecycle_paths=["Docs/API", "docs/api"])
+        match decode_source_ownership(payload):
+            case Err(error):
+                self.assertIsInstance(error, CleanupContractMismatch)
+            case Ok(_):
+                self.fail("case-colliding ownership decoded")
+
+    def test_seed_and_legal_paths_are_rejected(self) -> None:
+        for path in (
+            *SEED_ONCE_PATHS,
+            RepoPath("LICENSE"),
+            RepoPath("NOTICE.md"),
+            RepoPath("LICENSES/Apache-2.0.txt"),
+        ):
+            with self.subTest(path=path):
+                payload = self._payload(lifecycle_paths=[path.value])
+                match decode_source_ownership(payload):
+                    case Err(error):
+                        self.assertIsInstance(error, CleanupContractMismatch)
+                    case Ok(_):
+                        self.fail(f"seed or legal path decoded: {path.value}")
+
+    def test_case_variant_nested_paths_are_rejected_across_namespaces(self) -> None:
+        payload = self._payload(
+            lifecycle_paths=["Docs"], snapshot_cleanup_paths=["docs/api"]
+        )
+        match decode_source_ownership(payload):
+            case Err(error):
+                self.assertIsInstance(error, CleanupContractMismatch)
+            case Ok(_):
+                self.fail("case-variant nested ownership decoded")
 
 
 class CleanupClassificationTests(unittest.TestCase):

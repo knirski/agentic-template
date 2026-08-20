@@ -42,12 +42,13 @@ from scripts.bootstrap.observation import (
     CapturedDirectory,
     CapturedFile,
     ProjectObservationPass,
+    _capture_tree,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     _cleanup_observation,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     _retained_cleanup_contract,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     _snapshot_evidence,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
-    _template_source_entries,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     build_system_state,
     classify_existing_project,
+    collect_template_source_entries,
 )
 from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.result import Err, Ok
@@ -299,6 +300,78 @@ class ProjectClassificationTests(unittest.TestCase):
                 self.assertEqual(
                     result.condition.repair.paths,
                     (RepoPath("src/lib.py"),),
+                )
+
+    def test_new_declared_source_file_is_source_drift(self) -> None:
+        ownership = CapturedFile(
+            SOURCE_OWNERSHIP_PATH,
+            _ownership_bytes((), lifecycle_paths=(RepoPath("src"),)),
+            PosixMode.FILE,
+        )
+        files = {
+            **_observed_files(),
+            ownership.path: ownership,
+            RepoPath("src/new.py"): CapturedFile(
+                RepoPath("src/new.py"), b"new\n", PosixMode.FILE
+            ),
+        }
+        result = _classify(
+            _manifest(copier=True),
+            copier_answers_present=True,
+            files=files,
+            directories=_observed_directories(),
+        )
+        self.assertIsInstance(result, CopierExistingProject)
+        if isinstance(result, CopierExistingProject):
+            self.assertIsInstance(result.condition, CopierSourceChanged)
+            if isinstance(result.condition, CopierSourceChanged):
+                self.assertIn(RepoPath("src/new.py"), result.condition.delta.paths)
+
+    def test_snapshot_does_not_reclassify_new_adopter_file_from_changed_ownership(
+        self,
+    ) -> None:
+        original_ownership = _ownership_bytes((), lifecycle_paths=(RepoPath("src"),))
+        changed_ownership = _ownership_bytes(
+            (), lifecycle_paths=(RepoPath("src"), RepoPath("adopter"))
+        )
+        baseline = _github_baseline(
+            entries=(
+                *_source_entries(),
+                LifecycleSourceEntry(
+                    path=SOURCE_OWNERSHIP_PATH,
+                    kind="file",
+                    mode=PosixMode.FILE,
+                    sha256=sha256_hex(original_ownership),
+                ),
+            )
+        )
+        ownership = CapturedFile(
+            SOURCE_OWNERSHIP_PATH, changed_ownership, PosixMode.FILE
+        )
+        files = {
+            **_observed_files(),
+            ownership.path: ownership,
+            RepoPath("adopter/settings.toml"): CapturedFile(
+                RepoPath("adopter/settings.toml"), b"adopter\n", PosixMode.FILE
+            ),
+        }
+        result = _classify(
+            _manifest(baseline=baseline),
+            files=files,
+            directories=_observed_directories(),
+            at_commit=original_ownership,
+        )
+        self.assertIsInstance(result, SnapshotExistingProject)
+        if isinstance(result, SnapshotExistingProject):
+            self.assertIsInstance(result.condition, SnapshotSourceChanged)
+            if isinstance(result.condition, SnapshotSourceChanged):
+                self.assertEqual(
+                    result.condition.delta.paths,
+                    (SOURCE_OWNERSHIP_PATH,),
+                )
+                self.assertEqual(
+                    result.condition.repair.paths,
+                    (SOURCE_OWNERSHIP_PATH,),
                 )
 
     def test_absent_directory_is_source_drift(self) -> None:
@@ -602,10 +675,13 @@ def _inventory_bytes(
     )
 
 
-def _ownership_bytes(paths: tuple[RepoPath, ...]) -> bytes:
+def _ownership_bytes(
+    paths: tuple[RepoPath, ...], *, lifecycle_paths: tuple[RepoPath, ...] = ()
+) -> bytes:
     return json.dumps(
         {
             "schema_version": 1,
+            "lifecycle_paths": [path.value for path in lifecycle_paths],
             "snapshot_cleanup_paths": [path.value for path in paths],
         },
         sort_keys=True,
@@ -627,6 +703,29 @@ class ObservationShellContractTests(unittest.TestCase):
         return ProjectObservationPass(
             TARGET, (), _state_root_snapshot(), files, directories
         )
+
+    def test_repository_claude_aliases_are_outside_project_observation(self) -> None:
+        root = tempfile.mkdtemp()
+        os.makedirs(os.path.join(root, ".claude", "skills"))
+        with open(os.path.join(root, "keep.txt"), "w", encoding="utf-8") as handle:
+            _ = handle.write("kept\n")
+        os.symlink("../../missing-skill", os.path.join(root, ".claude", "skills", "x"))
+        result = _capture_tree(
+            os.fsencode(root),
+            os.fsencode(os.path.join(root, ".git")),
+            DEFAULT_LIMITS,
+        )
+        match result:
+            case Ok((files, directories)):
+                self.assertEqual(
+                    tuple(entry.path for entry in files),
+                    (RepoPath("keep.txt"),),
+                )
+                self.assertNotIn(
+                    RepoPath(".claude"), tuple(entry.path for entry in directories)
+                )
+            case Err(error):
+                self.fail(f"non-project aliases should be ignored: {error}")
 
     def test_cleanup_observation_rejects_invalid_inventories(self) -> None:
         inventory = CapturedFile(
@@ -839,6 +938,42 @@ class ObservationShellContractTests(unittest.TestCase):
         self.assertEqual(path_bytes(RepoPath("file.txt")), b"hello\n")
         self.assertIsNone(path_bytes(RepoPath("missing.txt")))
 
+    def test_snapshot_evidence_reads_the_recorded_commit(self) -> None:
+        tmp = tempfile.mkdtemp()
+        worktree = self._git_worktree(tmp)
+        root = os.fsdecode(worktree.root_abs)
+        with open(os.path.join(root, "file.txt"), "w", encoding="utf-8") as handle:
+            _ = handle.write("changed\n")
+        _ = subprocess.run(["git", "add", "file.txt"], cwd=root, check=True)
+        _ = subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=test",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-q",
+                "-m",
+                "changed",
+            ],
+            cwd=root,
+            check=True,
+        )
+        recorded = (
+            subprocess.run(
+                ["git", "rev-parse", "HEAD~1"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+            )
+            .stdout.decode()
+            .strip()
+        )
+        reachable, path_bytes = _snapshot_evidence(worktree, snapshot_commit=recorded)
+        self.assertTrue(reachable())
+        self.assertEqual(path_bytes(RepoPath("file.txt")), b"hello\n")
+
     def test_snapshot_evidence_handles_unborn_heads(self) -> None:
         tmp = tempfile.mkdtemp()
         root = os.path.join(tmp, "repo")
@@ -860,6 +995,32 @@ class ObservationShellContractTests(unittest.TestCase):
 class TemplateSourceWalkerTests(unittest.TestCase):
     """The source-baseline walker pins tracked template source with canonical modes."""
 
+    @staticmethod
+    def _write_ownership(root: str, lifecycle_paths: tuple[str, ...]) -> None:
+        state_dir = os.path.join(root, ".agentic-template")
+        os.makedirs(state_dir, exist_ok=True)
+        with open(
+            os.path.join(state_dir, "source-ownership.json"), "w", encoding="utf-8"
+        ) as handle:
+            json.dump(
+                {
+                    "schema_version": 1,
+                    "lifecycle_paths": list(lifecycle_paths),
+                    "snapshot_cleanup_paths": [],
+                },
+                handle,
+                sort_keys=True,
+            )
+
+    @staticmethod
+    def _lifecycle_roots(build: list[tuple[str, str]]) -> tuple[str, ...]:
+        roots = {
+            relative.split("/", 1)[0]
+            for relative, _content in build
+            if RepoPath(relative) not in SEED_ONCE_PATHS
+        }
+        return tuple(sorted(roots))
+
     def _repo(
         self, build: list[tuple[str, str]]
     ) -> tuple[str, tuple[LifecycleSourceEntry, ...]]:
@@ -871,6 +1032,7 @@ class TemplateSourceWalkerTests(unittest.TestCase):
             os.makedirs(os.path.dirname(target), exist_ok=True)
             with open(target, "w", encoding="utf-8") as handle:
                 _ = handle.write(content)
+        self._write_ownership(root, self._lifecycle_roots(build))
         _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
         _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
         return root, ()
@@ -878,7 +1040,7 @@ class TemplateSourceWalkerTests(unittest.TestCase):
     def _walk(
         self, root: str, managed_paths: tuple[str, ...] = ()
     ) -> list[LifecycleSourceEntry]:
-        match _template_source_entries(
+        match collect_template_source_entries(
             root,
             managed_paths={RepoPath(value) for value in managed_paths},
             limits=DEFAULT_LIMITS,
@@ -903,7 +1065,7 @@ class TemplateSourceWalkerTests(unittest.TestCase):
         self.assertEqual(
             paths,
             [
-                "scripts",
+                ".agentic-template/source-ownership.json",
                 "src",
                 "src/lib.py",
                 "src/tools",
@@ -934,7 +1096,22 @@ class TemplateSourceWalkerTests(unittest.TestCase):
             with open(target, "w", encoding="utf-8") as handle:
                 _ = handle.write(content)
         entries = self._walk(root)
-        self.assertEqual([entry.path.value for entry in entries], ["src", "src/lib.py"])
+        self.assertEqual(
+            [entry.path.value for entry in entries],
+            [".agentic-template/source-ownership.json", "src", "src/lib.py"],
+        )
+
+    def test_generated_state_below_declared_root_is_skipped(self) -> None:
+        root, _ = self._repo([("src/lib.py", "present\n")])
+        cache = os.path.join(root, "src", "__pycache__")
+        os.makedirs(cache)
+        with open(os.path.join(cache, "lib.cpython-314.pyc"), "wb") as handle:
+            _ = handle.write(b"bytecode")
+        entries = self._walk(root)
+        self.assertEqual(
+            [entry.path.value for entry in entries],
+            [".agentic-template/source-ownership.json", "src", "src/lib.py"],
+        )
 
     def test_state_subtree_and_seed_once_and_managed_paths_are_excluded(self) -> None:
         root, _ = self._repo([("src/lib.py", "present\n")])
@@ -956,33 +1133,39 @@ class TemplateSourceWalkerTests(unittest.TestCase):
             _ = handle.write("managed\n")
         entries = self._walk(root, managed_paths=(".claude/settings.json",))
         paths = [entry.path.value for entry in entries]
-        self.assertEqual(paths, ["src", "src/lib.py"])
+        self.assertEqual(
+            paths, [".agentic-template/source-ownership.json", "src", "src/lib.py"]
+        )
         self.assertNotIn(".agentic-template", paths)
         for seed_once in SEED_ONCE_PATHS:
             self.assertNotIn(seed_once.value, paths)
 
-    def test_tracked_symlink_is_recorded_as_dereferenced_file(self) -> None:
+    def test_declared_symlink_is_a_source_contract_violation(self) -> None:
         root = os.path.join(tempfile.mkdtemp(), "template")
         os.mkdir(root)
         with open(os.path.join(root, "lib.py"), "w", encoding="utf-8") as handle:
             _ = handle.write("present\n")
         os.symlink("lib.py", os.path.join(root, "alias.py"))
+        self._write_ownership(root, ("lib.py", "alias.py"))
         _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
         _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
-        entries = self._walk(root)
-        by_path = {entry.path.value: entry for entry in entries}
-        self.assertIn("alias.py", by_path)
-        self.assertEqual(by_path["alias.py"].kind, "file")
-        self.assertEqual(by_path["alias.py"].mode, PosixMode.FILE)
-        self.assertEqual(by_path["alias.py"].sha256, sha256_hex(b"present\n"))
+        match collect_template_source_entries(
+            root, managed_paths=set(), limits=DEFAULT_LIMITS
+        ):
+            case Err(error):
+                self.assertEqual(error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
+                self.assertEqual(error.subject, "alias.py")
+            case Ok(_):
+                self.fail("declared symlink should be refused")
 
-    def test_dangling_or_untracked_symlink_is_skipped(self) -> None:
+    def test_unlisted_symlinks_are_not_hashed(self) -> None:
         root = os.path.join(tempfile.mkdtemp(), "template")
         os.mkdir(root)
         with open(os.path.join(root, "lib.py"), "w", encoding="utf-8") as handle:
             _ = handle.write("present\n")
         os.symlink("missing.py", os.path.join(root, "broken.py"))
         os.symlink("lib.py", os.path.join(root, "loose.py"))
+        self._write_ownership(root, ("lib.py",))
         _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
         _ = subprocess.run(["git", "add", "lib.py", "broken.py"], cwd=root, check=True)
         entries = self._walk(root)
@@ -990,10 +1173,20 @@ class TemplateSourceWalkerTests(unittest.TestCase):
         self.assertNotIn("broken.py", paths)
         self.assertNotIn("loose.py", paths)
 
+    def test_unlisted_files_are_not_hashed_even_when_tracked(self) -> None:
+        root, _ = self._repo([("src/lib.py", "present\n")])
+        with open(os.path.join(root, "adopter.py"), "w", encoding="utf-8") as handle:
+            _ = handle.write("adopter\n")
+        _ = subprocess.run(["git", "add", "adopter.py"], cwd=root, check=True)
+        entries = self._walk(root)
+        paths = [entry.path.value for entry in entries]
+        self.assertNotIn("adopter.py", paths)
+        self.assertIn(".agentic-template/source-ownership.json", paths)
+
     def test_oversized_file_is_a_source_contract_violation(self) -> None:
-        root, _ = self._repo([("big.bin", "x" * 64)])
-        limits = ResourceLimits(max_file_bytes=16)
-        match _template_source_entries(root, managed_paths=set(), limits=limits):
+        root, _ = self._repo([("big.bin", "x" * 512)])
+        limits = ResourceLimits(max_file_bytes=256)
+        match collect_template_source_entries(root, managed_paths=set(), limits=limits):
             case Err(error):
                 self.assertEqual(error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
                 self.assertEqual(error.subject, "big.bin")
@@ -1002,7 +1195,7 @@ class TemplateSourceWalkerTests(unittest.TestCase):
 
     def test_path_and_unique_bytes_bounds_are_enforced(self) -> None:
         root, _ = self._repo([("a.txt", "a\n"), ("b.txt", "b\n"), ("c.txt", "c\n")])
-        match _template_source_entries(
+        match collect_template_source_entries(
             root, managed_paths=set(), limits=ResourceLimits(max_paths=2)
         ):
             case Err(error):
@@ -1010,7 +1203,7 @@ class TemplateSourceWalkerTests(unittest.TestCase):
                 self.assertEqual(error.subject, "paths")
             case Ok(_):
                 self.fail("path bound should be enforced")
-        match _template_source_entries(
+        match collect_template_source_entries(
             root, managed_paths=set(), limits=ResourceLimits(max_unique_bytes=4)
         ):
             case Err(error):

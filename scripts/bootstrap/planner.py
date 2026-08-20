@@ -1807,7 +1807,61 @@ def compile_reconcile_plan(
             return Err(error)
         case Ok(_):
             pass
-    match _build_trees(all_outputs, observed_files, observed_dirs, store):
+
+    new_inventory = _certified_inventory(new_render)
+    retired_values = set(recorded).difference(new_inventory)
+    retired_deletes: list[DeleteFileOperation] = []
+    planning_files = dict(observed_files)
+    for path_value in sorted(retired_values, key=lambda value: value.encode("utf-8")):
+        observed = observed_files.get(path_value)
+        if observed is None or not observed.state.present:
+            if path_value in observed_dirs:
+                return Err(_compile_error(CompileErrorKind.INVALID_TARGET, path_value))
+            continue
+        retired_deletes.append(
+            DeleteFileOperation(
+                path=RepoPath(path_value),
+                expected_old=observed.state,
+                planned_new=FileAbsent(),
+            )
+        )
+        _ = planning_files.pop(path_value, None)
+
+    retired_dir_removes: list[RemoveEmptyDirectoryOperation] = []
+    planning_dirs = dict(observed_dirs)
+    for output in all_outputs:
+        output_value = output.path.value
+        if output_value not in observed_dirs:
+            continue
+        retired_descendants = tuple(
+            value for value in retired_values if value.startswith(output_value + "/")
+        )
+        if not retired_descendants:
+            return Err(_compile_error(CompileErrorKind.INVALID_TARGET, output_value))
+        if any(
+            value.startswith(output_value + "/") and value not in retired_values
+            for value in observed_files
+        ):
+            return Err(_compile_error(CompileErrorKind.INVALID_TARGET, output_value))
+        for path_value in sorted(
+            (
+                value
+                for value in observed_dirs
+                if value == output_value or value.startswith(output_value + "/")
+            ),
+            key=lambda value: (-value.count("/"), value.encode("utf-8")),
+        ):
+            observed_dir = observed_dirs[path_value]
+            retired_dir_removes.append(
+                RemoveEmptyDirectoryOperation(
+                    path=observed_dir.path,
+                    expected_old=observed_dir.state,
+                    planned_new=DirectoryAbsent(),
+                )
+            )
+            _ = planning_dirs.pop(path_value, None)
+
+    match _build_trees(all_outputs, planning_files, planning_dirs, store):
         case Err(error):
             return Err(error)
         case Ok((tree_ops, covered_paths)):
@@ -1815,8 +1869,8 @@ def compile_reconcile_plan(
     match _classify_uncovered(
         all_outputs,
         covered_paths,
-        observed_files,
-        observed_dirs,
+        planning_files,
+        planning_dirs,
         store,
         refuse_present_old=False,
     ):
@@ -1825,7 +1879,9 @@ def compile_reconcile_plan(
         case Ok(plain_ops):
             pass
 
-    ordered_operations = tuple((*tree_ops, *plain_ops))
+    ordered_operations = tuple(
+        (*retired_deletes, *retired_dir_removes, *tree_ops, *plain_ops)
+    )
 
     planned_paths = _planned_paths(ordered_operations)
     match check_limit(LimitKind.PATHS, len(planned_paths), limits):

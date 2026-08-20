@@ -345,7 +345,26 @@ class TestRestoreDecisions:
         )
         assert isinstance(decision, RefuseMutation)
         assert isinstance(decision.error, TransitionError)
-        assert decision.error.kind == TransitionErrorKind.OPERATION_UNAVAILABLE
+        assert decision.error.kind == TransitionErrorKind.TEMPLATE_CHANGED
+        assert "repair snapshot baseline" in decision.error.subject
+        assert "source.txt" in decision.error.subject
+
+    def test_restore_preserves_snapshot_regeneration_guidance(self) -> None:
+        decision = decide_project(
+            RestoreIntent(RestoreOptions()),
+            _system_with(
+                SnapshotSourceUnrecoverable(
+                    SourceDelta((RepoPath("source.txt"),)),
+                    "recorded content differs at commit",
+                    ManagedVerified(),
+                )
+            ),
+        )
+        assert isinstance(decision, RefuseMutation)
+        assert isinstance(decision.error, TransitionError)
+        assert decision.error.kind == TransitionErrorKind.TEMPLATE_CHANGED
+        assert "regenerate from the current template" in decision.error.subject
+        assert "recorded content differs at commit" in decision.error.subject
 
     def test_snapshot_source_delta_names_exact_paths(self) -> None:
         condition = SnapshotSourceChanged(

@@ -14,9 +14,10 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import stat
 import sys
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Literal, NoReturn, cast, override
@@ -26,6 +27,7 @@ from scripts.bootstrap.bundles import (
     _BUNDLE_FILE,  # pyright: ignore[reportPrivateUsage]  shared bundle-path constant with the init executor
     HOOK_PATH,
     compile_initial_install,
+    decode_bundle,
     decode_bundle_input,
 )
 from scripts.bootstrap.canonical_json import canonical_json
@@ -82,6 +84,7 @@ from scripts.bootstrap.git_state import (
     run_git,
 )
 from scripts.bootstrap.identity import (
+    DirectoryEntry,
     DirectoryState,
     FileState,
     ManifestIdentity,
@@ -128,7 +131,7 @@ from scripts.bootstrap.observation import (
     _retained_cleanup_contract,  # pyright: ignore[reportPrivateUsage]  shared shell helpers with the mutation executor
     _scaffold_bytes,  # pyright: ignore[reportPrivateUsage]  shared shell helpers with the mutation executor
     _template_root,  # pyright: ignore[reportPrivateUsage]  shared shell helper with the command executors
-    _template_source_entries,  # pyright: ignore[reportPrivateUsage]  shared baseline helper with the lifecycle executor
+    collect_template_source_entries,
     observe_system,
     resolve_shell_target,
 )
@@ -142,11 +145,15 @@ from scripts.bootstrap.plan_digest import (
 )
 from scripts.bootstrap.planner import (
     CleanMaintenance,
+    CompileError,
+    CompileErrorKind,
     CreateFileOperation,
     CreateTreeOperation,
     DeleteFileOperation,
     DirectoryOperation,
+    ExpectedFile,
     ExpectedGatePass,
+    ExpectedTarget,
     FileOperation,
     ObservedDirectoryEntry,
     ObservedFileEntry,
@@ -159,6 +166,7 @@ from scripts.bootstrap.planner import (
     compile_reconcile_plan,
     compile_restore_plan,
     evaluate_expected,
+    evaluate_slot_readiness,
 )
 from scripts.bootstrap.presentation import (
     Change,
@@ -180,6 +188,7 @@ from scripts.bootstrap.process_effects import (
 )
 from scripts.bootstrap.readiness import (
     Finding,
+    gate_readiness,
 )
 from scripts.bootstrap.render import (
     LicensingInfo,
@@ -190,9 +199,13 @@ from scripts.bootstrap.render import (
 )
 from scripts.bootstrap.resolver import (
     resolve_bundle,
+    resolve_recorded_selection,
 )
 from scripts.bootstrap.result import Err, Ok, Result
-from scripts.bootstrap.source_baseline import derive_source_baseline
+from scripts.bootstrap.source_baseline import (
+    LifecycleSourceEntry,
+    derive_source_baseline,
+)
 from scripts.bootstrap.state import (
     CleanupContract,
     CleanupContractValid,
@@ -585,6 +598,27 @@ def _not_ready_diagnostics(
     )
 
 
+def _expected_target_from_snapshot(snapshot: TargetSnapshot) -> ExpectedTarget:
+    """Expose an observed target through the pure readiness boundary."""
+
+    return ExpectedTarget(
+        files=tuple(
+            ExpectedFile(
+                path=entry.path,
+                kind=entry.state.identity.kind,
+                mode=entry.state.mode,
+                content=entry.content,
+            )
+            for entry in snapshot.files
+            if entry.state.identity is not None and entry.state.mode is not None
+        ),
+        directories=tuple(
+            DirectoryEntry(entry.path, entry.state.root_mode)
+            for entry in snapshot.directories
+        ),
+    )
+
+
 def _hook_failure_diagnostics() -> tuple[Diagnostic, ...]:
     return _transition_diagnostic(
         code="BOOTSTRAP_HOOK_FAILED",
@@ -748,7 +782,7 @@ def _execute_mutation(
             return _result(command, outcome_for_error(error))
         case Ok(decoded):
             pass
-    match resolve_bundle(decoded.bundle):
+    match resolve_bundle(decode_bundle(decoded.document)):
         case Err(failure):
             return _result(
                 command,
@@ -1417,12 +1451,27 @@ def _recorded_render(
         **manifest.answers.settings,
         **manifest.additions.settings,
     }
+    match resolve_recorded_selection(
+        profile_id=manifest.answers.profile.id,
+        requested=manifest.answers.profile.requested,
+        additions=manifest.additions.requested,
+        settings=settings,
+    ):
+        case Err(failure):
+            return Err(
+                ContractError(
+                    ContractErrorKind.INCOMPATIBLE_CATALOG,
+                    f"{failure.kind.value}:{failure.subject}",
+                )
+            )
+        case Ok(selection):
+            pass
     match render_generation(
         generation_path=manifest.provenance.generation_path,
         core=core_definition(),
         definitions=capability_definitions(),
-        effective=manifest.additions.requested,
-        settings=MappingProxyType(dict(settings)),
+        effective=selection.effective,
+        settings=MappingProxyType(dict(selection.settings)),
         project=ProjectInfo(
             name=manifest.answers.project.name,
             default_branch=manifest.answers.project.default_branch,
@@ -1463,6 +1512,132 @@ def _manifest_identity(manifest: object) -> ManifestIdentity:
     )
 
 
+def _lifecycle_compile_error(command: str, error: CompileError) -> CommandError:
+    """Map plan compilation failures to their public lifecycle contract."""
+
+    if (
+        command in ("reconcile", "plan reconcile")
+        and error.kind is CompileErrorKind.RENDER_CONTRACT_VIOLATION
+        and error.subject == "managed_drift"
+    ):
+        return TransitionError(TransitionErrorKind.MANAGED_DRIFT, error.subject)
+    contract_kind = {
+        CompileErrorKind.CLEANUP_DISAGREEMENT: ContractErrorKind.CLEANUP_CONTRACT_INVALID,
+        CompileErrorKind.INVALID_MAINTENANCE: ContractErrorKind.CLEANUP_CONTRACT_INVALID,
+        CompileErrorKind.INVALID_MANIFEST: ContractErrorKind.INVALID_MANIFEST,
+        CompileErrorKind.INVALID_SOURCE_BASELINE: ContractErrorKind.SOURCE_CONTRACT_INVALID,
+        CompileErrorKind.PLAN_LIMIT_EXCEEDED: ContractErrorKind.PLAN_LIMIT_EXCEEDED,
+        CompileErrorKind.RENDER_CONTRACT_VIOLATION: ContractErrorKind.RENDER_CONTRACT_VIOLATION,
+    }.get(error.kind, ContractErrorKind.INVALID_OPERATION_PLAN)
+    return ContractError(contract_kind, error.subject)
+
+
+def _compile_lifecycle_plan(
+    parsed: ParsedCommand,
+    observation: SystemObservation,
+    *,
+    template_root: str,
+    limits: ResourceLimits,
+) -> Result[OperationPlan, CommandError]:
+    """Compile a lifecycle plan from one coherent observation."""
+
+    from scripts.bootstrap.manifest import CandidateManifest
+
+    if observation.pass_ is None:
+        return Err(
+            TransitionError(
+                TransitionErrorKind.OPERATION_UNAVAILABLE,
+                "lifecycle observation is unavailable",
+            )
+        )
+    match _decode_existing_manifest(observation.pass_):
+        case Err(error):
+            return Err(error)
+        case Ok(manifest):
+            manifest = cast(CandidateManifest, manifest)
+    source_before_render: tuple[LifecycleSourceEntry, ...] | None = None
+    if parsed.command in ("reconcile", "plan reconcile"):
+        match collect_template_source_entries(
+            template_root, managed_paths=set(), limits=limits
+        ):
+            case Err(error):
+                return Err(error)
+            case Ok(entries):
+                source_before_render = entries
+    match _recorded_render(manifest, limits):
+        case Err(error):
+            return Err(error)
+        case Ok(rendered):
+            pass
+    snapshot = _snapshot_from_pass(observation.pass_)
+    current_manifest = _manifest_identity(manifest)
+    source_baseline = manifest.provenance.source_baseline
+    generation = manifest.provenance.generation_path
+    maintenance = manifest.provenance.maintenance
+    if parsed.command in ("restore", "plan restore"):
+        requested = cast("Restore | PlanRestore", parsed.intent).options.paths
+        match compile_restore_plan(
+            generation=generation,
+            target_identity=observation.pass_.target,
+            answers=manifest.answers,
+            certified_render=rendered,
+            existing_inventory=manifest.managed,
+            current_manifest=current_manifest,
+            source_baseline=source_baseline,
+            snapshot=snapshot,
+            requested_paths=requested,
+            limits=limits,
+        ):
+            case Err(error):
+                return Err(_lifecycle_compile_error(parsed.command, error))
+            case Ok(plan):
+                return Ok(plan)
+
+    overwrite = cast("Reconcile | PlanReconcile", parsed.intent).options.overwrite_drift
+    match collect_template_source_entries(
+        template_root,
+        managed_paths={file.path for file in rendered},
+        limits=limits,
+    ):
+        case Err(error):
+            return Err(error)
+        case Ok(entries):
+            pass
+    if source_before_render is not None and source_before_render != entries:
+        return Err(
+            ContractError(
+                ContractErrorKind.SOURCE_CONTRACT_INVALID,
+                "source changed during lifecycle render",
+            )
+        )
+    match derive_source_baseline(generation, entries):
+        case Err(error):
+            return Err(
+                ContractError(ContractErrorKind.SOURCE_CONTRACT_INVALID, error.subject)
+            )
+        case Ok(new_source_baseline):
+            pass
+    match compile_reconcile_plan(
+        generation=generation,
+        target_identity=observation.pass_.target,
+        answers=manifest.answers,
+        existing_additions=manifest.additions,
+        new_render=rendered,
+        existing_inventory=manifest.managed,
+        old_source_baseline=source_baseline,
+        new_source_baseline=new_source_baseline,
+        old_manifest=current_manifest,
+        maintenance=maintenance,
+        snapshot=snapshot,
+        overwrite_drift=overwrite,
+        limits=limits,
+    ):
+        case Err(error):
+            return Err(_lifecycle_compile_error(parsed.command, error))
+        case Ok(plan):
+            return Ok(plan)
+
+
 def _execute_lifecycle(
     parsed: ParsedCommand,
     *,
@@ -1486,7 +1661,6 @@ def _execute_lifecycle(
         RestoreManaged,
         decide_project,
     )
-    from scripts.bootstrap.manifest import CandidateManifest
 
     command = parsed.command
     if command in ("add", "plan add"):
@@ -1532,111 +1706,15 @@ def _execute_lifecycle(
                 command,
                 outcome_for_error(CoreInternalFailure(InternalCode.IMPOSSIBLE_STATE)),
             )
-    assert observation.pass_ is not None
-
-    match _decode_existing_manifest(observation.pass_):
+    match _compile_lifecycle_plan(
+        parsed, observation, template_root=template_root, limits=limits
+    ):
         case Err(error):
             return _result(command, outcome_for_error(error))
-        case Ok(manifest):
-            manifest = cast(CandidateManifest, manifest)
-    match _recorded_render(manifest, limits):
-        case Err(error):
-            return _result(command, outcome_for_error(error))
-        case Ok(rendered):
+        case Ok(plan):
             pass
-    assert observation.pass_ is not None
-    snapshot = _snapshot_from_pass(observation.pass_)
-    current_manifest = _manifest_identity(manifest)
-    source_baseline = manifest.provenance.source_baseline
-    generation = manifest.provenance.generation_path
-    maintenance = manifest.provenance.maintenance
-    if command in ("restore", "plan restore"):
-        requested = cast("Restore | PlanRestore", parsed.intent).options.paths
-    else:
-        requested = ()
 
     is_planning = command in PLANNING_COMMANDS
-    if command in ("restore", "plan restore"):
-        match compile_restore_plan(
-            generation=generation,
-            target_identity=observation.pass_.target,
-            answers=manifest.answers,
-            certified_render=rendered,
-            existing_inventory=manifest.managed,
-            current_manifest=current_manifest,
-            source_baseline=source_baseline,
-            snapshot=snapshot,
-            requested_paths=requested,
-            limits=limits,
-        ):
-            case Err(error):
-                return _result(
-                    command,
-                    outcome_for_error(
-                        ContractError(
-                            ContractErrorKind.INVALID_OPERATION_PLAN, error.subject
-                        )
-                    ),
-                )
-            case Ok(plan):
-                pass
-    else:
-        overwrite = cast(
-            "Reconcile | PlanReconcile", parsed.intent
-        ).options.overwrite_drift
-        match _template_source_entries(
-            template_root,
-            managed_paths={file.path for file in rendered},
-            limits=limits,
-        ):
-            case Err(error):
-                return _result(command, outcome_for_error(error))
-            case Ok(entries):
-                pass
-        match derive_source_baseline(generation, entries):
-            case Err(error):
-                return _result(
-                    command,
-                    outcome_for_error(
-                        ContractError(
-                            ContractErrorKind.SOURCE_CONTRACT_INVALID, error.subject
-                        )
-                    ),
-                )
-            case Ok(new_source_baseline):
-                pass
-        match compile_reconcile_plan(
-            generation=generation,
-            target_identity=observation.pass_.target,
-            answers=manifest.answers,
-            existing_additions=manifest.additions,
-            new_render=rendered,
-            existing_inventory=manifest.managed,
-            old_source_baseline=source_baseline,
-            new_source_baseline=new_source_baseline,
-            old_manifest=current_manifest,
-            maintenance=maintenance,
-            snapshot=snapshot,
-            overwrite_drift=overwrite,
-            limits=limits,
-        ):
-            case Err(error):
-                return _result(
-                    command,
-                    outcome_for_error(
-                        ContractError(
-                            ContractErrorKind.INVALID_OPERATION_PLAN, error.subject
-                        )
-                    ),
-                )
-            case Ok(plan):
-                pass
-        if command == "reconcile" and overwrite and parsed.plan_path is not None:
-            match _verify_reconcile_receipt(parsed.plan_path, plan, limits):
-                case Err(error):
-                    return _result(command, outcome_for_error(error))
-                case Ok(_):
-                    pass
 
     if is_planning:
         receipt = build_receipt(plan)
@@ -1665,7 +1743,9 @@ def _execute_lifecycle(
             findings=(),
         )
 
-    return _run_lifecycle_transaction(command, plan, resolved, observation, limits)
+    return _run_lifecycle_transaction(
+        parsed, plan, resolved, observation, template_root, limits
+    )
 
 
 def _verify_reconcile_receipt(
@@ -1674,19 +1754,49 @@ def _verify_reconcile_receipt(
     """Bind a destructive overwrite to the preview receipt that authorized it."""
 
     absolute = os.path.abspath(plan_path)
+    no_follow = getattr(os, "O_NOFOLLOW", 0)
     try:
-        if os.path.getsize(absolute) > limits.max_file_bytes:
+        info = os.lstat(absolute)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            return Err(
+                UsageError(
+                    UsageErrorKind.INVALID_VALUE,
+                    "--plan must be a regular receipt file",
+                )
+            )
+        if info.st_size > limits.max_file_bytes:
             return Err(
                 UsageError(
                     UsageErrorKind.INVALID_VALUE,
                     "--plan exceeds the receipt size limit",
                 )
             )
-        with open(absolute, "rb") as handle:
-            raw = handle.read()
+        fd = os.open(absolute, os.O_RDONLY | no_follow)
+        with os.fdopen(fd, "rb") as handle:
+            opened = os.fstat(handle.fileno())
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or opened.st_nlink != 1
+                or opened.st_dev != info.st_dev
+                or opened.st_ino != info.st_ino
+            ):
+                return Err(
+                    UsageError(
+                        UsageErrorKind.INVALID_VALUE,
+                        "--plan must be a regular receipt file",
+                    )
+                )
+            raw = handle.read(limits.max_file_bytes + 1)
     except OSError as error:
         return Err(
             UsageError(UsageErrorKind.INVALID_VALUE, f"--plan unreadable: {error}")
+        )
+    if len(raw) > limits.max_file_bytes:
+        return Err(
+            UsageError(
+                UsageErrorKind.INVALID_VALUE,
+                "--plan exceeds the receipt size limit",
+            )
         )
     match decode_receipt(raw):
         case Err(_):
@@ -1717,12 +1827,14 @@ def _drive_transaction(
     *,
     findings: tuple[Finding, ...],
     decision_kind: str,
+    revalidate: Callable[[], Result[TargetSnapshot, TransactionError]] | None = None,
+    revalidation_public_error: list[CommandError | None] | None = None,
 ) -> CommandResult:
     """Drive the transaction machine for a compiled plan and present the outcome.
 
-    ``findings`` parameterizes the gate: the initial install refuses a completed
-    mutation when its own readiness is blocking, while lifecycle transitions
-    (restore, reconcile) gate only on the hook outcome.
+    ``findings`` parameterizes the final readiness result.  Lifecycle plans also
+    compare their expected blocking findings with the observed baseline before
+    acquiring the mutation lock.
     """
 
     worktree = resolved.worktree
@@ -1755,16 +1867,27 @@ def _drive_transaction(
                     )
                 ),
             )
-    if not plan.ordered_operations:
-        # A no-op plan needs no transaction: report the gate outcome and stop.
-        return _result(
-            command,
-            Succeeded(hook_evidence=NotAttempted(_hook_not_attempted_reason(command))),
-            state_document={"kind": "no_changes"},
-            decision_document={"kind": decision_kind},
-            changes=(),
-            findings=findings,
+    target_snapshot = _snapshot_from_pass(observation.pass_)
+    if plan.operation_kind in ("restore", "reconcile"):
+        baseline = evaluate_slot_readiness(
+            _expected_target_from_snapshot(target_snapshot)
         )
+        gate = gate_readiness(plan.operation_kind, baseline, readiness, readiness)
+        if not gate.allowed:
+            return _result(
+                command,
+                ActionRequired(
+                    _not_ready_diagnostics(readiness.blocking),
+                    hook_evidence=NotAttempted(
+                        "adopter hook: not attempted; readiness gate refused the candidate"
+                    ),
+                ),
+                state_document={"kind": "readiness_refused"},
+                decision_document={"kind": decision_kind},
+                changes=(),
+                findings=readiness.blocking,
+            )
+        findings = readiness.blocking
     compiled = CompiledTransaction.compile(
         plan,
         ExpectedGatePass(readiness),
@@ -1772,13 +1895,24 @@ def _drive_transaction(
         ownership_tokens=tokens,
     )
     resources = TransactionResources(
-        worktree=worktree, limits=limits, ownership_tokens=tokens
+        worktree=worktree,
+        limits=limits,
+        ownership_tokens=tokens,
+        revalidate=revalidate,
     )
     outcome = run_transaction_machine(compiled, resources)
     if resources.state_root_fd is not None:
         os.close(resources.state_root_fd)
     match outcome:
         case Stopped(error=error):
+            if (
+                revalidation_public_error is not None
+                and revalidation_public_error[0] is not None
+            ):
+                return _result(
+                    command,
+                    outcome_for_error(revalidation_public_error[0]),
+                )
             return _result(command, outcome_for_error(error))
         case Completed():
             pass
@@ -1791,7 +1925,9 @@ def _drive_transaction(
         return _result(
             command,
             Succeeded(hook_evidence=hook_evidence),
-            state_document={"kind": "installed"},
+            state_document={
+                "kind": "no_changes" if not plan.ordered_operations else "installed"
+            },
             decision_document={"kind": decision_kind},
             changes=tuple(
                 Change(
@@ -1826,27 +1962,125 @@ def _drive_transaction(
     )
 
 
+def _revalidate_lifecycle(
+    parsed: ParsedCommand,
+    plan: OperationPlan,
+    resolved: ResolvedShellTarget,
+    *,
+    template_root: str,
+    limits: ResourceLimits,
+    public_error: list[CommandError | None] | None = None,
+) -> Result[TargetSnapshot, TransactionError]:
+    """Re-observe and recompile a lifecycle plan while the transaction lock is held."""
+
+    from scripts.bootstrap.decisions import (
+        RefuseMutation,
+        RefusePlan,
+        decide_project,
+    )
+
+    match observe_system(
+        resolved, coherent=True, template_root=template_root, limits=limits
+    ):
+        case Err(error):
+            return Err(
+                TransactionError(
+                    TransactionErrorKind.PRECONDITION_CHANGED,
+                    subject=f"lifecycle observation: {error}",
+                )
+            )
+        case Ok(observation):
+            pass
+    match decide_project(cast(ProjectIntent, parsed.intent), observation.system):
+        case RefusePlan(error=error) | RefuseMutation(error=error):
+            return Err(
+                TransactionError(
+                    TransactionErrorKind.PRECONDITION_CHANGED,
+                    subject=f"lifecycle decision: {error}",
+                )
+            )
+        case _:
+            pass
+    match _compile_lifecycle_plan(
+        parsed, observation, template_root=template_root, limits=limits
+    ):
+        case Err(error):
+            return Err(
+                TransactionError(
+                    TransactionErrorKind.PRECONDITION_CHANGED,
+                    subject=f"lifecycle plan: {error}",
+                )
+            )
+        case Ok(fresh_plan):
+            pass
+    if (
+        parsed.command == "reconcile"
+        and cast("Reconcile", parsed.intent).options.overwrite_drift
+        and parsed.plan_path is not None
+    ):
+        match _verify_reconcile_receipt(parsed.plan_path, fresh_plan, limits):
+            case Err(error):
+                if public_error is not None:
+                    public_error[0] = error
+                return Err(
+                    TransactionError(
+                        TransactionErrorKind.PRECONDITION_CHANGED,
+                        subject=f"reconcile receipt: {error}",
+                    )
+                )
+            case Ok(_):
+                pass
+    if plan_receipt_digest(build_receipt(plan)) != plan_receipt_digest(
+        build_receipt(fresh_plan)
+    ):
+        return Err(
+            TransactionError(
+                TransactionErrorKind.PRECONDITION_CHANGED,
+                subject="lifecycle plan changed while acquiring the transaction lock",
+            )
+        )
+    if observation.pass_ is None:
+        return Err(
+            TransactionError(
+                TransactionErrorKind.PRECONDITION_CHANGED,
+                subject="lifecycle observation has no target pass",
+            )
+        )
+    return Ok(_snapshot_from_pass(observation.pass_))
+
+
 def _run_lifecycle_transaction(
-    command: str,
+    parsed: ParsedCommand,
     plan: OperationPlan,
     resolved: ResolvedShellTarget,
     observation: SystemObservation,
+    template_root: str,
     limits: ResourceLimits,
 ) -> CommandResult:
     """Drive the transaction machine for a compiled restore/reconcile plan.
 
-    Lifecycle transitions gate only on the hook outcome; the completed mutation
-    itself never reports blocking readiness findings.
+    Lifecycle transitions retain expected blocking findings and gate them with
+    the pre-transition readiness baseline before attempting the adopter hook.
     """
 
+    public_error: list[CommandError | None] = [None]
     return _drive_transaction(
-        command,
+        parsed.command,
         plan,
         resolved,
         observation,
         limits,
         findings=(),
         decision_kind="lifecycle",
+        revalidate=lambda: _revalidate_lifecycle(
+            parsed,
+            plan,
+            resolved,
+            template_root=template_root,
+            limits=limits,
+            public_error=public_error,
+        ),
+        revalidation_public_error=public_error,
     )
 
 

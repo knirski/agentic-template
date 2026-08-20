@@ -50,6 +50,13 @@ SEED_ONCE_PATHS: tuple[RepoPath, ...] = tuple(
 COPIER_ANSWERS_PATH = RepoPath(".copier-answers.yml")
 MAINTENANCE_INVENTORY_PATH = RepoPath(".agentic-template/maintenance-artifacts.json")
 SOURCE_OWNERSHIP_PATH = RepoPath(".agentic-template/source-ownership.json")
+_OWNERSHIP_ADMIN_ROOTS = (".git", ".agentic-template")
+_OWNERSHIP_RESERVED_PATHS = (
+    *SEED_ONCE_PATHS,
+    RepoPath("LICENSE"),
+    RepoPath("NOTICE.md"),
+    RepoPath("LICENSES/Apache-2.0.txt"),
+)
 
 # The directory-tree hash tag used for maintenance-inventory directory entries.
 _CLEANUP_TREE_KIND = b"cleanup/tree"
@@ -76,11 +83,13 @@ class CleanupInventory:
 class SourceOwnership:
     """The decoded fingerprinted source-ownership declaration.
 
-    ``snapshot_cleanup_paths`` is the finite source-only set excluded by
-    Copier and removed or explicitly retained by initial snapshot apply; it
-    must equal the maintenance inventory's path set.
+    ``lifecycle_paths`` is the declared source-owned set delivered to a
+    generated project.  ``snapshot_cleanup_paths`` is the finite source-only
+    set excluded by Copier and removed or explicitly retained by initial
+    snapshot apply; it must equal the maintenance inventory's path set.
     """
 
+    lifecycle_paths: tuple[RepoPath, ...]
     snapshot_cleanup_paths: tuple[RepoPath, ...]
 
 
@@ -193,41 +202,91 @@ def decode_cleanup_inventory(
 def decode_source_ownership(
     data: bytes,
 ) -> Result[SourceOwnership, CleanupContractMismatch]:
-    """Strictly decode the source-ownership declaration into sorted, unique paths."""
+    """Strictly decode and validate the source-ownership declaration.
+
+    Lifecycle and cleanup ownership are separate namespaces.  They may not
+    overlap or contain one another, and path ownership is case-distinct even
+    on case-sensitive filesystems so that the same declaration has one meaning
+    on every supported target.
+    """
 
     match _decode_document(
         data,
         document_path=SOURCE_OWNERSHIP_PATH,
         schema_version=SOURCE_OWNERSHIP_SCHEMA_VERSION,
-        keys=frozenset({"schema_version", "snapshot_cleanup_paths"}),
+        keys=frozenset({"schema_version", "lifecycle_paths", "snapshot_cleanup_paths"}),
     ):
         case Err(mismatch):
             return Err(mismatch)
         case Ok(value):
             pass
-    raw_paths = value.get("snapshot_cleanup_paths")
-    if not isinstance(raw_paths, list):
-        return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
-    paths: list[RepoPath] = []
-    seen: set[str] = set()
-    for raw_path in raw_paths:
-        if not isinstance(raw_path, str):
+
+    def decode_paths(field: str) -> Result[tuple[RepoPath, ...], None]:
+        raw_paths = value.get(field)
+        if not isinstance(raw_paths, list):
+            return Err(None)
+        paths: list[RepoPath] = []
+        seen: set[str] = set()
+        seen_casefolded: set[str] = set()
+        for raw_path in raw_paths:
+            if not isinstance(raw_path, str):
+                return Err(None)
+            match parse_path(raw_path):
+                case Err(_):
+                    return Err(None)
+                case Ok(path):
+                    pass
+            if (
+                path in _OWNERSHIP_RESERVED_PATHS
+                or path
+                in (
+                    MANIFEST_PATH,
+                    MAINTENANCE_INVENTORY_PATH,
+                    SOURCE_OWNERSHIP_PATH,
+                )
+                or any(
+                    path.value == root or path.value.startswith(root + "/")
+                    for root in _OWNERSHIP_ADMIN_ROOTS
+                )
+            ):
+                return Err(None)
+            if path.value in seen or path.value.casefold() in seen_casefolded:
+                return Err(None)
+            seen.add(path.value)
+            seen_casefolded.add(path.value.casefold())
+            paths.append(path)
+        return Ok(tuple(sorted(paths, key=lambda path: path.value.encode("utf-8"))))
+
+    match decode_paths("lifecycle_paths"):
+        case Err(_):
             return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
-        match parse_path(raw_path):
-            case Err(_):
+        case Ok(lifecycle_paths):
+            pass
+    match decode_paths("snapshot_cleanup_paths"):
+        case Err(_):
+            return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
+        case Ok(snapshot_cleanup_paths):
+            pass
+
+    for paths in (lifecycle_paths, snapshot_cleanup_paths):
+        for index, path in enumerate(paths):
+            normalized = path.value.casefold()
+            if any(
+                other.value.casefold().startswith(normalized + "/")
+                or normalized.startswith(other.value.casefold() + "/")
+                for other in paths[index + 1 :]
+            ):
                 return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
-            case Ok(path):
-                pass
-        if path.value in seen or path in (
-            MANIFEST_PATH,
-            MAINTENANCE_INVENTORY_PATH,
-            SOURCE_OWNERSHIP_PATH,
-        ):
-            return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
-        seen.add(path.value)
-        paths.append(path)
-    paths.sort(key=lambda path: path.value.encode("utf-8"))
-    return Ok(SourceOwnership(tuple(paths)))
+    for lifecycle_path in lifecycle_paths:
+        lifecycle_value = lifecycle_path.value.casefold()
+        for cleanup_path in snapshot_cleanup_paths:
+            if (
+                lifecycle_value == cleanup_path.value.casefold()
+                or lifecycle_value.startswith(cleanup_path.value.casefold() + "/")
+                or cleanup_path.value.casefold().startswith(lifecycle_value + "/")
+            ):
+                return Err(CleanupContractMismatch((SOURCE_OWNERSHIP_PATH,)))
+    return Ok(SourceOwnership(lifecycle_paths, snapshot_cleanup_paths))
 
 
 def cleanup_directory_digest(

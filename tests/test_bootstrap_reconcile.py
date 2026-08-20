@@ -14,6 +14,7 @@ from scripts.bootstrap.decisions import (
 from scripts.bootstrap.errors import TransitionError, TransitionErrorKind
 from scripts.bootstrap.identity import (
     ManifestIdentity,
+    PosixMode,
     sha256_hex,
     target_identity,
 )
@@ -42,7 +43,10 @@ from scripts.bootstrap.planner import (
     RECONCILE_OPERATION_KIND,
     CompileErrorKind,
     CreateTreeOperation,
+    DeleteFileOperation,
+    OperationPlan,
     ReadinessRule,
+    RemoveEmptyDirectoryOperation,
     TargetSnapshot,
     compile_reconcile_plan,
 )
@@ -109,6 +113,82 @@ def _manifest(seed: bytes) -> ManifestIdentity:
 
 
 class TestCompileReconcilePlan:
+    @staticmethod
+    def _transition_render(path: str, content: bytes) -> tuple[ManagedFile, ...]:
+        return (ManagedFile(RepoPath(path), "text", PosixMode.FILE, content),)
+
+    def _compile_transition(
+        self,
+        old_render: tuple[ManagedFile, ...],
+        new_render: tuple[ManagedFile, ...],
+    ) -> OperationPlan:
+        result = compile_reconcile_plan(
+            generation=GenerationPath.COPIER,
+            target_identity=TARGET,
+            answers=_fixture_answers(),
+            existing_additions=ManifestAdditions(),
+            new_render=new_render,
+            existing_inventory=derive_managed_inventory(old_render),
+            old_source_baseline=_source_baseline(b"old"),
+            new_source_baseline=_source_baseline(b"new"),
+            old_manifest=_manifest(b"old"),
+            maintenance=MaintenanceRecord(status="clean"),
+            snapshot=_observed(old_render),
+            limits=DEFAULT_LIMITS,
+        )
+        assert isinstance(result, Ok), result
+        return result.value
+
+    def test_reconcile_retires_file_before_creating_tree(self) -> None:
+        plan = self._compile_transition(
+            self._transition_render("foo", b"old"),
+            self._transition_render("foo/bar", b"new"),
+        )
+        assert isinstance(plan.ordered_operations[0], DeleteFileOperation)
+        assert plan.ordered_operations[0].path == RepoPath("foo")
+        assert any(
+            isinstance(operation, CreateTreeOperation)
+            for operation in plan.ordered_operations
+        )
+
+    def test_reconcile_removes_empty_tree_before_creating_file(self) -> None:
+        plan = self._compile_transition(
+            self._transition_render("foo/bar", b"old"),
+            self._transition_render("foo", b"new"),
+        )
+        assert isinstance(plan.ordered_operations[0], DeleteFileOperation)
+        assert plan.ordered_operations[0].path == RepoPath("foo/bar")
+        assert any(
+            operation.path == RepoPath("foo")
+            for operation in plan.ordered_operations
+            if isinstance(operation, RemoveEmptyDirectoryOperation)
+        )
+
+    def test_reconcile_deletes_retired_managed_output(self) -> None:
+        old_render, _blobs = _render_for(())
+        new_render = old_render[:-1]
+        result = compile_reconcile_plan(
+            generation=GenerationPath.COPIER,
+            target_identity=TARGET,
+            answers=_fixture_answers(),
+            existing_additions=ManifestAdditions(),
+            new_render=new_render,
+            existing_inventory=derive_managed_inventory(old_render),
+            old_source_baseline=_source_baseline(b"old"),
+            new_source_baseline=_source_baseline(b"new"),
+            old_manifest=_manifest(b"old"),
+            maintenance=MaintenanceRecord(status="clean"),
+            snapshot=_observed(old_render),
+            limits=DEFAULT_LIMITS,
+        )
+        assert isinstance(result, Ok), result
+        deleted = {
+            operation.path
+            for operation in result.value.ordered_operations
+            if isinstance(operation, DeleteFileOperation)
+        }
+        assert deleted == {old_render[-1].path}
+
     def test_reconcile_advances_source_baseline(self) -> None:
         managed, _blobs = _render_for(())
         inventory = derive_managed_inventory(managed)

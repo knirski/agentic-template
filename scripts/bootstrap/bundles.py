@@ -32,7 +32,7 @@ from scripts.bootstrap.manifest import (
     SlotContent,
 )
 from scripts.bootstrap.observation import (
-    _template_source_entries,  # pyright: ignore[reportPrivateUsage]  shared baseline helper with the cli shell
+    collect_template_source_entries,
 )
 from scripts.bootstrap.paths import RepoPath, parse_path
 from scripts.bootstrap.planner import (
@@ -418,7 +418,7 @@ def compile_initial_install(
             )
         case Ok(managed):
             pass
-    match _template_source_entries(
+    match collect_template_source_entries(
         template_root,
         managed_paths={file.path for file in managed},
         limits=limits,

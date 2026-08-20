@@ -136,6 +136,23 @@ from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
 
 _CANONICAL_REMOTE = "github.com/knirski/agentic-template"
 _SCP_REMOTE = re.compile(r"^(?:[^@]+@)?(?P<host>[^:/]+):(?P<path>.+)$")
+_GENERATED_SOURCE_NAMES = frozenset(
+    {
+        ".coverage",
+        ".direnv",
+        ".hypothesis",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".venv",
+        "__pycache__",
+        "result",
+    }
+)
+# Repository-local integration aliases are deliberately outside the generated
+# project contract.  They may contain symlinks, while all captured project
+# paths remain regular, no-follow objects.
+_NON_PROJECT_ROOTS = frozenset({".claude"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -476,13 +493,19 @@ def _source_delta(
     entries: tuple[LifecycleSourceEntry, ...],
     files: Mapping[RepoPath, CapturedFile],
     directories: Mapping[RepoPath, CapturedDirectory],
+    *,
+    include_current_declarations: bool = True,
 ) -> SourceDelta:
-    """Name baseline entries whose observed presence, mode, or digest differs.
+    """Name changed baseline entries and, when requested, new source paths.
 
     File entries compare the raw digest of the observed bytes; directory entries
     compare presence and mode, because a directory's recorded tree digest cannot
-    be re-derived from the bounded pass.  A path reported by several entries is
-    named once.
+    be re-derived from the bounded pass.  Copier source updates use the current
+    ownership declaration to add newly observed descendants to the comparison
+    set, so a source addition cannot hide outside the previous baseline.  Snapshot
+    repair disables that extension: its recorded ownership entry is the only
+    authority, preventing a changed declaration from reclassifying adopter files.
+    A path reported by several entries is named once.
     """
 
     changed: set[RepoPath] = set()
@@ -499,6 +522,24 @@ def _source_delta(
             observed = directories.get(entry.path)
             if observed is None or observed.mode != entry.mode:
                 changed.add(entry.path)
+
+    ownership_file = files.get(SOURCE_OWNERSHIP_PATH)
+    if include_current_declarations and ownership_file is not None:
+        match decode_source_ownership(ownership_file.content):
+            case Err(_):
+                pass
+            case Ok(ownership):
+                baseline_paths = {entry.path for entry in entries}
+                current_paths: set[RepoPath] = {SOURCE_OWNERSHIP_PATH}
+                for path in (*files.keys(), *directories.keys()):
+                    if path == SOURCE_OWNERSHIP_PATH or path in SEED_ONCE_PATHS:
+                        continue
+                    if any(
+                        path == root or path.value.startswith(root.value + "/")
+                        for root in ownership.lifecycle_paths
+                    ):
+                        current_paths.add(path)
+                changed.update(current_paths - baseline_paths)
     return SourceDelta(sorted_paths(changed))
 
 
@@ -512,7 +553,12 @@ def _snapshot_condition(
     path_bytes_at_commit: Callable[[RepoPath], bytes | None],
 ) -> SnapshotCondition:
     entries = manifest.provenance.source_baseline.entries
-    delta = _source_delta(entries, files, directories)
+    delta = _source_delta(
+        entries,
+        files,
+        directories,
+        include_current_declarations=False,
+    )
     if not delta.paths:
         return SnapshotSourceSame(managed)
     if not commit_reachable():
@@ -520,7 +566,19 @@ def _snapshot_condition(
             delta, "recorded snapshot commit is not reachable", managed
         )
     for path in delta.paths:
-        entry = next(item for item in entries if item.path == path)
+        entry = next((item for item in entries if item.path == path), None)
+        if entry is None:
+            # A newly declared path was absent from the recorded baseline.  A
+            # missing object at the recorded commit is sufficient evidence that
+            # targeted repair removes it; a present object indicates a baseline
+            # that cannot be reconstructed from its own inventory.
+            if path_bytes_at_commit(path) is not None:
+                return SnapshotSourceUnrecoverable(
+                    delta,
+                    f"present at the recorded commit: {path.value}",
+                    managed,
+                )
+            continue
         if entry.kind != "file":
             return SnapshotSourceUnrecoverable(
                 delta,
@@ -667,6 +725,8 @@ def _capture_tree(
         for name in names:
             child_abs = os.path.join(directory, name)
             child_rel = f"{relative}/{name}" if relative else name
+            if not relative and name in _NON_PROJECT_ROOTS:
+                continue
             if child_abs == git_dir or child_abs.startswith(git_dir + os.sep):
                 continue
             try:
@@ -705,11 +765,17 @@ def _capture_tree(
                     case Ok(_):
                         pass
                 continue
-            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            if not stat.S_ISREG(info.st_mode):
                 return Err(
                     ObservationError(
                         ObservationErrorKind.PATH_MISSING,
                         f"{child_rel} is not a regular file",
+                    )
+                )
+            if info.st_nlink != 1:
+                return Err(
+                    ObservationError(
+                        ObservationErrorKind.HARDLINK_ENCOUNTERED, child_rel
                     )
                 )
             if len(directories) + len(files) >= limits.max_paths:
@@ -924,212 +990,281 @@ def _cleanup_observation(
     )
 
 
-_GENERATED_STATE_DIRECTORIES = frozenset(
-    {
-        ".venv",
-        "__pycache__",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".hypothesis",
-        ".mypy_cache",
-        ".tox",
-        ".nox",
-        "node_modules",
-        "target",
-        "mutants",
-    }
-)
-
-
-def _template_source_entries(  # pyright: ignore[reportUnusedFunction] — shared baseline helper, imported by the cli shell
+def collect_template_source_entries(
     template_root: str,
     *,
     managed_paths: AbstractSet[RepoPath],
     limits: ResourceLimits,
 ) -> Result[tuple[LifecycleSourceEntry, ...], ContractError]:
-    """Inventory the retained template source a generated project receives.
+    """Inventory only the source paths authorized by source ownership.
 
-    The walk records every file and directory the template delivers as source:
-    it excludes the git directory, the ``.agentic-template`` state subtree, the
-    declared snapshot-cleanup paths, the seed-once slots, and bootstrap-managed
-    render outputs, and it bounds every dimension like the target capture.
-    File entries carry the raw content digest and a canonicalized mode
-    (umask-independent, as in the cleanup observation); directory entries carry
-    an opaque per-path digest because a recorded tree digest cannot be
-    re-derived from the bounded pass.
+    Git is deliberately absent from this boundary: the declaration is the
+    authority, so an adopter-owned tracked file cannot silently become part of
+    the lifecycle baseline.  Every owned symlink and hardlink is rejected, and
+    file reads are descriptor-bound so a source change cannot turn a checked
+    regular file into a different object between stat and read.
     """
 
-    cleanup_values: set[str] = set()
     ownership_abs = os.path.join(template_root, SOURCE_OWNERSHIP_PATH.value)
     try:
-        with open(ownership_abs, "rb") as handle:
-            ownership_bytes = handle.read(limits.max_file_bytes + 1)
-    except OSError:
-        ownership_bytes = None
-    if ownership_bytes is not None and len(ownership_bytes) <= limits.max_file_bytes:
-        match decode_source_ownership(ownership_bytes):
-            case Err(_):
-                pass
-            case Ok(ownership):
-                cleanup_values = {
-                    path.value for path in ownership.snapshot_cleanup_paths
-                }
-    exact_excluded = {path.value for path in (*SEED_ONCE_PATHS, *managed_paths)}
-    # The source baseline records the template's tracked source: generated and
-    # environment state that git ignores (virtualenvs, caches) is not source.
-    # A git worktree supplies the tracked set directly; without git, a fixed
-    # generated-state denylist keeps the walk bounded to declared source.
-    tracked: set[str] | None = None
-    match run_git(("ls-files", "-z"), cwd=os.fsencode(template_root)):
-        case Ok(result) if result.returncode == 0:
-            tracked = {value for value in result.stdout.decode().split("\0") if value}
-        case _:
-            tracked = None
-    entries: list[LifecycleSourceEntry] = []
-    total_bytes = 0
-
-    def under_cleanup(value: str) -> bool:
-        return any(
-            value == path or value.startswith(path + "/") for path in cleanup_values
+        ownership_info = os.lstat(ownership_abs)
+    except OSError as error:
+        return Err(
+            ContractError(
+                ContractErrorKind.SOURCE_CONTRACT_INVALID,
+                f"{SOURCE_OWNERSHIP_PATH.value}: {error.strerror or error}",
+            )
         )
-
-    def visit(directory: str, relative: str) -> Result[None, ContractError]:
-        nonlocal total_bytes
-        try:
-            with os.scandir(directory) as iterator:
-                names = sorted(entry.name for entry in iterator)
-        except OSError as error:
+    if not stat.S_ISREG(ownership_info.st_mode) or ownership_info.st_nlink != 1:
+        return Err(
+            ContractError(
+                ContractErrorKind.SOURCE_CONTRACT_INVALID,
+                SOURCE_OWNERSHIP_PATH.value,
+            )
+        )
+    try:
+        ownership_fd = os.open(
+            ownership_abs, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        )
+        with os.fdopen(ownership_fd, "rb") as handle:
+            ownership_bytes = handle.read(limits.max_file_bytes + 1)
+    except OSError as error:
+        return Err(
+            ContractError(
+                ContractErrorKind.SOURCE_CONTRACT_INVALID,
+                f"{SOURCE_OWNERSHIP_PATH.value}: {error.strerror or error}",
+            )
+        )
+    if len(ownership_bytes) > limits.max_file_bytes:
+        return Err(
+            ContractError(
+                ContractErrorKind.SOURCE_CONTRACT_INVALID,
+                SOURCE_OWNERSHIP_PATH.value,
+            )
+        )
+    match decode_source_ownership(ownership_bytes):
+        case Err(_):
             return Err(
                 ContractError(
                     ContractErrorKind.SOURCE_CONTRACT_INVALID,
-                    f"{relative or '.'}: {error.strerror or error}",
+                    SOURCE_OWNERSHIP_PATH.value,
                 )
             )
+        case Ok(ownership):
+            pass
+
+    entries: list[LifecycleSourceEntry] = []
+    seen: set[str] = set()
+    total_bytes = 0
+    reserved_paths = {path.value for path in (*SEED_ONCE_PATHS, *managed_paths)}
+
+    def source_error(path: str) -> ContractError:
+        return ContractError(ContractErrorKind.SOURCE_CONTRACT_INVALID, path)
+
+    def add_entry(entry: LifecycleSourceEntry) -> Result[None, ContractError]:
+        if entry.path.value in seen:
+            return Err(source_error(entry.path.value))
+        if len(entries) >= limits.max_paths:
+            return Err(source_error("paths"))
+        seen.add(entry.path.value)
+        entries.append(entry)
+        return Ok(None)
+
+    def read_file(
+        path: str, relative: str
+    ) -> Result[tuple[os.stat_result, bytes], ContractError]:
+        nonlocal total_bytes
+        try:
+            before = os.lstat(path)
+        except OSError as error:
+            return Err(source_error(f"{relative}: {error.strerror or error}"))
+        if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+            return Err(source_error(relative))
+        if before.st_nlink != 1:
+            return Err(source_error(relative))
+        if before.st_size > limits.max_file_bytes:
+            return Err(source_error(relative))
+        try:
+            fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            with os.fdopen(fd, "rb") as handle:
+                after = os.fstat(handle.fileno())
+                if (
+                    not stat.S_ISREG(after.st_mode)
+                    or after.st_nlink != 1
+                    or after.st_dev != before.st_dev
+                    or after.st_ino != before.st_ino
+                    or after.st_size > limits.max_file_bytes
+                ):
+                    return Err(source_error(relative))
+                content = handle.read(limits.max_file_bytes + 1)
+                after_read = os.fstat(handle.fileno())
+        except OSError as error:
+            return Err(source_error(f"{relative}: {error.strerror or error}"))
+        if (
+            len(content) > limits.max_file_bytes
+            or not stat.S_ISREG(after_read.st_mode)
+            or after_read.st_nlink != 1
+            or after_read.st_dev != before.st_dev
+            or after_read.st_ino != before.st_ino
+            or after_read.st_size > limits.max_file_bytes
+        ):
+            return Err(source_error(relative))
+        if total_bytes + len(content) > limits.max_unique_bytes:
+            return Err(source_error("unique_bytes"))
+        total_bytes += len(content)
+        return Ok((after_read, content))
+
+    def skip_generated(relative: str) -> bool:
+        return any(
+            part in _GENERATED_SOURCE_NAMES or part.endswith((".pyc", ".pyo"))
+            for part in relative.split("/")
+        )
+
+    def skip_reserved(relative: str) -> bool:
+        return any(
+            relative == path or relative.startswith(path + "/")
+            for path in reserved_paths
+        )
+
+    def visit(directory: str, relative: str) -> Result[None, ContractError]:
+        if skip_generated(relative):
+            return Ok(None)
+        try:
+            info = os.lstat(directory)
+        except OSError as error:
+            return Err(source_error(f"{relative}: {error.strerror or error}"))
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+            return Err(source_error(relative))
+        if relative and not skip_reserved(relative):
+            match parse_path(relative):
+                case Err(_):
+                    return Err(source_error(relative))
+                case Ok(path):
+                    pass
+            match add_entry(
+                LifecycleSourceEntry(
+                    path=path,
+                    kind="directory",
+                    mode=PosixMode.DIRECTORY,
+                    sha256=sha256_hex(b"template/source/dir:" + os.fsencode(relative)),
+                )
+            ):
+                case Err(error):
+                    return Err(error)
+                case Ok(_):
+                    pass
+        try:
+            names = sorted(os.listdir(directory))
+        except OSError as error:
+            return Err(source_error(f"{relative}: {error.strerror or error}"))
         for name in names:
+            child_relative = f"{relative}/{name}" if relative else name
             child_abs = os.path.join(directory, name)
-            child_rel = f"{relative}/{name}" if relative else name
-            if child_rel == ".git" or child_rel == ".agentic-template":
+            if child_relative == ".git" or child_relative == ".agentic-template":
+                continue
+            if skip_reserved(child_relative):
+                continue
+            if skip_generated(child_relative):
                 continue
             try:
-                info = os.stat(child_abs, follow_symlinks=False)
+                child_info = os.lstat(child_abs)
             except OSError as error:
-                return Err(
-                    ContractError(
-                        ContractErrorKind.SOURCE_CONTRACT_INVALID,
-                        f"{child_rel}: {error.strerror or error}",
-                    )
-                )
-            if stat.S_ISLNK(info.st_mode):
-                # Snapshots copy a tracked symlink as a regular file with its
-                # dereferenced content; record that content as a file entry.
-                # A dangling or untracked link contributes no source bytes.
-                if tracked is not None and child_rel not in tracked:
-                    continue
-                try:
-                    dereferenced = os.stat(child_abs)
-                except OSError:
-                    continue
-                if not stat.S_ISREG(dereferenced.st_mode):
-                    continue
-                info = dereferenced
-            elif stat.S_ISDIR(info.st_mode):
-                if name in _GENERATED_STATE_DIRECTORIES:
-                    continue
-                if tracked is not None and not any(
-                    value.startswith(child_rel + "/") for value in tracked
-                ):
-                    continue
-                if under_cleanup(child_rel):
-                    continue
-                if len(entries) >= limits.max_paths:
-                    return Err(
-                        ContractError(
-                            ContractErrorKind.SOURCE_CONTRACT_INVALID, "paths"
-                        )
-                    )
-                match parse_path(child_rel):
-                    case Err(_):
-                        return Err(
-                            ContractError(
-                                ContractErrorKind.SOURCE_CONTRACT_INVALID, child_rel
-                            )
-                        )
-                    case Ok(path):
-                        pass
-                entries.append(
-                    LifecycleSourceEntry(
-                        path=path,
-                        kind="directory",
-                        mode=PosixMode.DIRECTORY,
-                        sha256=sha256_hex(
-                            b"template/source/dir:" + os.fsencode(child_rel)
-                        ),
-                    )
-                )
-                match visit(child_abs, child_rel):
+                return Err(source_error(f"{child_relative}: {error.strerror or error}"))
+            if stat.S_ISLNK(child_info.st_mode):
+                return Err(source_error(child_relative))
+            if stat.S_ISDIR(child_info.st_mode):
+                match visit(child_abs, child_relative):
                     case Err(error):
                         return Err(error)
                     case Ok(_):
                         pass
                 continue
-            elif not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-                return Err(
-                    ContractError(
-                        ContractErrorKind.SOURCE_CONTRACT_INVALID,
-                        f"{child_rel} is not a regular file",
-                    )
-                )
-            if tracked is not None and child_rel not in tracked:
-                continue
-            if child_rel in exact_excluded or under_cleanup(child_rel):
-                continue
-            if info.st_size > limits.max_file_bytes:
-                return Err(
-                    ContractError(ContractErrorKind.SOURCE_CONTRACT_INVALID, child_rel)
-                )
-            total_bytes += info.st_size
-            if total_bytes > limits.max_unique_bytes:
-                return Err(
-                    ContractError(
-                        ContractErrorKind.SOURCE_CONTRACT_INVALID, "unique_bytes"
-                    )
-                )
-            if len(entries) >= limits.max_paths:
-                return Err(
-                    ContractError(ContractErrorKind.SOURCE_CONTRACT_INVALID, "paths")
-                )
-            try:
-                with open(child_abs, "rb") as handle:
-                    content = handle.read()
-            except OSError as error:
-                return Err(
-                    ContractError(
-                        ContractErrorKind.SOURCE_CONTRACT_INVALID,
-                        f"{child_rel}: {error.strerror or error}",
-                    )
-                )
-            match parse_path(child_rel):
+            match read_file(child_abs, child_relative):
+                case Err(error):
+                    return Err(error)
+                case Ok((file_info, content)):
+                    pass
+            match parse_path(child_relative):
                 case Err(_):
-                    return Err(
-                        ContractError(
-                            ContractErrorKind.SOURCE_CONTRACT_INVALID, child_rel
-                        )
-                    )
+                    return Err(source_error(child_relative))
                 case Ok(path):
                     pass
-            entries.append(
+            match add_entry(
                 LifecycleSourceEntry(
                     path=path,
                     kind="file",
                     mode=(
-                        PosixMode.EXECUTABLE if info.st_mode & 0o100 else PosixMode.FILE
+                        PosixMode.EXECUTABLE
+                        if file_info.st_mode & 0o100
+                        else PosixMode.FILE
                     ),
                     sha256=sha256_hex(content),
                 )
-            )
+            ):
+                case Err(error):
+                    return Err(error)
+                case Ok(_):
+                    pass
         return Ok(None)
 
-    match visit(template_root, ""):
+    for declared_path in ownership.lifecycle_paths:
+        absolute = os.path.join(template_root, declared_path.value)
+        if skip_reserved(declared_path.value):
+            continue
+        try:
+            info = os.lstat(absolute)
+        except OSError as error:
+            return Err(
+                source_error(f"{declared_path.value}: {error.strerror or error}")
+            )
+        if stat.S_ISLNK(info.st_mode):
+            return Err(source_error(declared_path.value))
+        if stat.S_ISDIR(info.st_mode):
+            match visit(absolute, declared_path.value):
+                case Err(error):
+                    return Err(error)
+                case Ok(_):
+                    pass
+        else:
+            match read_file(absolute, declared_path.value):
+                case Err(error):
+                    return Err(error)
+                case Ok((file_info, content)):
+                    pass
+            match add_entry(
+                LifecycleSourceEntry(
+                    path=declared_path,
+                    kind="file",
+                    mode=(
+                        PosixMode.EXECUTABLE
+                        if file_info.st_mode & 0o100
+                        else PosixMode.FILE
+                    ),
+                    sha256=sha256_hex(content),
+                )
+            ):
+                case Err(error):
+                    return Err(error)
+                case Ok(_):
+                    pass
+
+    match read_file(ownership_abs, SOURCE_OWNERSHIP_PATH.value):
+        case Err(error):
+            return Err(error)
+        case Ok((ownership_info, ownership_content)):
+            pass
+    match add_entry(
+        LifecycleSourceEntry(
+            path=SOURCE_OWNERSHIP_PATH,
+            kind="file",
+            mode=(
+                PosixMode.EXECUTABLE
+                if ownership_info.st_mode & 0o100
+                else PosixMode.FILE
+            ),
+            sha256=sha256_hex(ownership_content),
+        )
+    ):
         case Err(error):
             return Err(error)
         case Ok(_):
@@ -1196,10 +1331,12 @@ def _retained_cleanup_contract(  # pyright: ignore[reportUnusedFunction] — sha
 
 def _snapshot_evidence(
     worktree: ResolvedGitWorktree,
+    *,
+    snapshot_commit: str | None = None,
 ) -> tuple[Callable[[], bool], Callable[[RepoPath], bytes | None]]:
     """Lazy Git-backed snapshot-repair evidence providers."""
 
-    commit_cache: str | None = None
+    commit_cache: str | None = snapshot_commit
     reachable_cache: bool | None = None
 
     def recorded_commit() -> str | None:
@@ -1289,7 +1426,40 @@ def observe_system(
     if isinstance(journal, NoJournal):
         worktree = resolved.worktree
         assert worktree is not None  # supported environments always carry one
-        reachable, path_bytes = _snapshot_evidence(worktree)
+        manifest_decoded = (
+            decode_manifest(files[MANIFEST_PATH].content)
+            if MANIFEST_PATH in files
+            else None
+        )
+        if MANIFEST_PATH in files and SOURCE_OWNERSHIP_PATH in files:
+            match manifest_decoded:
+                case Err(_):
+                    pass
+                case Ok(_):
+                    match decode_source_ownership(files[SOURCE_OWNERSHIP_PATH].content):
+                        case Err(_):
+                            return Err(
+                                ContractError(
+                                    ContractErrorKind.SOURCE_CONTRACT_INVALID,
+                                    SOURCE_OWNERSHIP_PATH.value,
+                                )
+                            )
+                        case Ok(_):
+                            pass
+                case None:
+                    pass
+        snapshot_commit: str | None = None
+        if manifest_decoded is not None:
+            match manifest_decoded:
+                case Ok(manifest):
+                    baseline = manifest.provenance.source_baseline
+                    if isinstance(baseline, GitHubSourceBaseline):
+                        snapshot_commit = baseline.snapshot_commit
+                case Err(_):
+                    pass
+        reachable, path_bytes = _snapshot_evidence(
+            worktree, snapshot_commit=snapshot_commit
+        )
         project = classify_project_observation(
             copier_answers=(
                 files[COPIER_ANSWERS_PATH].content

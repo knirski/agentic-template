@@ -159,6 +159,18 @@ class TestVerifyReconcileReceipt:
             assert result.error.kind == UsageErrorKind.INVALID_VALUE
             assert "--plan is not a valid receipt" in result.error.subject
 
+    def test_symlink_receipt_path_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="agentic-template-reconcile.") as raw:
+            receipt = Path(raw) / "plan.json"
+            target = Path(raw) / "target.json"
+            _ = target.write_bytes(encode_receipt(build_receipt(_plan())))
+            receipt.symlink_to(target)
+            result = _verify_reconcile_receipt(str(receipt), _plan(), DEFAULT_LIMITS)
+            assert isinstance(result, Err)
+            assert isinstance(result.error, UsageError)
+            assert result.error.kind == UsageErrorKind.INVALID_VALUE
+            assert "regular receipt file" in result.error.subject
+
 
 def _as_copier_project(project: Path) -> None:
     """Rewrite an activated GitHub project as a Copier project on disk.
