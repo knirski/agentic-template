@@ -154,6 +154,39 @@ class TestCompileRestorePlan:
         }
         assert restored == {managed[0].path.value}
 
+    def test_restore_normalizes_requested_paths(self) -> None:
+        managed, _blobs = render_for((), GenerationPath.GITHUB)
+        first, second = managed[:2]
+        inventory = derive_managed_inventory(managed)
+        snapshot = observed_snapshot(
+            managed,
+            drift={first.path.value: b"a\n", second.path.value: b"b\n"},
+        )
+
+        result = compile_restore_plan(
+            generation=GenerationPath.GITHUB,
+            target_identity=TARGET,
+            answers=fixture_answers(),
+            certified_render=managed,
+            existing_inventory=inventory,
+            current_manifest=_current_manifest(),
+            source_baseline=github_source_baseline(),
+            snapshot=snapshot,
+            requested_paths=(second.path, first.path, first.path),
+            limits=DEFAULT_LIMITS,
+        )
+
+        assert isinstance(result, Ok)
+        restored = [
+            operation.path.value
+            for operation in result.value.ordered_operations
+            if isinstance(operation, (CreateFileOperation, ReplaceFileOperation))
+        ]
+        assert restored == sorted(
+            {first.path.value, second.path.value},
+            key=lambda value: value.encode("utf-8"),
+        )
+
     def test_restore_refuses_unmanaged_path(self) -> None:
         managed, _blobs = render_for((), GenerationPath.GITHUB)
         inventory = derive_managed_inventory(managed)

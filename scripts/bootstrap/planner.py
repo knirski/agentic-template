@@ -1566,10 +1566,16 @@ def compile_restore_plan(
 
     selected: tuple[RepoPath, ...]
     if requested_paths:
-        for path in requested_paths:
+        normalized_paths = tuple(
+            sorted(
+                set(requested_paths),
+                key=lambda path: path.value.encode("utf-8"),
+            )
+        )
+        for path in normalized_paths:
             if path.value not in recorded:
                 return Err(_compile_error(CompileErrorKind.INVALID_TARGET, path.value))
-        selected = requested_paths
+        selected = normalized_paths
     else:
         drifted: list[RepoPath] = []
         for value, entry in recorded.items():
