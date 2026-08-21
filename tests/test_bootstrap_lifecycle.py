@@ -235,6 +235,12 @@ def test_reconcile_binds_receipt_in_process() -> None:
         # both lifecycle inventories must exclude it as declaratively managed.
         unselected_artifact = project / ".releaserc"
         _ = unselected_artifact.write_bytes((ROOT / ".releaserc").read_bytes())
+        adopter_validation = project / ".github/workflows/project-validation.yml"
+        _ = adopter_validation.write_text(
+            adopter_validation.read_text(encoding="utf-8")
+            + "\n# adopter customization\n",
+            encoding="utf-8",
+        )
         source = project / "docs/agents/domain.md"
         _ = source.write_text("drifted source\n", encoding="utf-8")
         managed = project / test_source_bootstrap.CORE_CI_PATH
@@ -257,6 +263,9 @@ def test_reconcile_binds_receipt_in_process() -> None:
         assert receipt.exists()
         assert source.read_text(encoding="utf-8") == "drifted source\n"
         assert unselected_artifact.read_bytes() == (ROOT / ".releaserc").read_bytes()
+        assert "# adopter customization" in adopter_validation.read_text(
+            encoding="utf-8"
+        )
 
         # The matching preview binds execution and repairs the managed drift.
         _ = managed.write_bytes(b"adopter edit\n")

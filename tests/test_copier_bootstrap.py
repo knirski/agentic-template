@@ -4,7 +4,9 @@
 Copies the tracked source tree, overlays the canonical seed-once scaffold (the
 source does not yet ship ``CONTRIBUTING.md`` and the extensionless hook; T20
 completes that transition), runs ``copier copy``, and installs supplied and
-all-scaffold bundles through the generated project's own CLI entry point.
+all-scaffold bundles through the generated project's own CLI entry point.  The
+adopter-owned project-validation workflow is excluded from Copier, seeded by
+bootstrap, and checked for preservation during a Copier update.
 """
 
 from __future__ import annotations
@@ -176,6 +178,47 @@ def main() -> int:
             return 1
         if len(record.read_text(encoding="utf-8").splitlines()) != 1:
             print("Copier bootstrap apply hook count != 1", file=sys.stderr)
+            return 1
+        project_validation = project / ".github/workflows/project-validation.yml"
+        if not project_validation.is_file():
+            print(
+                "Copier bootstrap did not seed project-validation.yml", file=sys.stderr
+            )
+            return 1
+        _ = project_validation.write_text(
+            project_validation.read_text(encoding="utf-8")
+            + "\n# adopter customization\n",
+            encoding="utf-8",
+        )
+        committed = run(["git", "-C", str(project), "add", "-A"])
+        if committed.returncode:
+            print(committed.stdout + committed.stderr, file=sys.stderr)
+            return committed.returncode
+        committed = run(
+            [
+                "git",
+                "-C",
+                str(project),
+                "-c",
+                "user.email=test@example.invalid",
+                "-c",
+                "user.name=Copier Bootstrap Test",
+                "commit",
+                "-m",
+                "adopter customization",
+            ]
+        )
+        if committed.returncode:
+            print(committed.stdout + committed.stderr, file=sys.stderr)
+            return committed.returncode
+        updated = run([*command, "update", "--defaults"], cwd=project)
+        if updated.returncode:
+            print(updated.stdout + updated.stderr, file=sys.stderr)
+            return updated.returncode
+        if "# adopter customization" not in project_validation.read_text(
+            encoding="utf-8"
+        ):
+            print("Copier update overwrote project-validation.yml", file=sys.stderr)
             return 1
         second = workspace / "project-scaffold"
         result = run(

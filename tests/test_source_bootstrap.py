@@ -102,6 +102,10 @@ def test_maintainer_only_jobs_are_excluded_from_generated_projects() -> None:
     assert set(CLEANUP_PATHS) == set(cleanup_paths)
     assert set(CLEANUP_PATHS) <= excludes
     assert ".agentic-template/maintenance-artifacts.json" in excludes
+    assert ".github/workflows/project-validation.yml" in excludes
+    assert ".github/workflows/project-validation.yml" not in set(
+        cast(list[str], source_ownership["lifecycle_paths"])
+    )
 
     managed_documents = {
         "docs/capabilities.md",
@@ -341,14 +345,18 @@ def test_apply_compiles_selected_capability_workflows() -> None:
         compiled = render_for(_resolved_effective(bundle))
         workflow_names = {
             ".github/workflows/ci.yml",
+            ".github/workflows/project-validation.yml",
             ".github/workflows/semantic-release.yml",
             ".github/workflows/nix.yml",
             ".github/workflows/cachix-publish.yml",
             ".github/workflows/pr-agent.yml",
             ".github/workflows/pr-agent-commands.yml",
         }
-        assert workflow_names <= set(compiled)
-        for relative in workflow_names:
+        managed_workflows = workflow_names - {
+            ".github/workflows/project-validation.yml"
+        }
+        assert managed_workflows <= set(compiled)
+        for relative in managed_workflows:
             assert (project / relative).read_bytes() == compiled[relative], relative
         # Exactly the selected workflow set and no more: the maintainer-only
         # workflows must never leak into an adopter's .github/workflows.

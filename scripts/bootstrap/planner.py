@@ -63,6 +63,7 @@ from scripts.bootstrap.render import (
     derive_managed_inventory,
 )
 from scripts.bootstrap.result import Err, Ok, Result
+from scripts.bootstrap.scaffold import SEED_ONCE_SLOTS
 from scripts.bootstrap.source_baseline import (
     LifecycleSourceEntry,
     SourceBaseline,
@@ -559,12 +560,12 @@ def _validate_slot_coverage(
 ) -> Result[None, CompileError]:
     """Require the declared slots to match the seed inputs and their marker contract."""
     rule_slots = {rule.slot: rule for rule in SLOT_PLACEHOLDER_RULES}
-    if set(answers.slots) != set(rule_slots):
+    if set(answers.slots) != set(SEED_ONCE_SLOTS):
         return Err(_compile_error(CompileErrorKind.INVALID_TARGET, "slots"))
     legal_paths = legal_output_paths(answers.licensing.mode)
     if legal_paths is None:
         return Err(_compile_error(CompileErrorKind.INVALID_TARGET, "licensing.mode"))
-    declared_paths = {rule.path for rule in SLOT_PLACEHOLDER_RULES} | set(legal_paths)
+    declared_paths = set(SEED_ONCE_SLOTS.values()) | set(legal_paths)
     seed_paths = {seed.path for seed in seed_once}
     if seed_paths != declared_paths:
         subject = sorted(
@@ -585,6 +586,18 @@ def _validate_slot_coverage(
             and sha256_hex(planned) != content.content_sha256
         ):
             return Err(_compile_error(CompileErrorKind.INVALID_TARGET, rule.path.value))
+    for slot, path in SEED_ONCE_SLOTS.items():
+        if slot in rule_slots:
+            continue
+        content = answers.slots[slot]
+        planned = blobs.get(by_path[path.value].content_id)
+        if planned is None:
+            return Err(_compile_error(CompileErrorKind.MISSING_BLOB, path.value))
+        if (
+            content.content_sha256 is not None
+            and sha256_hex(planned) != content.content_sha256
+        ):
+            return Err(_compile_error(CompileErrorKind.INVALID_TARGET, path.value))
     license_digest = answers.licensing.content_sha256
     if license_digest is not None:
         license_seed = by_path.get("LICENSE")

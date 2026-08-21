@@ -46,10 +46,17 @@ from scripts.bootstrap.vocabulary import (
 MANIFEST_SCHEMA_VERSION = 1
 MANIFEST_PATH = RepoPath(".agentic-template/project.json")
 
-# The five content slots of the bootstrap input bundle; their installed paths and
-# placeholder markers are fixed by the design's declared-placeholder-marker table.
+# The six content slots of the bootstrap input bundle; five installed paths have
+# placeholder markers and the project-validation workflow has a fixed scaffold.
 SLOT_IDS = frozenset(
-    {"readme", "prd", "security_policy", "contributing", "validation_hook"}
+    {
+        "readme",
+        "prd",
+        "security_policy",
+        "contributing",
+        "validation_hook",
+        "project_validation",
+    }
 )
 
 

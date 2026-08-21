@@ -63,23 +63,9 @@ permissions:
 jobs:
   project-validation:
     name: Project validation
-    runs-on: ubuntu-latest
-    env:
-      AGENTIC_TEMPLATE_SOURCE_REPOSITORY: knirski/agentic-template
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - name: Set up uv and Python 3.14
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-        with:
-          version: "0.12.1"
-          python-version: "3.14"
-          enable-cache: true
-      - name: Validate generated-project contract
-        if: github.repository != 'knirski/agentic-template'
-        run: uv run --python 3.14 scripts/validate_repository.py
+    permissions:
+      contents: read
+    uses: ./.github/workflows/project-validation.yml
 
   delivery-contract:
     name: Delivery contract

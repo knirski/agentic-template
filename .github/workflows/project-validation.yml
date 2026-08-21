@@ -1,24 +1,14 @@
-name: CI
+name: Project validation
 
 on:
-  pull_request:
-  push:
-    branches:
-      - "main"
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
 jobs:
-  project-validation:
+  validate:
     name: Project validation
-    permissions:
-      contents: read
-    uses: ./.github/workflows/project-validation.yml
-
-  delivery-contract:
-    name: Delivery contract
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -31,5 +21,5 @@ jobs:
           version: "0.12.1"
           python-version: "3.14"
           enable-cache: true
-      - name: Validate generic delivery files
-        run: uv run --python 3.14 scripts/validate_template.py
+      - name: Validate repository
+        run: uv run --python 3.14 scripts/validate_repository.py

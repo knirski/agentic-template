@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Validate active CI and release topology for project validation.
 
-The source ``ci.yml`` is the compiled portable baseline: it carries the stable
-project-validation and delivery-contract jobs and never emits capability
-artifacts.  The release graph is compiled output -- pinned by
-``tests/test_capability_matrix.py`` -- and the reusable release workflow
-fixture is checked here for its eligibility gate.  This script stays
+The source ``ci.yml`` is the compiled portable baseline: its stable
+project-validation job delegates to the adopter-owned reusable workflow, while
+delivery-contract remains in managed CI.  The release graph is compiled output
+-- pinned by ``tests/test_capability_matrix.py`` -- and the reusable release
+workflow fixture is checked here for its eligibility gate.  This script stays
 stdlib-only so the flake's bare-python repository-validation lane can run it.
 """
 
@@ -17,6 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / ".github/workflows/ci.yml"
+PROJECT_VALIDATION = ROOT / ".github/workflows/project-validation.yml"
 MAINTAINER_WORKFLOW = ROOT / ".github/workflows/template-ci.yml"
 RELEASE = ROOT / "scripts/fixtures/workflows/semantic-release.yml"
 
@@ -32,14 +33,22 @@ def main() -> int:
     project_job = workflow.split("  project-validation:\n", 1)[-1].split(
         "\n  delivery-contract:\n", 1
     )[0]
-    if "name: Project validation" not in workflow:
+    validation_workflow = PROJECT_VALIDATION.read_text(encoding="utf-8")
+    if "name: Project validation" not in project_job:
         fail("project-validation must expose the stable Project validation check name")
-    if "uv run --python 3.14 scripts/validate_repository.py" not in project_job:
-        fail(
-            "generated mode must invoke uv run --python 3.14 scripts/validate_repository.py"
-        )
-    if "AGENTIC_TEMPLATE_SOURCE_REPOSITORY: knirski/agentic-template" not in workflow:
-        fail("source identity constant is missing")
+    if "uses: ./.github/workflows/project-validation.yml" not in project_job:
+        fail("managed CI must call the adopter-owned project-validation workflow")
+    if "runs-on:" in project_job or "steps:" in project_job or "run:" in project_job:
+        fail("managed CI must not inline the project-validation implementation")
+    if "on:\n  workflow_call:" not in validation_workflow:
+        fail("project-validation workflow must expose workflow_call")
+    if "uv run --python 3.14 scripts/validate_repository.py" not in validation_workflow:
+        fail("project-validation workflow must invoke the canonical validator")
+    if (
+        "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+        not in validation_workflow
+    ):
+        fail("project-validation workflow must check out the repository")
     if (
         "pull_request:" not in workflow
         or "workflow_dispatch:" not in workflow
@@ -50,28 +59,26 @@ def main() -> int:
         )
     if "pull_request_target" in workflow:
         fail("project validation must not use pull_request_target")
-    if re.search(r"continue-on-error:\s*true", project_job):
+    if re.search(r"continue-on-error:\s*true", validation_workflow):
         fail("project validation cannot tolerate failure")
-    if re.search(r"^\s+environment:", project_job, re.M):
+    if re.search(r"^\s+environment:", validation_workflow, re.M):
         fail("project validation cannot attach an environment")
-    if re.search(r"secrets\.", project_job):
+    if re.search(r"secrets\.", validation_workflow):
         fail("project validation cannot receive secrets")
-    if "runs-on: ubuntu-latest" not in project_job:
+    if "runs-on: ubuntu-latest" not in validation_workflow:
         fail("project validation must use ubuntu-latest")
-    if "persist-credentials: false" not in project_job:
+    if "persist-credentials: false" not in validation_workflow:
         fail("project validation checkout must not persist credentials")
-    if re.search(r"^\s+ref:", project_job, re.M):
+    if re.search(r"^\s+ref:", validation_workflow, re.M):
         fail("project validation must not override checkout ref")
-    if re.search(r"permissions:.*write", project_job, re.S):
+    if re.search(r"permissions:.*write", validation_workflow, re.S):
         fail("project validation must not have write permissions")
-    if re.search(r"if:.*always\(\)", project_job):
+    if re.search(r"if:.*always\(\)", validation_workflow):
         fail("project validation must not bypass failed dependencies")
     if "\n  release:" in workflow:
         fail("the portable baseline must not emit a release job")
     if "needs:" in workflow:
         fail("the portable baseline must not gate any job on a release graph")
-    if "github.repository != 'knirski/agentic-template'" not in project_job:
-        fail("portable validation must exclude the template source repository")
     if "release-eligibility" not in release:
         fail(
             "the reusable release workflow must retain the branch-tip eligibility check"

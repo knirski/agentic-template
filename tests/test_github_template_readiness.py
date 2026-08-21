@@ -366,6 +366,7 @@ BOOTSTRAP_MANAGED_DOCUMENTS = frozenset(
         "docs/template-updates.md",
     }
 )
+ADOPTER_OWNED_OUTPUTS = frozenset({".github/workflows/project-validation.yml"})
 
 
 class SourceContractTests(unittest.TestCase):
@@ -386,7 +387,10 @@ class SourceContractTests(unittest.TestCase):
         )
         self.assertEqual(
             excludes,
-            maintenance | BOOTSTRAP_MANAGED_DOCUMENTS | COPIER_SAFETY_EXCLUSIONS,
+            maintenance
+            | BOOTSTRAP_MANAGED_DOCUMENTS
+            | ADOPTER_OWNED_OUTPUTS
+            | COPIER_SAFETY_EXCLUSIONS,
             "_exclude must cover maintenance, managed-document, and safety sets",
         )
 

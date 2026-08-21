@@ -101,7 +101,7 @@ def test_release_automated_profile_emits_the_release_graph() -> None:
     ci = rendered[CORE_CI_PATH].decode("utf-8")
     assert 'needs: ["project-validation", "delivery-contract"]' in ci
     assert "github.ref_name == github.event.repository.default_branch" in ci
-    assert "github.repository != 'knirski/agentic-template'" in ci
+    assert "uses: ./.github/workflows/project-validation.yml" in ci
     for absent in (
         "flake.nix",
         "flake.lock",
