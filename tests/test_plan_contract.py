@@ -51,7 +51,7 @@ def execution_invariant_failures(task: dict[str, object]) -> tuple[str, ...]:
 
     Pure on purpose: it is exercised both against the real `plan.json` (ground
     truth) and against synthetic shapes (so the tracker branch is covered even
-    though the legacy plan only uses inline mode). The rules mirror what
+    though the current plan only uses inline mode). The rules mirror what
     `spec-plan` documents, narrowed to what the real plan data actually follows:
 
     inline mode:
@@ -69,7 +69,7 @@ def execution_invariant_failures(task: dict[str, object]) -> tuple[str, ...]:
     but this validator does NOT require them. The real plan data is historically
     inconsistent here (-- T4 uses `commit` singular string, T5-T8 omit it --)
     and the load-bearing proof of completion is `evidence`, which IS required.
-    Enforcing `commits` would fail on legacy data for no cycle-coverage gain.
+    Enforcing `commits` would fail on existing data for no cycle-coverage gain.
 
     Returns a tuple of human-readable failures (empty means valid).
     """
@@ -163,7 +163,7 @@ class PlanContractTests(unittest.TestCase):
         #
         # The canonical plan predates `new_abstractions` (added by upstream
         # spec-plan v3.1.0), so it legitimately lacks that key. Pinning the
-        # exact legacy shape would reject any FUTURE plan.json that follows
+        # exact existing shape would reject any FUTURE plan.json that follows
         # the documented contract, so assert the positional contract instead:
         # the canonical keys in order, with an optional `new_abstractions`
         # between `files` and `validation` when present.

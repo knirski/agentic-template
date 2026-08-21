@@ -39,7 +39,7 @@ follow-up gate), and until then the seed-once files ship in the Copier copy so t
 project carries its own scaffold, with Copier's merge and conflict handling preserving adopter
 edits during updates.
 
-Future adopting projects upgrade the template through `copier update`: Copier delivers
+Future Copier-generated projects upgrade the template through `copier update`: Copier delivers
 generated-lifecycle source updates, bootstrap reconciles the derived managed output on the
 Copier path, and the adopter's seed-once files remain preserved.
 

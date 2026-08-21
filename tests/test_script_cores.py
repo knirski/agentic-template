@@ -72,7 +72,7 @@ class FunctionalCoreTests(unittest.TestCase):
             prd=(VALID_PRD, Path("docs/prd.md")),
             readme=(VALID_README, Path("README.md")),
             hook=readiness.HookState(
-                path=Path("scripts/validate_project.py"),
+                path=Path("scripts/validate-project"),
                 exists=True,
                 regular_file=True,
                 executable=True,
@@ -84,7 +84,7 @@ class FunctionalCoreTests(unittest.TestCase):
     def test_non_regular_hook_reports_the_regular_file_code(self) -> None:
         findings = readiness.evaluate_hook(
             readiness.HookState(
-                path=Path("scripts/validate_project.py"),
+                path=Path("scripts/validate-project"),
                 exists=True,
                 regular_file=False,
                 executable=False,

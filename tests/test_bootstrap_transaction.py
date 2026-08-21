@@ -839,7 +839,7 @@ class TestPlanSnapshotCapture:
         plan = _plan(
             (
                 RemoveEmptyDirectoryOperation(
-                    path=RepoPath("docs/specs/2026-08-03-project-readiness"),
+                    path=RepoPath("docs/specs/archive/2026-08-03-project-readiness"),
                     expected_old=DirectoryState(PosixMode.DIRECTORY, ()),
                     planned_new=DirectoryAbsent(),
                 ),
@@ -873,7 +873,8 @@ class TestPlanSnapshotCapture:
             observed_dirs = {entry.path for entry in snapshot.directories}
             assert RepoPath("docs/specs") not in observed_dirs
             assert (
-                RepoPath("docs/specs/2026-08-03-project-readiness") not in observed_dirs
+                RepoPath("docs/specs/archive/2026-08-03-project-readiness")
+                not in observed_dirs
             )
 
 

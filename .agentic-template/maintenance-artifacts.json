@@ -48,7 +48,7 @@
     {
       "kind": "directory",
       "path": "docs/specs",
-      "sha256": "0bac8e9cbd9974966042a41bf8a87375cc34972c1f9fdfb5fb107f1f46e83d6c"
+      "sha256": "510a8e4e8aa9f2e3074e35f6c4954e41cd8cb3b649e3d1bce031d01e6a2f572e"
     },
     {
       "kind": "file",
@@ -68,7 +68,7 @@
     {
       "kind": "directory",
       "path": "tests",
-      "sha256": "4759ce50ce21bda89e94d219efd39839cbcdb77b6c9fd24e7a693814abd1bcc6"
+      "sha256": "5e5817f40e60a74e68b6d428802867bc9804ba12d5809c880c712df3e4edefe4"
     },
     {
       "kind": "file",

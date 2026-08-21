@@ -1,6 +1,6 @@
 """Source-tree integrated-fixture wiring (T16).
 
-The apply pipeline compiles per-profile CI as managed output, so adopting
+The apply pipeline compiles per-profile CI as managed output, so generated
 projects receive exactly the workflow files for their selected profile and
 drift in the managed CI is detected by the standard ``status`` machinery
 (``restore`` is the later lifecycle task).  The source's own committed
@@ -217,7 +217,7 @@ def _activate_source(
     capability_settings: dict[str, dict[str, str | bool]] | None = None,
     retain_maintenance: bool = False,
 ) -> tuple[Path, Path]:
-    """Copy the tracked source, overlay the scaffold, and apply one bundle.
+    """Copy the tracked source, overlay remaining scaffold slots, and apply one bundle.
 
     With ``retain_maintenance`` the apply keeps the maintenance inventory (the
     documented ``--leave-maintenance-artifacts`` repair path).

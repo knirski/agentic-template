@@ -23,7 +23,7 @@ class Repository:
 type SubjectAt = SubjectPath | Repository
 
 
-@dataclass(frozen=True, slots=True, init=False)
+@dataclass(frozen=True, slots=True)
 class Finding:
     code: str
     subject_at: SubjectAt
@@ -33,49 +33,13 @@ class Finding:
     message: str
     next_action: object
 
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        # Keep the original four-argument adapter contract while exposing the
-        # structured seven-field core contract to new callers.
-        if len(args) == 4 and not kwargs:
-            code, path, message, next_action = args
-            subject_at: SubjectAt = (
-                Repository() if str(path) == "" else SubjectPath(str(path))
-            )
-            subject = str(path)
-            rule = str(code)
-            severity: Severity = "blocking"
-        else:
-            code = kwargs.pop("code", args[0] if len(args) > 0 else None)
-            # The legacy 4-arg adapter is intentionally dynamic: the isinstance
-            # narrowing at lines 57-62 enforces the SubjectAt/Severity contract
-            # at runtime, so pyright cannot see the guarantee through `.pop()`.
-            subject_at = kwargs.pop("subject_at", args[1] if len(args) > 1 else None)  # pyright: ignore[reportAssignmentType]
-            subject = kwargs.pop("subject", args[2] if len(args) > 2 else None)
-            rule = kwargs.pop("rule", args[3] if len(args) > 3 else None)
-            severity = kwargs.pop("severity", args[4] if len(args) > 4 else "blocking")  # pyright: ignore[reportAssignmentType]
-            message = kwargs.pop("message", args[5] if len(args) > 5 else None)
-            next_action = kwargs.pop("next_action", args[6] if len(args) > 6 else None)
-            if kwargs:
-                raise TypeError(f"unexpected Finding fields: {tuple(kwargs)}")
-            if isinstance(subject_at, Path):
-                subject_at = SubjectPath(subject_at.as_posix())
-            if not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
-                subject_at, (SubjectPath, Repository)
-            ):
-                raise TypeError(  # pyright: ignore[reportUnreachable] — the 4-arg adapter contract is enforced here at runtime
-                    "subject_at must be SubjectPath or Repository"
-                )
-            if severity not in ("blocking", "informational"):
-                raise TypeError(  # pyright: ignore[reportUnreachable] — the severity contract is enforced here at runtime
-                    "severity must be blocking or informational"
-                )
-        object.__setattr__(self, "code", str(code))
-        object.__setattr__(self, "subject_at", subject_at)
-        object.__setattr__(self, "subject", str(subject))
-        object.__setattr__(self, "rule", str(rule))
-        object.__setattr__(self, "severity", severity)
-        object.__setattr__(self, "message", str(message))
-        object.__setattr__(self, "next_action", next_action)
+    def __post_init__(self) -> None:
+        if not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance] — runtime contract guard
+            self.subject_at, (SubjectPath, Repository)
+        ):
+            raise TypeError("subject_at must be SubjectPath or Repository")
+        if self.severity not in ("blocking", "informational"):
+            raise TypeError("severity must be blocking or informational")
 
     @property
     def path(self) -> Path:
