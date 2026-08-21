@@ -31,6 +31,9 @@ from scripts.bootstrap.manifest import (
     ProjectFacts,
     SlotContent,
 )
+from scripts.bootstrap.observation import (
+    collect_template_source_entries,
+)
 from scripts.bootstrap.paths import RepoPath, parse_path
 from scripts.bootstrap.planner import (
     CleanMaintenance,
@@ -415,6 +418,15 @@ def compile_initial_install(
             )
         case Ok(managed):
             pass
+    match collect_template_source_entries(
+        template_root,
+        managed_paths={file.path for file in managed},
+        limits=limits,
+    ):
+        case Err(error):
+            return Err(error)
+        case Ok(source_entries):
+            pass
     match compile_initial_plan(
         generation=generation,
         target_identity=target_identity,
@@ -423,7 +435,7 @@ def compile_initial_install(
         seed_once=seed_once,
         managed=managed,
         blobs=blobs,
-        source_entries=(),
+        source_entries=source_entries,
         snapshot_commit=snapshot_commit,
         maintenance=maintenance,
         cleanup=cleanup,

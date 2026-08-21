@@ -474,12 +474,29 @@ def _restore_for_condition(
     match condition:
         case SnapshotSourceSame() | CopierSourceSame():
             return _accept_restore(intent)
-        case (
-            SnapshotSourceChanged()
-            | SnapshotSourceUnrecoverable()
-            | CopierConflicted()
-            | CopierSourceChanged()
-        ):
+        case SnapshotSourceChanged(delta=delta, repair=repair):
+            return _refuse_for(
+                intent,
+                _transition(
+                    TransitionErrorKind.TEMPLATE_CHANGED,
+                    "repair snapshot baseline "
+                    + repair.commit
+                    + " for "
+                    + ",".join(path.value for path in delta.paths),
+                ),
+            )
+        case SnapshotSourceUnrecoverable(delta=delta, reason=reason):
+            return _refuse_for(
+                intent,
+                _transition(
+                    TransitionErrorKind.TEMPLATE_CHANGED,
+                    "regenerate from the current template; "
+                    + reason
+                    + "; paths: "
+                    + ",".join(path.value for path in delta.paths),
+                ),
+            )
+        case CopierConflicted() | CopierSourceChanged():
             return _refuse_for(
                 intent, _transition(TransitionErrorKind.OPERATION_UNAVAILABLE)
             )

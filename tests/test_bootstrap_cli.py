@@ -19,19 +19,27 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import cast, override
+from typing import cast, get_type_hints, override
 from unittest.mock import patch
 
 from scripts.bootstrap.canonical_json import canonical_json
 from scripts.bootstrap.cli import (
     ParsedCommand,
+    _decode_existing_manifest,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper type contract
     _init_failure,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
+    _manifest_identity,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper type contract
+    _recorded_render,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper type contract
     execute_command,
     main,
     parse_argv,
 )
 from scripts.bootstrap.diagnostics import RecoveryFailure
-from scripts.bootstrap.errors import ErrnoClass, TransactionError, TransactionPrimitive
+from scripts.bootstrap.errors import (
+    CommandError,
+    ErrnoClass,
+    TransactionError,
+    TransactionPrimitive,
+)
 from scripts.bootstrap.identity import PosixMode, TargetIdentity
 from scripts.bootstrap.journal import (
     JournalEnvelope,
@@ -41,17 +49,29 @@ from scripts.bootstrap.journal import (
     encode_journal,
     new_transaction_id,
 )
+from scripts.bootstrap.manifest import CandidateManifest
 from scripts.bootstrap.plan_digest import PlanReceipt, reconstruct_plan
 from scripts.bootstrap.presentation import (
     CommandResult,
     render_json,
     render_text,
 )
-from scripts.bootstrap.result import Err, Ok
+from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.transaction import derive_preparation_specs, derive_preparations
 from scripts.bootstrap.values import JournalPhase
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_lifecycle_manifest_helpers_preserve_candidate_type() -> None:
+    decode_annotations = get_type_hints(_decode_existing_manifest)
+    recorded_annotations = get_type_hints(_recorded_render)
+    identity_annotations = get_type_hints(_manifest_identity)
+
+    assert decode_annotations["return"] == Result[CandidateManifest, CommandError]
+    assert recorded_annotations["manifest"] is CandidateManifest
+    assert identity_annotations["manifest"] is CandidateManifest
+
 
 SCAFFOLD_README = "# Placeholder\n\n<!-- agentic-template:placeholder:readme -->\n"
 SCAFFOLD_PRD = "# Product\n\n<!-- agentic-template:placeholder:prd -->\n"
@@ -109,11 +129,25 @@ class TemplatePackage:
             ("LICENSE", "Apache-2.0\n", 0o644),
             ("NOTICE.md", "Notice.\n", 0o644),
             ("LICENSES/Apache-2.0.txt", "Apache text.\n", 0o644),
+            ("source-contract.txt", "template source.\n", 0o644),
         ):
             path = self.root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             _ = path.write_text(content, encoding="utf-8")
             path.chmod(mode)
+        ownership = self.root / ".agentic-template/source-ownership.json"
+        ownership.parent.mkdir(parents=True, exist_ok=True)
+        _ = ownership.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "lifecycle_paths": ["source-contract.txt"],
+                    "snapshot_cleanup_paths": [],
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
 
     def install_recording_hook(self, hook_runs: Path) -> None:
         """Make the template's scaffold hook record its own execution."""
@@ -155,6 +189,10 @@ class ScaffoldFixture:
             target = self.root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             _ = shutil.copy2(source, target)
+        _ = shutil.copy2(
+            template.root / ".agentic-template/source-ownership.json",
+            self.root / ".agentic-template/source-ownership.json",
+        )
         # The source's cleanup-control inventory is exercised by the
         # real-snapshot fixtures (test_github_template_readiness.py); the CLI
         # suite controls it explicitly through ``_make_fixture(maintenance=True)``
@@ -173,6 +211,10 @@ class ScaffoldFixture:
             "SECURITY.md",
             "CONTRIBUTING.md",
             "scripts/validate-project",
+            "LICENSE",
+            "NOTICE.md",
+            "LICENSES/Apache-2.0.txt",
+            "source-contract.txt",
         ):
             target = self.root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -296,7 +338,11 @@ def _make_fixture(
         ownership = fixture.root / ".agentic-template/source-ownership.json"
         _ = ownership.write_text(
             json.dumps(
-                {"schema_version": 1, "snapshot_cleanup_paths": ["tests"]},
+                {
+                    "schema_version": 1,
+                    "lifecycle_paths": [],
+                    "snapshot_cleanup_paths": ["tests"],
+                },
                 sort_keys=True,
             ),
             encoding="utf-8",
@@ -673,6 +719,15 @@ class CliFamilyTests(unittest.TestCase):
             (self.fixture.root / ".agentic-template/project.json").is_file()
         )
         self.assertEqual(self.fixture.run_count(), 1)
+
+    def test_restore_retains_existing_readiness_findings(self) -> None:
+        applied = self.run_cli(
+            ["apply", "--bundle", str(self.bundle.root), "--target", self.target_arg()]
+        )
+        self.assertEqual(_exit_code(applied), 1)
+        restored = self.run_cli(["restore", "--target", self.target_arg()])
+        self.assertEqual(_exit_code(restored), 1)
+        self.assertIn("BOOTSTRAP_READINESS_BLOCKING", render_text(restored))
 
     def test_supplied_apply_exits_zero(self) -> None:
         parent = Path(self.tmp.name) / "supplied"

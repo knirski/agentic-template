@@ -44,6 +44,7 @@ from scripts.bootstrap.manifest import (
     MANIFEST_PATH,
     MaintenanceRecord,
     ManagedInventory,
+    ManagedInventoryEntry,
     ManifestAdditions,
     ManifestAnswers,
     ProvenanceRecord,
@@ -80,6 +81,8 @@ from scripts.bootstrap.vocabulary import LICENSING_MODES, PATH_BEARING_LICENSING
 PLAN_SCHEMA_VERSION = 1
 PLAN_OPERATION_KIND: Literal["initial"] = "initial"
 ADD_OPERATION_KIND: Literal["add"] = "add"
+RESTORE_OPERATION_KIND: Literal["restore"] = "restore"
+RECONCILE_OPERATION_KIND: Literal["reconcile"] = "reconcile"
 MAINTENANCE_INVENTORY_PATH = RepoPath(".agentic-template/maintenance-artifacts.json")
 
 
@@ -260,7 +263,7 @@ class GateSpecification:
 @dataclass(frozen=True, slots=True)
 class OperationPlan:
     plan_schema: int
-    operation_kind: Literal["initial", "add"]
+    operation_kind: Literal["initial", "add", "restore", "reconcile"]
     target_identity: TargetIdentity
     generation_path: GenerationPath
     source_before: SourceBaseline | None
@@ -691,6 +694,26 @@ def _build_tree(
             raw_tree_sha256=raw_tree_sha256,
         )
     )
+
+
+def _planned_paths(
+    operations: tuple[FileOperation | DirectoryOperation, ...],
+) -> set[RepoPath]:
+    """Every path an operation touches, including tree roots and entries."""
+    planned: set[RepoPath] = set()
+    for operation in operations:
+        match operation:
+            case CreateTreeOperation():
+                planned.add(operation.root)
+                planned.update(entry.path for entry in operation.planned_new.entries)
+            case (
+                CreateFileOperation()
+                | ReplaceFileOperation()
+                | DeleteFileOperation()
+                | RemoveEmptyDirectoryOperation()
+            ):
+                planned.add(operation.path)
+    return planned
 
 
 def _classify_uncovered(
@@ -1184,21 +1207,7 @@ def compile_initial_plan(
         *cleanup_dirs_ordered,
         *inventory_ops,
     )
-    planned_paths: set[RepoPath] = set()
-    for operation in ordered_operations:
-        match operation:
-            case CreateTreeOperation():
-                planned_paths.add(operation.root)
-                planned_paths.update(
-                    entry.path for entry in operation.planned_new.entries
-                )
-            case (
-                CreateFileOperation()
-                | ReplaceFileOperation()
-                | DeleteFileOperation()
-                | RemoveEmptyDirectoryOperation()
-            ):
-                planned_paths.add(operation.path)
+    planned_paths = _planned_paths(ordered_operations)
     match check_limit(LimitKind.PATHS, len(planned_paths), limits):
         case Err(violation):
             return Err(
@@ -1401,7 +1410,7 @@ def compile_add_plan(
             pass
 
     ordered_operations = plain_ops
-    planned_paths = {operation.path for operation in ordered_operations}
+    planned_paths = _planned_paths(ordered_operations)
     match check_limit(LimitKind.PATHS, len(planned_paths), limits):
         case Err(violation):
             return Err(
@@ -1439,6 +1448,485 @@ def compile_add_plan(
                 template_contract=True,
                 readiness_rule=ReadinessRule.NO_WORSE_BLOCKING,
                 expected_placeholder=(),
+            ),
+        )
+    )
+
+
+def _inventory_by_path(
+    inventory: ManagedInventory,
+) -> Mapping[str, ManagedInventoryEntry]:
+    return MappingProxyType({entry.path.value: entry for entry in inventory})
+
+
+def _certified_inventory(
+    managed: ManagedRender,
+) -> Mapping[str, ManagedInventoryEntry]:
+    return _inventory_by_path(derive_managed_inventory(managed))
+
+
+def _drifted_from_recorded(
+    observed: ObservedFileEntry | None, entry: ManagedInventoryEntry
+) -> bool:
+    """Whether the observed file state no longer matches the recorded entry."""
+    if observed is None:
+        return True
+    state = observed.state
+    if state.identity is None or state.mode is None:
+        return True
+    return (
+        state.identity.kind != entry.kind
+        or state.identity.normalized_sha256 != entry.sha256
+        or state.mode != entry.mode
+    )
+
+
+def _restore_operation(
+    path: RepoPath,
+    kind: Literal["text", "binary"],
+    mode: PosixMode,
+    content_id: ContentId,
+    observed: FileState | None,
+    blobs: VerifiedBlobStore,
+) -> Result[FileOperation | None, CompileError]:
+    """Build one restore operation, or ``None`` when the path is already certified.
+
+    The safety property holds because the caller has already verified the
+    certified ``{kind, sha256, mode}`` equals the recorded inventory entry: this
+    helper only decides whether the observed bytes differ from that certified
+    value.  When they do, it writes the certified bytes; when they match, it is a
+    no-op and is omitted so unrelated drift is left untouched.
+    """
+
+    match _resolve_planned(content_id, kind, mode, blobs):
+        case Err(error):
+            return Err(error)
+        case Ok(planned):
+            pass
+    if observed is None:
+        return Ok(
+            CreateFileOperation(
+                path=path,
+                expected_old=FileState(None, None),
+                planned_new=planned,
+            )
+        )
+    identity = observed.identity
+    if (
+        identity is not None
+        and identity.kind == planned.identity.kind
+        and identity.normalized_sha256 == planned.identity.normalized_sha256
+        and observed.mode == planned.mode
+    ):
+        return Ok(None)
+    return Ok(
+        ReplaceFileOperation(path=path, expected_old=observed, planned_new=planned)
+    )
+
+
+def compile_restore_plan(
+    *,
+    generation: GenerationPath,
+    target_identity: TargetIdentity,
+    answers: ManifestAnswers,
+    certified_render: ManagedRender,
+    existing_inventory: ManagedInventory,
+    current_manifest: ManifestIdentity,
+    source_baseline: SourceBaseline,
+    snapshot: TargetSnapshot,
+    requested_paths: tuple[RepoPath, ...] = (),
+    limits: ResourceLimits = DEFAULT_LIMITS,
+) -> Result[OperationPlan, CompileError]:
+    """Compile a same-contract restore that writes only certified managed bytes.
+
+    Restore is a repair: it re-renders the recorded selection, requires the
+    certified ``{kind, sha256, mode}`` of every requested path to equal its
+    recorded inventory entry (the safety property that prevents writing an
+    unrecorded byte), and writes the certified bytes over any drifted observed
+    file.  It records nothing: the manifest and source baseline are unchanged,
+    and the manifest file is never rewritten.
+    """
+
+    match _validate_snapshot(snapshot):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
+    match _validate_managed(certified_render, limits):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
+
+    recorded = _inventory_by_path(existing_inventory)
+    certified = _certified_inventory(certified_render)
+    render_files = {file.path.value: file for file in certified_render}
+    observed_files = {entry.path.value: entry for entry in snapshot.files}
+    observed_dirs = {entry.path.value: entry for entry in snapshot.directories}
+
+    selected: tuple[RepoPath, ...]
+    if requested_paths:
+        normalized_paths = tuple(
+            sorted(
+                set(requested_paths),
+                key=lambda path: path.value.encode("utf-8"),
+            )
+        )
+        for path in normalized_paths:
+            if path.value not in recorded:
+                return Err(_compile_error(CompileErrorKind.INVALID_TARGET, path.value))
+        selected = normalized_paths
+    else:
+        drifted: list[RepoPath] = []
+        for value, entry in recorded.items():
+            if _drifted_from_recorded(observed_files.get(value), entry):
+                drifted.append(RepoPath(value))
+        selected = tuple(drifted)
+
+    for path in selected:
+        entry = recorded[path.value]
+        match certified.get(path.value):
+            case ManagedInventoryEntry() as cert:
+                if (
+                    cert.kind != entry.kind
+                    or cert.sha256 != entry.sha256
+                    or cert.mode != entry.mode
+                ):
+                    return Err(
+                        _compile_error(
+                            CompileErrorKind.RENDER_CONTRACT_VIOLATION,
+                            f"render_mismatch:{path.value}",
+                        )
+                    )
+            case None:
+                return Err(
+                    _compile_error(
+                        CompileErrorKind.RENDER_CONTRACT_VIOLATION,
+                        f"render_missing:{path.value}",
+                    )
+                )
+
+    store = VerifiedBlobStore.empty(limits)
+    planned_outputs: list[_PlannedOutput] = []
+    for path in selected:
+        file = render_files[path.value]
+        match _intern_output(file.content, store):
+            case Err(error):
+                return Err(error)
+            case Ok((content_id, updated)):
+                store = updated
+        planned_outputs.append(
+            _PlannedOutput(file.path, file.kind, file.mode, content_id)
+        )
+    match _validate_no_nested_outputs(tuple(planned_outputs)):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
+    match _build_trees(tuple(planned_outputs), observed_files, observed_dirs, store):
+        case Err(error):
+            return Err(error)
+        case Ok((tree_ops, covered_paths)):
+            pass
+    flat_operations: list[FileOperation] = []
+    for output in planned_outputs:
+        if output.path.value in covered_paths:
+            continue
+        observed_entry = observed_files.get(output.path.value)
+        observed = (
+            observed_entry.state
+            if observed_entry is not None
+            and observed_entry.state.identity is not None
+            and observed_entry.state.mode is not None
+            else None
+        )
+        match _restore_operation(
+            output.path,
+            output.kind,
+            output.mode,
+            output.content_id,
+            observed,
+            store,
+        ):
+            case Err(error):
+                return Err(error)
+            case Ok(operation):
+                if operation is not None:
+                    flat_operations.append(operation)
+
+    ordered_operations = tuple((*tree_ops, *flat_operations))
+    planned_paths = _planned_paths(ordered_operations)
+    match check_limit(LimitKind.PATHS, len(planned_paths), limits):
+        case Err(violation):
+            return Err(
+                _compile_error(
+                    CompileErrorKind.PLAN_LIMIT_EXCEEDED, violation.kind.value
+                )
+            )
+        case Ok(_):
+            pass
+    match check_limit(LimitKind.OPERATIONS, len(ordered_operations), limits):
+        case Err(violation):
+            return Err(
+                _compile_error(
+                    CompileErrorKind.PLAN_LIMIT_EXCEEDED, violation.kind.value
+                )
+            )
+        case Ok(_):
+            pass
+
+    return Ok(
+        OperationPlan(
+            plan_schema=PLAN_SCHEMA_VERSION,
+            operation_kind=RESTORE_OPERATION_KIND,
+            target_identity=target_identity,
+            generation_path=generation,
+            source_before=source_baseline,
+            source_after=source_baseline,
+            manifest_before=current_manifest,
+            manifest_after=current_manifest,
+            ordered_operations=ordered_operations,
+            blob_store=store,
+            gate_specification=GateSpecification(
+                operation="restore",
+                artifact_verification=True,
+                template_contract=True,
+                readiness_rule=ReadinessRule.NO_WORSE_BLOCKING,
+                expected_placeholder=predicted_placeholder_findings(answers.slots),
+            ),
+        )
+    )
+
+
+def _reconcile_candidate_manifest(
+    *,
+    answers: ManifestAnswers,
+    additions: ManifestAdditions,
+    new_render: ManagedRender,
+    new_source_baseline: SourceBaseline,
+    maintenance: MaintenanceRecord,
+    generation: GenerationPath,
+) -> Result[ManifestIdentity, CompileError]:
+    provenance = ProvenanceRecord(generation, maintenance, new_source_baseline)
+    match build_candidate_manifest(
+        answers=answers,
+        additions=additions,
+        provenance=provenance,
+        managed=derive_managed_inventory(new_render),
+    ):
+        case Err(error):
+            return Err(_compile_error(CompileErrorKind.INVALID_MANIFEST, error.subject))
+        case Ok(candidate):
+            pass
+    document = manifest_document(candidate)
+    manifest_bytes = encode_manifest(candidate)
+    return Ok(
+        ManifestIdentity(payload=manifest_bytes, digest=manifest_checksum(document))
+    )
+
+
+def compile_reconcile_plan(
+    *,
+    generation: GenerationPath,
+    target_identity: TargetIdentity,
+    answers: ManifestAnswers,
+    existing_additions: ManifestAdditions,
+    new_render: ManagedRender,
+    existing_inventory: ManagedInventory,
+    old_source_baseline: SourceBaseline,
+    new_source_baseline: SourceBaseline,
+    old_manifest: ManifestIdentity,
+    maintenance: MaintenanceRecord,
+    snapshot: TargetSnapshot,
+    overwrite_drift: bool = False,
+    limits: ResourceLimits = DEFAULT_LIMITS,
+) -> Result[OperationPlan, CompileError]:
+    """Compile a Copier reconcile that advances the source baseline to a new template.
+
+    Reconcile re-renders the recorded selection from the new template and writes
+    the candidate over the observed project.  It is blocked on managed drift
+    unless ``overwrite_drift`` is set, because a destructive overwrite destroys
+    adopter edits; that escape is bound to a matching plan receipt by the caller.
+    It advances only the source baseline and managed inventory (via the manifest)
+    and never re-expands the profile or changes recorded answers/additions.
+    """
+
+    match _validate_snapshot(snapshot):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
+    match _validate_managed(new_render, limits):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
+
+    observed_files = {entry.path.value: entry for entry in snapshot.files}
+    observed_dirs = {entry.path.value: entry for entry in snapshot.directories}
+    recorded = _inventory_by_path(existing_inventory)
+    drifted = any(
+        _drifted_from_recorded(observed_files.get(path), entry)
+        for path, entry in recorded.items()
+    )
+    if drifted and not overwrite_drift:
+        return Err(
+            _compile_error(CompileErrorKind.RENDER_CONTRACT_VIOLATION, "managed_drift")
+        )
+
+    store = VerifiedBlobStore.empty(limits)
+    managed_outputs: list[_PlannedOutput] = []
+    for file in new_render:
+        match _intern_output(file.content, store):
+            case Err(error):
+                return Err(error)
+            case Ok((content_id, updated)):
+                store = updated
+        managed_outputs.append(
+            _PlannedOutput(file.path, file.kind, file.mode, content_id)
+        )
+
+    match _reconcile_candidate_manifest(
+        answers=answers,
+        additions=existing_additions,
+        new_render=new_render,
+        new_source_baseline=new_source_baseline,
+        maintenance=maintenance,
+        generation=generation,
+    ):
+        case Err(error):
+            return Err(error)
+        case Ok(manifest_after):
+            pass
+    match _intern_output(manifest_after.payload, store):
+        case Err(error):
+            return Err(error)
+        case Ok((manifest_content_id, updated)):
+            store = updated
+    manifest_output = _PlannedOutput(
+        MANIFEST_PATH, "text", PosixMode.FILE, manifest_content_id
+    )
+
+    all_outputs = tuple((*managed_outputs, manifest_output))
+    match _validate_no_nested_outputs(all_outputs):
+        case Err(error):
+            return Err(error)
+        case Ok(_):
+            pass
+
+    new_inventory = _certified_inventory(new_render)
+    retired_values = set(recorded).difference(new_inventory)
+    retired_deletes: list[DeleteFileOperation] = []
+    planning_files = dict(observed_files)
+    for path_value in sorted(retired_values, key=lambda value: value.encode("utf-8")):
+        observed = observed_files.get(path_value)
+        if observed is None or not observed.state.present:
+            if path_value in observed_dirs:
+                return Err(_compile_error(CompileErrorKind.INVALID_TARGET, path_value))
+            continue
+        retired_deletes.append(
+            DeleteFileOperation(
+                path=RepoPath(path_value),
+                expected_old=observed.state,
+                planned_new=FileAbsent(),
+            )
+        )
+        _ = planning_files.pop(path_value, None)
+
+    retired_dir_removes: list[RemoveEmptyDirectoryOperation] = []
+    planning_dirs = dict(observed_dirs)
+    for output in all_outputs:
+        output_value = output.path.value
+        if output_value not in observed_dirs:
+            continue
+        retired_descendants = tuple(
+            value for value in retired_values if value.startswith(output_value + "/")
+        )
+        if not retired_descendants:
+            return Err(_compile_error(CompileErrorKind.INVALID_TARGET, output_value))
+        if any(
+            value.startswith(output_value + "/") and value not in retired_values
+            for value in observed_files
+        ):
+            return Err(_compile_error(CompileErrorKind.INVALID_TARGET, output_value))
+        for path_value in sorted(
+            (
+                value
+                for value in observed_dirs
+                if value == output_value or value.startswith(output_value + "/")
+            ),
+            key=lambda value: (-value.count("/"), value.encode("utf-8")),
+        ):
+            observed_dir = observed_dirs[path_value]
+            retired_dir_removes.append(
+                RemoveEmptyDirectoryOperation(
+                    path=observed_dir.path,
+                    expected_old=observed_dir.state,
+                    planned_new=DirectoryAbsent(),
+                )
+            )
+            _ = planning_dirs.pop(path_value, None)
+
+    match _build_trees(all_outputs, planning_files, planning_dirs, store):
+        case Err(error):
+            return Err(error)
+        case Ok((tree_ops, covered_paths)):
+            pass
+    match _classify_uncovered(
+        all_outputs,
+        covered_paths,
+        planning_files,
+        planning_dirs,
+        store,
+        refuse_present_old=False,
+    ):
+        case Err(error):
+            return Err(error)
+        case Ok(plain_ops):
+            pass
+
+    ordered_operations = tuple(
+        (*retired_deletes, *retired_dir_removes, *tree_ops, *plain_ops)
+    )
+
+    planned_paths = _planned_paths(ordered_operations)
+    match check_limit(LimitKind.PATHS, len(planned_paths), limits):
+        case Err(violation):
+            return Err(
+                _compile_error(
+                    CompileErrorKind.PLAN_LIMIT_EXCEEDED, violation.kind.value
+                )
+            )
+        case Ok(_):
+            pass
+    match check_limit(LimitKind.OPERATIONS, len(ordered_operations), limits):
+        case Err(violation):
+            return Err(
+                _compile_error(
+                    CompileErrorKind.PLAN_LIMIT_EXCEEDED, violation.kind.value
+                )
+            )
+        case Ok(_):
+            pass
+
+    return Ok(
+        OperationPlan(
+            plan_schema=PLAN_SCHEMA_VERSION,
+            operation_kind=RECONCILE_OPERATION_KIND,
+            target_identity=target_identity,
+            generation_path=generation,
+            source_before=old_source_baseline,
+            source_after=new_source_baseline,
+            manifest_before=old_manifest,
+            manifest_after=manifest_after,
+            ordered_operations=ordered_operations,
+            blob_store=store,
+            gate_specification=GateSpecification(
+                operation="reconcile",
+                artifact_verification=True,
+                template_contract=True,
+                readiness_rule=ReadinessRule.NO_WORSE_BLOCKING,
+                expected_placeholder=predicted_placeholder_findings(answers.slots),
             ),
         )
     )

@@ -256,6 +256,7 @@ class TransactionResources:
     ownership_tokens: tuple[bytes, ...] = ()
     rollback_tokens: tuple[bytes, ...] = ()
     rollback_preparations: tuple[PreparationIdentity, ...] = ()
+    revalidate: Callable[[], Result[TargetSnapshot, TransactionError]] | None = None
 
 
 def _err_effect[ValueT](error: EffectError) -> Result[ValueT, EffectError]:
@@ -1958,6 +1959,15 @@ def _execute_effect(
                             )
                         return EffectFailed(EffectRequestKind.ACQUIRE_LOCK, error)
             case ObserveAgain():
+                if resources.revalidate is not None:
+                    match resources.revalidate():
+                        case Err(error):
+                            if resources.lock is not None:
+                                release_lock(resources.lock)
+                                resources.lock = None
+                            return EffectFailed(EffectRequestKind.OBSERVE_AGAIN, error)
+                        case Ok(snapshot):
+                            return Reobserved(snapshot)
                 match capture_plan_snapshot(resources, plan):
                     case Err(error):
                         return EffectFailed(EffectRequestKind.OBSERVE_AGAIN, error)
