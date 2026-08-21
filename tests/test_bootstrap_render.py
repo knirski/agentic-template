@@ -28,6 +28,7 @@ from scripts.bootstrap.render import (
     CapabilityDefinition,
     ContributionDefinition,
     CoreDefinition,
+    DocumentationSource,
     DocumentFragmentDefinition,
     LicensingInfo,
     MaintenanceInfo,
@@ -35,17 +36,20 @@ from scripts.bootstrap.render import (
     ProfileInfo,
     ProjectInfo,
     ProjectSource,
+    RenderContext,
     RenderErrorKind,
     RenderInput,
     SettingSource,
     SlotDefinition,
     SubstitutionDefinition,
+    _capability_summary,  # pyright: ignore[reportPrivateUsage]  deliberate unit test of private render helper
     _remove_marker_line,  # pyright: ignore[reportPrivateUsage]  deliberate unit test of private render helper
     _setting_text,  # pyright: ignore[reportPrivateUsage]  deliberate unit test of private render helper
     apply_substitutions,
     derive_managed_inventory,
     encode_scalar,
     render_managed,
+    resolve_substitution_value,
 )
 from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.source_baseline import (
@@ -644,6 +648,37 @@ def test_setting_text_defends_unvalidated_runtime_scalars() -> None:
     assert _setting_text(42) == "42"
 
 
+def test_capability_summary_rejects_missing_effective_definition() -> None:
+    context = RenderContext(
+        generation_path=GenerationPath.COPIER,
+        profile=PROFILE,
+        additions=(),
+        effective=("missing",),
+        definitions=MappingProxyType({}),
+        settings=MappingProxyType({}),
+    )
+    match _capability_summary(context):
+        case Err(error):
+            assert error.reason == "missing_capability_definition"
+        case Ok(_):
+            raise AssertionError("expected a missing-summary-definition failure")
+
+
+def test_documentation_substitution_requires_render_context() -> None:
+    result = resolve_substitution_value(
+        DocumentationSource(kind="documentation", key="generation_path"),
+        {},
+        PROJECT,
+        MAINTENANCE,
+        {},
+    )
+    match result:
+        case Err(error):
+            assert error.reason == "missing_documentation_context"
+        case Ok(_):
+            raise AssertionError("expected a missing-documentation-context failure")
+
+
 def test_boolean_setting_toggles_optional_section() -> None:
     store, content_ids = fixture_blobs()
     disabled = MappingProxyType(
@@ -865,6 +900,23 @@ def test_missing_definition_for_effective_capability_is_rejected() -> None:
             assert error.reason == "missing_capability_definition"
         case Ok(_):
             raise AssertionError("expected a missing-definition failure")
+
+
+def test_invalid_runtime_dependency_is_rejected_at_render_boundary() -> None:
+    store, content_ids = fixture_blobs()
+    render_input = make_render_input(store, content_ids)
+    definitions = dict(render_input.definitions)
+    definitions["semantic-release"] = definitions["semantic-release"].model_copy(
+        update={"runtime_dependencies": ("invalid dependency",)}
+    )
+    match render_managed(
+        replace(render_input, definitions=MappingProxyType(definitions)), store
+    ):
+        case Err(error):
+            assert error.reason == "invalid_dependency"
+            assert error.subject == "invalid dependency"
+        case Ok(_):
+            raise AssertionError("expected an invalid-dependency failure")
 
 
 def test_contributions_compose_in_normative_order() -> None:
