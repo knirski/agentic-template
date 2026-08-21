@@ -173,6 +173,7 @@ def main() -> int:
             # updates must still deliver template hook changes, with Copier's
             # conflict markers preserving local edits (never a silent skip).
             "# template hook update" not in hook_text
+            or "# local hook customization" not in hook_text
             or "Copier smoke-test marker."
             not in (project / "NOTICE.md").read_text(encoding="utf-8")
             or "Local project customization."
