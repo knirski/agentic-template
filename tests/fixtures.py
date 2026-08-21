@@ -136,7 +136,9 @@ def render_for(
             settings=resolved_settings,
             project=_PROJECT,
             licensing=_LICENSING,
-            profile=ProfileInfo(id="custom", frozen=effective),
+            profile=ProfileInfo(
+                id="portable" if not effective else "custom", frozen=effective
+            ),
             maintenance=_MAINTENANCE,
             slots={},
             blobs=VerifiedBlobStore.empty(),
@@ -156,12 +158,15 @@ def run(
 
 
 def tracked_files(root: Path) -> list[str]:
-    """List the repository's tracked files (what a fixture copy must contain)."""
-    return [
+    """List source files available in the checkout for a fixture copy."""
+    files = [
         entry
-        for entry in run(["git", "-C", str(root), "ls-files", "-z"]).stdout.split("\0")
+        for entry in run(
+            ["git", "-C", str(root), "ls-files", "-co", "--exclude-standard", "-z"]
+        ).stdout.split("\0")
         if entry
     ]
+    return sorted(files)
 
 
 def copy_tracked(source_root: Path, target: Path) -> None:

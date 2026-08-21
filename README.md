@@ -10,7 +10,7 @@ software changes with coding agents.
 1. Select **Use this template** on GitHub.
 2. Replace the marked contract in `docs/prd.md` with the project's product requirements.
 3. Replace this marked README with the project title, setup, and validation instructions.
-4. Replace `scripts/validate_project.py` with the project's formatting, linting, tests, and build checks.
+4. Replace `scripts/validate-project` with the project's formatting, linting, tests, and build checks.
 5. Run `python3.14 scripts/validate_repository.py` and address every readiness diagnostic.
 6. Require the `Project validation` check in the default-branch ruleset.
 
@@ -60,6 +60,12 @@ evidence, and exit 1. `recover` never re-runs the adopter hook.
 `docs/prd.md` is the product source of truth. `docs/agents/issue-tracker.md` defines the relationship
 between GitHub Issues and Atelier plans, while `docs/agents/domain.md` defines lazy domain and ADR
 documentation.
+
+Generated projects also receive managed operational guidance in
+[`docs/delivery-workflow.md`](docs/delivery-workflow.md),
+[`docs/template-updates.md`](docs/template-updates.md),
+[`docs/capabilities.md`](docs/capabilities.md), and
+[`docs/github-setup.md`](docs/github-setup.md).
 
 ## Included delivery flow
 
@@ -139,7 +145,7 @@ semantic-release for pushes to `main` and manual CI dispatches from `main`. The 
 releases through the maintainer workflow only after its locked source checks, source fixtures, and
 workflow lint pass. Releases are serialized, and Conventional Commit messages determine the next
 version, release notes, Git tag, and GitHub Release. Generated projects own their product-specific
-commands through `scripts/validate_project.py`; every release-critical validation job must be
+commands through `scripts/validate-project`; every release-critical validation job must be
 added to the `release` job's `needs`. Maintainer-only source checks (locked uv sync, Python source
 checks, and actionlint) run in the separate source-maintainer workflow that Copier excludes and
 GitHub snapshots clean up, so generated projects do not require the template's source toolchain.

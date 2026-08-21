@@ -107,10 +107,14 @@ def test_restore_repairs_drifted_managed_file_in_process() -> None:
         compiled = test_source_bootstrap.render_for(())[
             test_source_bootstrap.CORE_CI_PATH
         ]
+        document = project / "docs/capabilities.md"
+        compiled_document = test_source_bootstrap.render_for(())["docs/capabilities.md"]
         _ = managed.write_bytes(b"drifted in-process\n")
+        _ = document.write_bytes(b"drifted documentation\n")
         result = _execute(["restore", "--target", str(project)])
         assert isinstance(result.outcome, Succeeded), result.outcome
         assert managed.read_bytes() == compiled
+        assert document.read_bytes() == compiled_document
 
 
 def test_plan_restore_writes_receipt_in_process() -> None:

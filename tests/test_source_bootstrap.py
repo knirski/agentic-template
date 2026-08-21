@@ -103,6 +103,17 @@ def test_maintainer_only_jobs_are_excluded_from_generated_projects() -> None:
     assert set(CLEANUP_PATHS) <= excludes
     assert ".agentic-template/maintenance-artifacts.json" in excludes
 
+    managed_documents = {
+        "docs/capabilities.md",
+        "docs/delivery-workflow.md",
+        "docs/github-setup.md",
+        "docs/template-updates.md",
+    }
+    assert managed_documents.isdisjoint(
+        set(cast(list[str], source_ownership["lifecycle_paths"]))
+    )
+    assert managed_documents <= excludes
+
     maintainer = (ROOT / ".github/workflows/template-ci.yml").read_text(
         encoding="utf-8"
     )

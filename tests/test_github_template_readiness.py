@@ -358,6 +358,14 @@ COPIER_SAFETY_EXCLUSIONS = frozenset(
         "result",
     }
 )
+BOOTSTRAP_MANAGED_DOCUMENTS = frozenset(
+    {
+        "docs/capabilities.md",
+        "docs/delivery-workflow.md",
+        "docs/github-setup.md",
+        "docs/template-updates.md",
+    }
+)
 
 
 class SourceContractTests(unittest.TestCase):
@@ -378,8 +386,8 @@ class SourceContractTests(unittest.TestCase):
         )
         self.assertEqual(
             excludes,
-            maintenance | COPIER_SAFETY_EXCLUSIONS,
-            "_exclude must be exactly the maintenance set plus the re-declared safety set",
+            maintenance | BOOTSTRAP_MANAGED_DOCUMENTS | COPIER_SAFETY_EXCLUSIONS,
+            "_exclude must cover maintenance, managed-document, and safety sets",
         )
 
     def test_source_ownership_matches_the_cleanup_inventory(self) -> None:

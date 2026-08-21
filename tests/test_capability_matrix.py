@@ -46,6 +46,13 @@ CAPABILITY_ARTIFACT_PATHS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+MANAGED_DOCUMENT_PATHS = (
+    "docs/delivery-workflow.md",
+    "docs/template-updates.md",
+    "docs/capabilities.md",
+    "docs/github-setup.md",
+)
+
 # Every capability contribution id, keyed by capability id.
 CAPABILITY_CONTRIBUTIONS: dict[str, tuple[str, ...]] = {
     "semantic-release": ("release",),
@@ -72,7 +79,11 @@ def _ci_job_names(rendered: dict[str, bytes]) -> list[str]:
 
 def test_portable_profile_emits_core_only() -> None:
     rendered = render_for(())
-    assert set(rendered) == {CORE_CI_PATH, "pyproject.toml"}
+    assert set(rendered) == {
+        CORE_CI_PATH,
+        "pyproject.toml",
+        *MANAGED_DOCUMENT_PATHS,
+    }
     jobs = _ci_job_names(rendered)
     assert jobs == ["project-validation", "delivery-contract"]
     ci = rendered[CORE_CI_PATH].decode("utf-8")
@@ -127,7 +138,7 @@ def test_nix_enabled_profile_emits_nix_artifacts_without_release() -> None:
 
 def test_integrated_profile_emits_everything_and_gates_release() -> None:
     rendered = render_for(ALL_CAPABILITIES)
-    expected_paths = {CORE_CI_PATH, "pyproject.toml"}
+    expected_paths = {CORE_CI_PATH, "pyproject.toml", *MANAGED_DOCUMENT_PATHS}
     for paths in CAPABILITY_ARTIFACT_PATHS.values():
         expected_paths.update(paths)
     assert set(rendered) == expected_paths
@@ -343,6 +354,8 @@ def test_catalog_and_render_surfaces_agree() -> None:
             )
             for contribution in render_definition.contributions
         )
+        assert definition.description == render_definition.description
+        assert definition.dependencies == render_definition.dependencies
         assert definition.runtime_dependencies == render_definition.runtime_dependencies
         assert definition.invocation == render_definition.invocation
         assert definition.supported_python == render_definition.supported_python

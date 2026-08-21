@@ -682,6 +682,14 @@ def test_retained_paths_must_be_repository_relative() -> None:
         )
 
 
+def test_render_capability_dependencies_are_unique_and_not_self_referential() -> None:
+    with pytest.raises(ValueError, match="dependencies"):
+        CapabilityDefinition(id="self", dependencies=("self",))
+
+    with pytest.raises(ValueError, match="dependencies"):
+        CapabilityDefinition(id="duplicate", dependencies=("nix", "nix"))
+
+
 def test_unknown_substitution_marker_is_rejected() -> None:
     store, content_ids = fixture_blobs()
     store, unknown_id = intern(

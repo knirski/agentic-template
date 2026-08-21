@@ -287,3 +287,62 @@ def test_reconcile_plan_receipt_binds_execution() -> None:
         assert reconciled.returncode == 0, reconciled.stdout + reconciled.stderr
         assert managed.read_bytes() == compiled
         assert source.read_text(encoding="utf-8") == "drifted source\n"
+
+
+def test_reconcile_refreshes_bootstrap_managed_document_transactionally() -> None:
+    with tempfile.TemporaryDirectory(prefix="agentic-template-reconcile.") as raw:
+        project, _record = _activate_or_skip(Path(raw))
+        _as_copier_project(project)
+        fragment = project / "scripts/bootstrap/fragments/__init__.py"
+        original = fragment.read_bytes()
+        changed = original.replace(
+            b"# Capabilities\n\nThis document",
+            b"# Capabilities\n\nReconciled guidance marker.\n\nThis document",
+            1,
+        )
+        assert changed != original
+        _ = fragment.write_bytes(changed)
+
+        receipt = Path(raw) / "reconcile-document.json"
+        planned = run(
+            [
+                *CLI,
+                "plan",
+                "reconcile",
+                "--target",
+                str(project),
+                "--out",
+                str(receipt),
+            ],
+            cwd=project,
+        )
+        assert planned.returncode == 0, planned.stdout + planned.stderr
+
+        reconciled = run(
+            [
+                *CLI,
+                "reconcile",
+                "--target",
+                str(project),
+                "--overwrite-drift",
+                "--plan",
+                str(receipt),
+            ],
+            cwd=project,
+        )
+        assert reconciled.returncode == 0, reconciled.stdout + reconciled.stderr
+
+        document = project / "docs/capabilities.md"
+        assert b"Reconciled guidance marker." in document.read_bytes()
+        match decode_manifest(
+            (project / ".agentic-template/project.json").read_bytes()
+        ):
+            case Ok(manifest):
+                managed = next(
+                    entry
+                    for entry in manifest.managed
+                    if entry.path.value == document.relative_to(project).as_posix()
+                )
+            case Err(error):
+                raise AssertionError(f"manifest decode failed: {error}")
+        assert managed.sha256 == sha256_hex(document.read_bytes())

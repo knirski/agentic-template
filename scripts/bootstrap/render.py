@@ -117,6 +117,21 @@ class MaintenanceSource(StrictModel):
     key: Literal["status", "retained_paths"]
 
 
+type DocumentationKey = Literal[
+    "generation_path",
+    "profile_id",
+    "profile_frozen",
+    "additions",
+    "effective",
+    "capability_summary",
+]
+
+
+class DocumentationSource(StrictModel):
+    kind: Literal["documentation"]
+    key: DocumentationKey
+
+
 class ReleaseNeedsSource(StrictModel):
     """The release job's ``needs`` list: static core jobs plus every contribution
     id in the declared capability-check slot, in composed order."""
@@ -127,7 +142,11 @@ class ReleaseNeedsSource(StrictModel):
 
 
 SubstitutionSource = Annotated[
-    SettingSource | ProjectSource | MaintenanceSource | ReleaseNeedsSource,
+    SettingSource
+    | ProjectSource
+    | MaintenanceSource
+    | DocumentationSource
+    | ReleaseNeedsSource,
     Field(discriminator="kind"),
 ]
 
@@ -254,6 +273,7 @@ class CoreDefinition(StrictModel):
 class CapabilityDefinition(StrictModel):
     id: Identifier
     description: str = ""
+    dependencies: tuple[Identifier, ...] = ()
     artifacts: tuple[ArtifactDefinition, ...] = ()
     contributions: tuple[ContributionDefinition, ...] = ()
     document_fragments: tuple[DocumentFragmentDefinition, ...] = ()
@@ -279,11 +299,31 @@ class CapabilityDefinition(StrictModel):
         return self
 
     @model_validator(mode="after")
+    def validate_dependencies(self) -> CapabilityDefinition:
+        if len(set(self.dependencies)) != len(self.dependencies):
+            raise ValueError("capability dependencies must be unique")
+        if self.id in self.dependencies:
+            raise ValueError("capability cannot depend on itself")
+        return self
+
+    @model_validator(mode="after")
     def validate_capability_metadata(self) -> CapabilityDefinition:
         validate_dependency_metadata(
             self.runtime_dependencies, self.supported_python, self.invocation
         )
         return self
+
+
+@dataclass(frozen=True, slots=True)
+class RenderContext:
+    """Explicit values available to documentation fragment substitutions."""
+
+    generation_path: GenerationPath
+    profile: ProfileInfo
+    additions: tuple[str, ...]
+    effective: tuple[str, ...]
+    definitions: Mapping[str, CapabilityDefinition]
+    settings: Mapping[str, Mapping[str, SettingValue]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -380,11 +420,85 @@ def _maintenance_source_value(
         case "status":
             return Ok(maintenance.status)
         case "retained_paths":
-            return Ok("\n".join(path.value for path in maintenance.retained_paths))
+            return Ok(
+                "\n".join(path.value for path in maintenance.retained_paths) or "none"
+            )
         case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
             return assert_never(  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
                 key
             )
+
+
+def _rendered_names(values: tuple[str, ...]) -> str:
+    return ", ".join(values) if values else "none"
+
+
+def _setting_text(value: SettingValue) -> str:
+    match value:
+        case bool():
+            return "true" if value else "false"
+        case str():
+            return value
+
+
+def _capability_summary(
+    context: RenderContext,
+) -> Result[SubstitutedValue, RenderError]:
+    lines: list[str] = []
+    for capability_id in context.effective:
+        definition = context.definitions.get(capability_id)
+        if definition is None:
+            return Err(
+                RenderError(
+                    RenderErrorKind.INVALID_TEMPLATE,
+                    "missing_capability_definition",
+                    capability_id,
+                )
+            )
+        line = f"- `{capability_id}` — {definition.description or 'No description.'}"
+        if definition.dependencies:
+            line += f" Dependencies: {_rendered_names(definition.dependencies)}."
+        values = context.settings.get(capability_id, {})
+        if values:
+            settings = ", ".join(
+                f"`{name}={_setting_text(values[name])}`" for name in sorted(values)
+            )
+            line += f" Settings: {settings}."
+        if definition.runtime_dependencies:
+            dependencies = _rendered_names(definition.runtime_dependencies)
+            line += f" Runtime dependencies: {dependencies}."
+        if definition.invocation is not None:
+            line += f" Invocation: `{definition.invocation}`."
+        lines.append(line)
+    return Ok("\n".join(lines) if lines else "- None selected.")
+
+
+def _documentation_source_value(
+    key: DocumentationKey, context: RenderContext | None
+) -> Result[SubstitutedValue, RenderError]:
+    if context is None:
+        return Err(
+            RenderError(
+                RenderErrorKind.INVALID_TEMPLATE,
+                "missing_documentation_context",
+                key,
+            )
+        )
+    match key:
+        case "generation_path":
+            return Ok(context.generation_path.value)
+        case "profile_id":
+            return Ok(context.profile.id)
+        case "profile_frozen":
+            return Ok(_rendered_names(context.profile.frozen))
+        case "additions":
+            return Ok(_rendered_names(context.additions))
+        case "effective":
+            return Ok(_rendered_names(context.effective))
+        case "capability_summary":
+            return _capability_summary(context)
+        case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison]
+            return assert_never(key)  # pyright: ignore[reportUnreachable]
 
 
 def resolve_substitution_value(
@@ -393,6 +507,7 @@ def resolve_substitution_value(
     project: ProjectInfo,
     maintenance: MaintenanceInfo,
     slot_ids: Mapping[str, tuple[str, ...]],
+    render_context: RenderContext | None = None,
 ) -> Result[SubstitutedValue, RenderError]:
     match source:
         case SettingSource(capability=capability_id, setting=setting_name):
@@ -410,6 +525,8 @@ def resolve_substitution_value(
             return _project_source_value(key, project)
         case MaintenanceSource(key=key):
             return _maintenance_source_value(key, maintenance)
+        case DocumentationSource(key=key):
+            return _documentation_source_value(key, render_context)
         case ReleaseNeedsSource(slot=slot, static=static):
             return Ok((*static, *slot_ids.get(slot, ())))
         case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
@@ -427,6 +544,7 @@ def apply_substitutions(
     project: ProjectInfo,
     maintenance: MaintenanceInfo,
     slot_ids: Mapping[str, tuple[str, ...]],
+    render_context: RenderContext | None = None,
 ) -> Result[bytes, RenderError]:
     """Replace every value marker with its context-encoded substitution value."""
     by_name = {substitution.name: substitution for substitution in substitutions}
@@ -442,7 +560,12 @@ def apply_substitutions(
                 )
             )
         match resolve_substitution_value(
-            substitution.source, settings, project, maintenance, slot_ids
+            substitution.source,
+            settings,
+            project,
+            maintenance,
+            slot_ids,
+            render_context,
         ):
             case Ok(value):
                 encoded = encode_scalar(value, context).encode("utf-8")

@@ -36,6 +36,7 @@ from scripts.bootstrap.capability_fragments import (
     core_definition,
 )
 from scripts.bootstrap.contributions import render_generation
+from scripts.bootstrap.dependencies import GENERATED_PYPROJECT_PATH
 from scripts.bootstrap.diagnostics import (
     ActionRequired,
     CommandOutcome,
@@ -1469,6 +1470,7 @@ def _recorded_render(
         core=core_definition(),
         definitions=capability_definitions(),
         effective=selection.effective,
+        additions=manifest.additions.requested,
         settings=MappingProxyType(dict(selection.settings)),
         project=ProjectInfo(
             name=manifest.answers.project.name,
@@ -1498,6 +1500,20 @@ def _recorded_render(
                     f"{error.kind.value}:{error.reason or ''}:{error.subject}",
                 )
             )
+
+
+def _declared_managed_paths() -> set[RepoPath]:
+    """Exclude every declaratively managed path from the source inventory."""
+
+    core = core_definition()
+    definitions = capability_definitions()
+    paths = {RepoPath(GENERATED_PYPROJECT_PATH)}
+    for definition in (core, *definitions.values()):
+        paths.update(RepoPath(artifact.path) for artifact in definition.artifacts)
+        paths.update(
+            RepoPath(fragment.document) for fragment in definition.document_fragments
+        )
+    return paths
 
 
 def _manifest_identity(manifest: CandidateManifest) -> ManifestIdentity:
@@ -1551,7 +1567,7 @@ def _compile_lifecycle_plan(
     source_before_render: tuple[LifecycleSourceEntry, ...] | None = None
     if parsed.command in ("reconcile", "plan reconcile"):
         match collect_template_source_entries(
-            template_root, managed_paths=set(), limits=limits
+            template_root, managed_paths=_declared_managed_paths(), limits=limits
         ):
             case Err(error):
                 return Err(error)

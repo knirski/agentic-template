@@ -181,7 +181,9 @@ _Avoid_: Bootstrap-managed output, seed-once adopter output, Copier answers
 **Durable adopter documentation**:
 Template-maintained operational guidance that remains useful after the generated project's README
 and product requirements document become adopter-owned. It explains delivery, updates,
-capabilities, and manual repository setup without becoming product scope.
+capabilities, and manual repository setup without becoming product scope. The managed set consists
+of `docs/delivery-workflow.md`, `docs/template-updates.md`, `docs/capabilities.md`, and
+`docs/github-setup.md`.
 _Avoid_: Template-source documentation, product documentation, generated boilerplate
 
 **Product requirement**:
