@@ -1207,8 +1207,22 @@
           "description": "Add the four managed operational documents, generated-project maintenance guidance, source-maintainer capability-extension instructions, release notes, and updated readiness/domain references. Treat `docs/prd.md` as an authoritative input and modify it only through an explicit product decision; ensure all managed documents are rendered through the same inventory and transaction.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-21",
+              "commits": [
+                "6834b3c"
+              ],
+              "evidence": [
+                "uv run pytest -q (1197 passed, 80 subtests passed)",
+                "uv run ruff check ., uv run ruff format --check ., and uv run basedpyright (0 errors, 0 warnings, 0 notes)",
+                "uv lock --check and uv run python scripts/validate_template.py passed",
+                "PR #79 merged to main with green CI and resolved review feedback"
+              ]
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/79"
+            ]
           },
           "files": {
             "create": [
