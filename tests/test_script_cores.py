@@ -62,10 +62,18 @@ class FunctionalCoreTests(unittest.TestCase):
 
     def test_readme_core_preserves_boilerplate_diagnostics(self) -> None:
         findings = readiness.evaluate_readme(
-            "# Product\n\nA language-neutral GitHub repository template for planning.\n",
+            """# Agentic Delivery Template
+
+A language-neutral GitHub repository template for planning.
+""",
             Path("README.md"),
         )
-        self.assertEqual(findings[0].code, "READINESS_README_BOILERPLATE")
+        self.assertEqual(
+            tuple(finding.code for finding in findings).count(
+                "READINESS_README_BOILERPLATE"
+            ),
+            1,
+        )
 
     def test_readiness_aggregator_preserves_stage_order(self) -> None:
         findings = readiness.evaluate_readiness(

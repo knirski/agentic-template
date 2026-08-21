@@ -259,16 +259,15 @@ def evaluate_readme(text: str, path: Path) -> tuple[CoreFinding, ...]:
                 "replace the marked README with project documentation",
             )
         )
-    for pattern in README_BOILERPLATE_PATTERNS:
-        if pattern in text:
-            findings.append(
-                _finding(
-                    "READINESS_README_BOILERPLATE",
-                    path,
-                    "template README boilerplate remains",
-                    "replace the template introduction with project documentation",
-                )
+    if any(pattern in text for pattern in README_BOILERPLATE_PATTERNS):
+        findings.append(
+            _finding(
+                "READINESS_README_BOILERPLATE",
+                path,
+                "template README boilerplate remains",
+                "replace the template introduction with project documentation",
             )
+        )
     titles = tuple(line for _, line in lines if re.match(r"^#\s+", line))
     if len(titles) != 1:
         findings.append(
