@@ -18,11 +18,22 @@ from __future__ import annotations
 from typing import Final
 
 from scripts.bootstrap.blobs import ContentId
+from scripts.bootstrap.fragments import (
+    CACHIX_GITHUB_SETUP,
+    CAPABILITIES,
+    DELIVERY_WORKFLOW,
+    GITHUB_SETUP,
+    PR_AGENT_GITHUB_SETUP,
+    TEMPLATE_UPDATES,
+)
 from scripts.bootstrap.render import (
     ArtifactDefinition,
     CapabilityDefinition,
     ContributionDefinition,
     CoreDefinition,
+    DocumentationSource,
+    DocumentFragmentDefinition,
+    MaintenanceSource,
     ProjectSource,
     ReleaseNeedsSource,
     SettingSource,
@@ -52,23 +63,9 @@ permissions:
 jobs:
   project-validation:
     name: Project validation
-    runs-on: ubuntu-latest
-    env:
-      AGENTIC_TEMPLATE_SOURCE_REPOSITORY: knirski/agentic-template
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - name: Set up uv and Python 3.14
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-        with:
-          version: "0.12.1"
-          python-version: "3.14"
-          enable-cache: true
-      - name: Validate generated-project contract
-        if: github.repository != 'knirski/agentic-template'
-        run: uv run --python 3.14 scripts/validate_repository.py
+    permissions:
+      contents: read
+    uses: ./.github/workflows/project-validation.yml
 
   delivery-contract:
     name: Delivery contract
@@ -580,6 +577,12 @@ def template_bodies() -> dict[str, bytes]:
         "pr-agent-workflow": PR_AGENT_WORKFLOW,
         "pr-agent-commands-workflow": PR_AGENT_COMMANDS_WORKFLOW,
         "pr-agent-toml": PR_AGENT_TOML,
+        "delivery-workflow": DELIVERY_WORKFLOW,
+        "template-updates": TEMPLATE_UPDATES,
+        "capabilities": CAPABILITIES,
+        "github-setup": GITHUB_SETUP,
+        "github-setup-cachix": CACHIX_GITHUB_SETUP,
+        "github-setup-pr-agent-gemini": PR_AGENT_GITHUB_SETUP,
     }
 
 
@@ -597,6 +600,14 @@ CACHE_NAME = SubstitutionDefinition(
         kind="setting", capability="cachix-publish", setting="cache_name"
     ),
 )
+MAINTENANCE_STATUS = SubstitutionDefinition(
+    name="maintenance-status",
+    source=MaintenanceSource(kind="maintenance", key="status"),
+)
+RETAINED_PATHS = SubstitutionDefinition(
+    name="retained-paths",
+    source=MaintenanceSource(kind="maintenance", key="retained_paths"),
+)
 RELEASE_NEEDS = SubstitutionDefinition(
     name="release-needs",
     source=ReleaseNeedsSource(
@@ -605,6 +616,68 @@ RELEASE_NEEDS = SubstitutionDefinition(
         static=("project-validation", "delivery-contract"),
     ),
 )
+
+GENERATION_PATH = SubstitutionDefinition(
+    name="generation-path",
+    source=DocumentationSource(kind="documentation", key="generation_path"),
+)
+PROFILE_ID = SubstitutionDefinition(
+    name="profile-id",
+    source=DocumentationSource(kind="documentation", key="profile_id"),
+)
+PROFILE_FROZEN = SubstitutionDefinition(
+    name="profile-frozen",
+    source=DocumentationSource(kind="documentation", key="profile_frozen"),
+)
+ADDITIONS = SubstitutionDefinition(
+    name="additions",
+    source=DocumentationSource(kind="documentation", key="additions"),
+)
+EFFECTIVE = SubstitutionDefinition(
+    name="effective",
+    source=DocumentationSource(kind="documentation", key="effective"),
+)
+CAPABILITY_SUMMARY = SubstitutionDefinition(
+    name="capability-summary",
+    source=DocumentationSource(kind="documentation", key="capability_summary"),
+)
+
+
+def _core_document_fragments() -> tuple[DocumentFragmentDefinition, ...]:
+    return (
+        DocumentFragmentDefinition(
+            id="delivery-workflow",
+            document="docs/delivery-workflow.md",
+            order=0,
+            body_blob=ContentId.from_bytes(DELIVERY_WORKFLOW),
+        ),
+        DocumentFragmentDefinition(
+            id="template-updates",
+            document="docs/template-updates.md",
+            order=0,
+            body_blob=ContentId.from_bytes(TEMPLATE_UPDATES),
+            substitutions=(GENERATION_PATH, MAINTENANCE_STATUS, RETAINED_PATHS),
+        ),
+        DocumentFragmentDefinition(
+            id="capabilities",
+            document="docs/capabilities.md",
+            order=0,
+            body_blob=ContentId.from_bytes(CAPABILITIES),
+            substitutions=(
+                PROFILE_ID,
+                PROFILE_FROZEN,
+                ADDITIONS,
+                EFFECTIVE,
+                CAPABILITY_SUMMARY,
+            ),
+        ),
+        DocumentFragmentDefinition(
+            id="github-setup",
+            document="docs/github-setup.md",
+            order=0,
+            body_blob=ContentId.from_bytes(GITHUB_SETUP),
+        ),
+    )
 
 
 def core_definition() -> CoreDefinition:
@@ -644,6 +717,7 @@ def core_definition() -> CoreDefinition:
                 allowed_contribution_kind="yaml",
             ),
         ),
+        document_fragments=_core_document_fragments(),
     )
 
 
@@ -726,6 +800,7 @@ def capability_definitions() -> dict[str, CapabilityDefinition]:
         "cachix-publish": CapabilityDefinition(
             id="cachix-publish",
             description="Publish Nix artifacts through Cachix.",
+            dependencies=("nix",),
             artifacts=(
                 ArtifactDefinition(
                     id="cachix-publish-workflow",
@@ -745,6 +820,14 @@ def capability_definitions() -> dict[str, CapabilityDefinition]:
                     kind="yaml",
                     body_blob=ContentId.from_bytes(CACHIX_PUBLISH_JOB),
                     substitutions=(DEFAULT_BRANCH,),
+                ),
+            ),
+            document_fragments=(
+                DocumentFragmentDefinition(
+                    id="github-setup-cachix",
+                    document="docs/github-setup.md",
+                    order=10,
+                    body_blob=ContentId.from_bytes(CACHIX_GITHUB_SETUP),
                 ),
             ),
         ),
@@ -780,5 +863,13 @@ def capability_definitions() -> dict[str, CapabilityDefinition]:
             # local command stays declared through the invocation metadata.
             supported_python=">=3.14",
             invocation="uvx pr-agent",
+            document_fragments=(
+                DocumentFragmentDefinition(
+                    id="github-setup-pr-agent-gemini",
+                    document="docs/github-setup.md",
+                    order=20,
+                    body_blob=ContentId.from_bytes(PR_AGENT_GITHUB_SETUP),
+                ),
+            ),
         ),
     }

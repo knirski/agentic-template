@@ -46,17 +46,20 @@ from scripts.bootstrap.journal import (
     JournalTarget,
     PreparationIdentity,
     PreparationRole,
+    PreparationSpec,
     encode_journal,
     new_transaction_id,
 )
 from scripts.bootstrap.manifest import CandidateManifest
 from scripts.bootstrap.plan_digest import PlanReceipt, reconstruct_plan
+from scripts.bootstrap.planner import CreateFileOperation, ReplaceFileOperation
 from scripts.bootstrap.presentation import (
     CommandResult,
     render_json,
     render_text,
 )
 from scripts.bootstrap.result import Err, Ok, Result
+from scripts.bootstrap.scaffold import PROJECT_VALIDATION_SCAFFOLD
 from scripts.bootstrap.transaction import derive_preparation_specs, derive_preparations
 from scripts.bootstrap.values import JournalPhase
 
@@ -113,7 +116,7 @@ def _exit_code(result: CommandResult) -> int:
 
 
 class TemplatePackage:
-    """A synthetic template root supplying the five scaffold slots plus legal files."""
+    """A synthetic template root supplying the six scaffold slots plus legal files."""
 
     root: Path
 
@@ -135,6 +138,10 @@ class TemplatePackage:
             path.parent.mkdir(parents=True, exist_ok=True)
             _ = path.write_text(content, encoding="utf-8")
             path.chmod(mode)
+        project_validation = self.root / ".github/workflows/project-validation.yml"
+        project_validation.parent.mkdir(parents=True, exist_ok=True)
+        _ = project_validation.write_bytes(PROJECT_VALIDATION_SCAFFOLD)
+        project_validation.chmod(0o644)
         ownership = self.root / ".agentic-template/source-ownership.json"
         ownership.parent.mkdir(parents=True, exist_ok=True)
         _ = ownership.write_text(
@@ -215,6 +222,7 @@ class ScaffoldFixture:
             "NOTICE.md",
             "LICENSES/Apache-2.0.txt",
             "source-contract.txt",
+            ".github/workflows/project-validation.yml",
         ):
             target = self.root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -976,11 +984,23 @@ class CliFamilyTests(unittest.TestCase):
         token = bytes.fromhex("cd" * 32)
         specs = derive_preparation_specs(plan)
         preparations = derive_preparations(plan, transaction_id, (token,) * len(specs))
+
+        def is_root_file_stage(spec: PreparationSpec) -> bool:
+            if spec.role is not PreparationRole.STAGE or spec.expected_kind != "file":
+                return False
+            operation = plan.ordered_operations[spec.operation_index]
+            match operation:
+                case CreateFileOperation(path=path) | ReplaceFileOperation(path=path):
+                    return "/" not in path.value
+                case _:
+                    return False
+
+        stage_spec = next(spec for spec in specs if is_root_file_stage(spec))
         stage_identity = next(
             identity
             for identity in preparations
             if identity.role is PreparationRole.STAGE
-            and identity.operation_index == specs[0].operation_index
+            and identity.operation_index == stage_spec.operation_index
         )
         envelope = JournalEnvelope(
             operation="initial",
@@ -992,7 +1012,7 @@ class CliFamilyTests(unittest.TestCase):
         )
         _ = (state_root / "journal.json").write_bytes(encode_journal(envelope))
         stage_root = self.fixture.root / ".agentic-template-stage"
-        stage_dir = stage_root / transaction_id / str(stage_identity.operation_index)
+        stage_dir = stage_root / transaction_id / str(stage_spec.operation_index)
         stage_dir.mkdir(parents=True)
         marker = canonical_json(
             {

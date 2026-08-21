@@ -29,6 +29,7 @@ from scripts.bootstrap.render import (
     ManagedRender,
     ProfileInfo,
     ProjectInfo,
+    RenderContext,
     RenderError,
     RenderErrorKind,
     RenderInput,
@@ -257,6 +258,7 @@ def compose_document_bodies(
     project: ProjectInfo,
     maintenance: MaintenanceInfo,
     blobs: VerifiedBlobStore,
+    render_context: RenderContext | None = None,
 ) -> Result[tuple[tuple[RepoPath, tuple[str, ...]], ...], RenderError]:
     """Compose document-fragment bodies grouped by document, ordered by normative keys."""
     match _fragment_pairs(core, definitions, effective):
@@ -309,6 +311,7 @@ def compose_document_bodies(
                 project=project,
                 maintenance=maintenance,
                 slot_ids={},
+                render_context=render_context,
             ):
                 case Err(error):
                     return Err(error)
@@ -363,6 +366,7 @@ def render_generation(
     core: CoreDefinition,
     definitions: Mapping[str, CapabilityDefinition],
     effective: tuple[str, ...],
+    additions: tuple[str, ...] = (),
     settings: Mapping[str, Mapping[str, SettingValue]],
     project: ProjectInfo,
     licensing: LicensingInfo,
@@ -411,6 +415,14 @@ def render_generation(
         project,
         maintenance,
         interned,
+        render_context=RenderContext(
+            generation_path=generation_path,
+            profile=profile,
+            additions=additions,
+            effective=effective,
+            definitions=definitions,
+            settings=settings,
+        ),
     ):
         case Err(error):
             return Err(error)
@@ -422,7 +434,7 @@ def render_generation(
         project=project,
         licensing=licensing,
         profile=profile,
-        additions=(),
+        additions=additions,
         effective=effective,
         definitions=definitions,
         core=core,

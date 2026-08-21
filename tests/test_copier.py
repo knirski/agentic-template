@@ -91,16 +91,25 @@ def main() -> int:
         ):
             print("Copier output ownership contract failed", file=sys.stderr)
             return 1
-        validation = run([sys.executable, "scripts/validate_template.py"], cwd=project)
-        if validation.returncode:
-            print(validation.stderr, file=sys.stderr)
-            return validation.returncode
+        if (project / ".github/workflows/project-validation.yml").exists():
+            print(
+                "Copier output claimed the adopter-owned project-validation workflow",
+                file=sys.stderr,
+            )
+            return 1
         initial_readiness = run(
             [sys.executable, "scripts/check_project_readiness.py"], cwd=project
         )
         if initial_readiness.returncode != 1:
             print("untouched Copier output must fail readiness", file=sys.stderr)
             return 1
+        # The adopter-owned reusable workflow is seeded by bootstrap, not by
+        # Copier.  Continue this smoke test at the post-bootstrap validation
+        # boundary after proving the raw Copier output excluded it above.
+        _ = shutil.copy2(
+            ROOT / ".github/workflows/project-validation.yml",
+            project / ".github/workflows/project-validation.yml",
+        )
         project_git = ["git", "-C", str(project)]
         for args in (
             ("init", "--initial-branch=main"),

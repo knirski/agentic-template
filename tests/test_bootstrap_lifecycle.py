@@ -107,10 +107,14 @@ def test_restore_repairs_drifted_managed_file_in_process() -> None:
         compiled = test_source_bootstrap.render_for(())[
             test_source_bootstrap.CORE_CI_PATH
         ]
+        document = project / "docs/capabilities.md"
+        compiled_document = test_source_bootstrap.render_for(())["docs/capabilities.md"]
         _ = managed.write_bytes(b"drifted in-process\n")
+        _ = document.write_bytes(b"drifted documentation\n")
         result = _execute(["restore", "--target", str(project)])
         assert isinstance(result.outcome, Succeeded), result.outcome
         assert managed.read_bytes() == compiled
+        assert document.read_bytes() == compiled_document
 
 
 def test_plan_restore_writes_receipt_in_process() -> None:
@@ -227,6 +231,16 @@ def test_reconcile_binds_receipt_in_process() -> None:
     with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
         project, _record = _activate(Path(raw))
         as_copier_project(project)
+        # An unselected capability artifact can remain in a Copier source tree;
+        # both lifecycle inventories must exclude it as declaratively managed.
+        unselected_artifact = project / ".releaserc"
+        _ = unselected_artifact.write_bytes((ROOT / ".releaserc").read_bytes())
+        adopter_validation = project / ".github/workflows/project-validation.yml"
+        _ = adopter_validation.write_text(
+            adopter_validation.read_text(encoding="utf-8")
+            + "\n# adopter customization\n",
+            encoding="utf-8",
+        )
         source = project / "docs/agents/domain.md"
         _ = source.write_text("drifted source\n", encoding="utf-8")
         managed = project / test_source_bootstrap.CORE_CI_PATH
@@ -248,6 +262,10 @@ def test_reconcile_binds_receipt_in_process() -> None:
         assert isinstance(planned.outcome, Succeeded), planned.outcome
         assert receipt.exists()
         assert source.read_text(encoding="utf-8") == "drifted source\n"
+        assert unselected_artifact.read_bytes() == (ROOT / ".releaserc").read_bytes()
+        assert "# adopter customization" in adopter_validation.read_text(
+            encoding="utf-8"
+        )
 
         # The matching preview binds execution and repairs the managed drift.
         _ = managed.write_bytes(b"adopter edit\n")
@@ -277,6 +295,7 @@ def test_reconcile_binds_receipt_in_process() -> None:
         assert isinstance(reconciled.outcome, Succeeded), reconciled.outcome
         assert managed.read_bytes() == compiled
         assert source.read_text(encoding="utf-8") == "drifted source\n"
+        assert unselected_artifact.read_bytes() == (ROOT / ".releaserc").read_bytes()
 
 
 def test_reconcile_refuses_stale_receipt_in_process() -> None:

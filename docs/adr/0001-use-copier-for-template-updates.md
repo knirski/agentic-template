@@ -10,7 +10,7 @@ Copier provides version-aware updates, project-change merging, and conflict hand
 requiring this repository to own its own merge and filesystem safety implementation.
 
 Project-readiness validation is separate from Copier ownership. The template ships Python 3.14+
-standard-library validators and an adopter-owned `scripts/validate_project.py` hook; Copier remains
+standard-library validators and an adopter-owned `scripts/validate-project` hook; Copier remains
 responsible for preserving and reporting conflicts during updates. Copier updates the
 fingerprinted generated-lifecycle compiler inputs; bootstrap alone reconciles the resulting
 bootstrap-managed output, and only on the Copier-generated project path. It does not rewrite

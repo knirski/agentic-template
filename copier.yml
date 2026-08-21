@@ -35,7 +35,16 @@ _exclude:
   - .pr_agent.toml
   - .python-version
   - .releaserc
+  # The reusable validation boundary is adopter-owned and seeded by bootstrap;
+  # Copier must not claim it during source updates.
+  - .github/workflows/project-validation.yml
   - docs/specs
+  # Bootstrap-managed documentation is rendered transactionally after Copier
+  # updates; Copier must not claim ownership of these derived outputs.
+  - docs/capabilities.md
+  - docs/delivery-workflow.md
+  - docs/github-setup.md
+  - docs/template-updates.md
   - flake.lock
   - flake.nix
   - pyproject.toml

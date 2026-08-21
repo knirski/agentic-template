@@ -46,6 +46,7 @@ from scripts.bootstrap.render import (
     ProjectInfo,
 )
 from scripts.bootstrap.result import Err, Ok
+from scripts.bootstrap.scaffold import PROJECT_VALIDATION_SCAFFOLD
 from scripts.bootstrap.source_baseline import (
     CopierSourceBaseline,
     GitHubSourceBaseline,
@@ -80,6 +81,7 @@ SLOT_CONTENTS: dict[str, bytes] = {
     "validation_hook": (
         b"#!/usr/bin/env python3\nagentic-template:unconfigured:validate-project\n"
     ),
+    "project_validation": PROJECT_VALIDATION_SCAFFOLD,
 }
 
 
@@ -117,6 +119,7 @@ def fixture_answers() -> ManifestAnswers:
             slots[rule.slot] = SlotContent(
                 mode="file", content_sha256=sha256_hex(SLOT_CONTENTS[rule.slot])
             )
+    slots["project_validation"] = SlotContent(mode="scaffold", content_sha256=None)
     return ManifestAnswers(
         project=ProjectFacts(name="example", default_branch="main"),
         profile=ProfileSelection(id="portable", requested=()),

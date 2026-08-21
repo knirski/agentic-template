@@ -60,6 +60,8 @@ from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.scaffold import (
     COPIER_ANSWERS_PATH,
     MAINTENANCE_INVENTORY_PATH,
+    PROJECT_VALIDATION_PATH,
+    PROJECT_VALIDATION_SCAFFOLD,
     SEED_ONCE_PATHS,
     SEED_ONCE_SLOTS,
     SOURCE_OWNERSHIP_PATH,
@@ -912,6 +914,9 @@ def _scaffold_bytes(template_root: str) -> dict[RepoPath, bytes]:
             continue
         if len(content) <= DEFAULT_LIMITS.max_file_bytes:
             scaffold[path] = content
+    # Copier excludes this adopter-owned workflow, so its fixed initial bytes
+    # must remain available from the installed bootstrap compiler.
+    _ = scaffold.setdefault(PROJECT_VALIDATION_PATH, PROJECT_VALIDATION_SCAFFOLD)
     return scaffold
 
 

@@ -96,6 +96,12 @@ from scripts.bootstrap.render import (
     ManagedFile,
 )
 from scripts.bootstrap.result import Err, Ok, Result
+from scripts.bootstrap.scaffold import (
+    PROJECT_VALIDATION_PATH,
+    PROJECT_VALIDATION_SCAFFOLD,
+    SEED_ONCE_PATHS,
+    SEED_ONCE_SLOTS,
+)
 from scripts.bootstrap.source_baseline import (
     CopierSourceBaseline,
     GitHubSourceBaseline,
@@ -111,6 +117,7 @@ SLOT_CONTENTS: dict[str, bytes] = {
     "security_policy": b"<!-- agentic-template:placeholder:security -->\n",
     "contributing": b"<!-- agentic-template:placeholder:contributing -->\n",
     "validation_hook": b"#!/usr/bin/env python3\nagentic-template:unconfigured:validate-project\n",
+    "project_validation": PROJECT_VALIDATION_SCAFFOLD,
 }
 APACHE_TEXT = b"Apache License\nVersion 2.0, January 2004\n"
 LEGAL_CONTENTS: dict[str, dict[str, bytes]] = {
@@ -142,7 +149,7 @@ TARGET = target_identity(b"/work/example", device=1, inode=2)
 
 
 def slot_paths() -> dict[str, RepoPath]:
-    return {rule.slot: rule.path for rule in SLOT_PLACEHOLDER_RULES}
+    return dict(SEED_ONCE_SLOTS)
 
 
 def intern_all(
@@ -173,6 +180,7 @@ def fixture_answers(
             )
         else:
             slots[rule.slot] = SlotContent(mode="scaffold", content_sha256=None)
+    slots["project_validation"] = SlotContent(mode="scaffold", content_sha256=None)
     legal = LEGAL_CONTENTS[licensing_mode]
     return ManifestAnswers(
         project=ProjectFacts(name="example", default_branch="main"),
@@ -194,6 +202,7 @@ def fixture_seed_bytes(licensing_mode: str) -> dict[str, bytes]:
     contents = {
         rule.path.value: SLOT_CONTENTS[rule.slot] for rule in SLOT_PLACEHOLDER_RULES
     }
+    contents[PROJECT_VALIDATION_PATH.value] = PROJECT_VALIDATION_SCAFFOLD
     contents.update(LEGAL_CONTENTS[licensing_mode])
     return contents
 
@@ -290,7 +299,7 @@ def fixture_managed() -> tuple[ManagedFile, ...]:
 
 def _contract_entries() -> tuple[ObservedFileEntry, ...]:
     """Observed lifecycle files; seed and managed paths are supplied by their own classes."""
-    skip = {rule.path.value for rule in SLOT_PLACEHOLDER_RULES} | {
+    skip = {path.value for path in SEED_ONCE_PATHS} | {
         path for path, _kind, _content in MANAGED_CONTENTS
     }
     files: list[ObservedFileEntry] = []

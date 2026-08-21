@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from scripts.bootstrap.canonical_json import StrictJsonValue, decode_json
+from scripts.bootstrap.fragments import PROJECT_VALIDATION_WORKFLOW
 from scripts.bootstrap.identity import directory_tree_hash
 from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.manifest import MANIFEST_PATH
@@ -34,16 +35,20 @@ from scripts.bootstrap.vocabulary import SHA256
 CLEANUP_SCHEMA_VERSION = 1
 SOURCE_OWNERSHIP_SCHEMA_VERSION = 1
 
-# The five declared seed-once slots and their installed paths, fixed by the
+# The six declared seed-once slots and their installed paths, fixed by the
 # design's declared-placeholder-marker table.  Generation-path recognition
-# requires all five to satisfy the per-path shape rule.
+# requires all five marker-bearing slots to satisfy their per-path shape rule;
+# the project-validation workflow is a fixed adopter-owned scaffold.
 SEED_ONCE_SLOTS: dict[str, RepoPath] = {
     "readme": RepoPath("README.md"),
     "prd": RepoPath("docs/prd.md"),
     "security_policy": RepoPath("SECURITY.md"),
     "contributing": RepoPath("CONTRIBUTING.md"),
     "validation_hook": RepoPath("scripts/validate-project"),
+    "project_validation": RepoPath(".github/workflows/project-validation.yml"),
 }
+PROJECT_VALIDATION_PATH = SEED_ONCE_SLOTS["project_validation"]
+PROJECT_VALIDATION_SCAFFOLD = PROJECT_VALIDATION_WORKFLOW
 SEED_ONCE_PATHS: tuple[RepoPath, ...] = tuple(
     sorted((path for path in SEED_ONCE_SLOTS.values()), key=lambda p: p.value.encode())
 )
@@ -105,7 +110,9 @@ def recognize_generation(
     absent or byte-identical to the template's scaffold content.  GitHub
     requires no Copier answers and every seed-once path present and
     byte-identical to the scaffold.  A template package that does not yet ship
-    a seed-once path can never recognize a scaffold for it.
+    a seed-once path can never recognize a scaffold for it.  Copier may omit
+    the project-validation workflow because bootstrap carries its fixed
+    scaffold bytes.
     """
 
     if set(seed_once) != set(SEED_ONCE_PATHS):

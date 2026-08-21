@@ -110,6 +110,9 @@ class ContentInputs(StrictModel):
     validation_hook: ContentChoice
     security_policy: ContentChoice
     contributing: ContentChoice
+    project_validation: ContentChoice = Field(
+        default_factory=lambda: ScaffoldContent(mode="scaffold")
+    )
 
 
 class LicensingInput(StrictModel):
