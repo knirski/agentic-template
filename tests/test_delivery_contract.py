@@ -44,6 +44,8 @@ def main() -> int:
         fail("project-validation workflow must expose workflow_call")
     if "uv run --python 3.14 scripts/validate_repository.py" not in validation_workflow:
         fail("project-validation workflow must invoke the canonical validator")
+    if "if: github.repository != 'knirski/agentic-template'" not in validation_workflow:
+        fail("template-source project validation must preserve its readiness guard")
     if (
         "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
         not in validation_workflow

@@ -32,6 +32,7 @@ jobs:
           python-version: "3.14"
           enable-cache: true
       - name: Validate repository
+        if: github.repository != 'knirski/agentic-template'
         run: uv run --python 3.14 scripts/validate_repository.py
 """
 
