@@ -433,12 +433,14 @@ def _rendered_names(values: tuple[str, ...]) -> str:
     return ", ".join(values) if values else "none"
 
 
-def _setting_text(value: SettingValue) -> str:
+def _setting_text(value: object) -> str:
     match value:
         case bool():
             return "true" if value else "false"
         case str():
             return value
+        case _:
+            return str(value)
 
 
 def _capability_summary(

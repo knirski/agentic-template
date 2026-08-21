@@ -41,6 +41,7 @@ from scripts.bootstrap.render import (
     SlotDefinition,
     SubstitutionDefinition,
     _remove_marker_line,  # pyright: ignore[reportPrivateUsage]  deliberate unit test of private render helper
+    _setting_text,  # pyright: ignore[reportPrivateUsage]  deliberate unit test of private render helper
     apply_substitutions,
     derive_managed_inventory,
     encode_scalar,
@@ -635,6 +636,12 @@ def test_settings_change_changes_output() -> None:
     render_input = make_render_input(store, content_ids, settings=changed_settings)
     rendered = render_bytes(render_input, store)
     assert rendered[".releaserc"] == b'{"branches": ["beta"]}\n'
+
+
+def test_setting_text_defends_unvalidated_runtime_scalars() -> None:
+    assert _setting_text(True) == "true"
+    assert _setting_text("cache") == "cache"
+    assert _setting_text(42) == "42"
 
 
 def test_boolean_setting_toggles_optional_section() -> None:
