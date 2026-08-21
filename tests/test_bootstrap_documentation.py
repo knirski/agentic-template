@@ -118,23 +118,25 @@ def test_template_updates_records_maintenance_ownership() -> None:
 
 def test_documentation_has_no_legacy_hook_contract() -> None:
     rendered = _rendered(effective=("semantic-release",))
+    legacy_hook = "scripts/" + "validate_project.py"
 
     for path in DOCUMENT_PATHS:
         text = rendered[path].decode("utf-8")
         assert "scripts/validate-project" in text
-        assert "scripts/validate_project.py" not in text
+        assert legacy_hook not in text
         assert "adoption" not in text.lower()
         assert "migration" not in text.lower()
 
 
 def test_source_documentation_carries_the_same_operational_contract() -> None:
+    legacy_hook = "scripts/" + "validate_project.py"
     for relative in DOCUMENT_PATHS:
         text = (ROOT / relative).read_text(encoding="utf-8")
         assert "managed by the Agentic Delivery Template" in text
         assert "README.md" in text
         assert "CONTRIBUTING.md" in text
         assert "scripts/validate-project" in text
-        assert "scripts/validate_project.py" not in text
+        assert legacy_hook not in text
 
 
 def test_documentation_fragments_are_reproducible() -> None:

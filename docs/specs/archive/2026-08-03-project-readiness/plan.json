@@ -1,6 +1,7 @@
 {
   "feature": "project-readiness",
-  "spec": "docs/specs/2026-08-03-project-readiness/design.md",
+  "status": "archived",
+  "spec": "docs/specs/archive/2026-08-03-project-readiness/design.md",
   "goal": "Make incomplete generated-project setup deterministic and gate releases on one configured project-validation command.",
   "phases": [
     {

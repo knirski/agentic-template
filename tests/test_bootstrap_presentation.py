@@ -264,7 +264,7 @@ class PresentationTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             _ = Finding(
                 "R",
-                42,
+                42,  # pyright: ignore[reportArgumentType] — invalid-contract fixture
                 "a",
                 "rule",
                 "blocking",
@@ -277,7 +277,7 @@ class PresentationTests(unittest.TestCase):
                 SubjectPath("a"),
                 "a",
                 "rule",
-                "invalid-severity",
+                "invalid-severity",  # pyright: ignore[reportArgumentType] — invalid-contract fixture
                 "bad",
                 "fix",
             )

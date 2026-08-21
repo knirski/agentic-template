@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Exercise the Copier generation path end-to-end through the bootstrap CLI.
 
-Copies the tracked source tree, overlays the canonical seed-once scaffold (the
-source does not yet ship ``CONTRIBUTING.md`` and the extensionless hook; T20
-completes that transition), runs ``copier copy``, and installs supplied and
+Copies the tracked source tree, overlays the remaining canonical seed-once
+scaffold files, runs ``copier copy``, and installs supplied and
 all-scaffold bundles through the generated project's own CLI entry point.  The
 adopter-owned project-validation workflow is excluded from Copier, seeded by
 bootstrap, and checked for preservation during a Copier update.
@@ -82,9 +81,10 @@ def main() -> int:
         )
         record = workspace / "hook-runs"
         _ = record.write_text("", encoding="utf-8")
-        # Overlay the seed-once scaffold the source does not ship yet: the
-        # extensionless hook and CONTRIBUTING.md are absent from the source,
-        # and its real SECURITY.md is not marker-bearing placeholder content.
+        # Replace the source hook with a recording scaffold for this fixture;
+        # the source now carries the canonical extensionless path.  The source
+        # still does not ship CONTRIBUTING.md, and its real SECURITY.md is not
+        # marker-bearing placeholder content.
         hook = source / "scripts/validate-project"
         _ = hook.write_text(scaffold_hook(record), encoding="utf-8")
         hook.chmod(0o755)

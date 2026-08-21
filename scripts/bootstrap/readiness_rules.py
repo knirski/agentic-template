@@ -1,9 +1,8 @@
 """Declarative readiness-rule catalog for manifest schema v1.
 
 Carries every readiness v1 rule unchanged from the frozen baseline
-(design.md § Frozen readiness-rule baseline v1).  The old checker's
-rule constants are derived from this catalog; the four-argument
-``Finding`` adapter contract remains only until activation (T20).
+(design.md § Frozen readiness-rule baseline v1).  The checker derives its
+stable paths, markers, and headings from this catalog.
 
 Catalog immutability for manifest schema v1 is enforced by source review.
 No baseline comparison or compatibility corpus machinery is introduced.
@@ -228,27 +227,27 @@ FROZEN_CATALOG_V1: tuple[ReadinessRuleDefinition, ...] = (
             "required_text": "scripts/validate_repository.py",
         },
     ),
-    # -- Hook rules (scripts/validate_project.py) -------------------------
+    # -- Hook rules (scripts/validate-project) ----------------------------
     _rule(
         "READINESS_HOOK_MISSING",
         "file-exists",
-        {"path": "scripts/validate_project.py"},
+        {"path": "scripts/validate-project"},
     ),
     _rule(
         "READINESS_HOOK_NOT_REGULAR",
         "file-regular",
-        {"path": "scripts/validate_project.py"},
+        {"path": "scripts/validate-project"},
     ),
     _rule(
         "READINESS_HOOK_NOT_EXECUTABLE",
         "file-executable",
-        {"path": "scripts/validate_project.py"},
+        {"path": "scripts/validate-project"},
     ),
     _rule(
         "READINESS_HOOK_SENTINEL",
         "text-absent",
         {
-            "path": "scripts/validate_project.py",
+            "path": "scripts/validate-project",
             "patterns": ("agentic-template:unconfigured:validate-project",),
             "match": "text",
         },
@@ -311,10 +310,8 @@ def finding_code_is_known(code: str) -> bool:
 # ---------------------------------------------------------------------------
 # Derived constants — single source of truth
 # ---------------------------------------------------------------------------
-# These derive from the frozen catalog and replace the hardcoded
-# constants currently in the old checker.  The old checker
-# (``check_project_readiness.py``) continues to use its own constants
-# until activation (T20); these are ready for that transition.
+# These derive from the frozen catalog and are the single source of truth for
+# the readiness checker and bootstrap policy.
 # ---------------------------------------------------------------------------
 
 

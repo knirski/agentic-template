@@ -24,7 +24,7 @@ def sentinel_message() -> str:
 
 def main(argv: list[str]) -> int:
     if has_unexpected_arguments(argv):
-        print("usage: scripts/validate_project.py", file=sys.stderr)
+        print("usage: scripts/validate-project", file=sys.stderr)
         return 2
     print(sentinel_message(), file=sys.stderr)
     return 1

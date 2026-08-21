@@ -176,7 +176,7 @@ def _as_copier_project(project: Path) -> None:
     """Rewrite an activated GitHub project as a Copier project on disk.
 
     The CLI cannot generate a Copier project in this environment (Copier
-    adoption runs outside the bundle), so the e2e converts the installed
+    metadata setup runs outside the bundle), so the e2e converts the installed
     snapshot project: the answers file appears and the manifest provenance
     becomes Copier with the same recorded source entries.
     """

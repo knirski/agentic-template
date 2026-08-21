@@ -2,9 +2,8 @@
 """Exercise the GitHub-style same-tree generation path and T13 source contracts.
 
 The bootstrap suite (``GitHubBootstrapTests``) copies the tracked source tree,
-overlays the canonical seed-once scaffold (the source does not yet ship
-``CONTRIBUTING.md`` and the extensionless hook; T20 completes that
-transition), and installs supplied and all-scaffold bundles through the real
+overlays the remaining canonical seed-once scaffold files, and installs
+supplied and all-scaffold bundles through the real
 CLI entry point.  The source-contract tests pin the ADR ownership split,
 Copier exclusion consistency, snapshot-cleanup inventory consistency, and the
 absence of Bash workflow adapters.
@@ -99,7 +98,7 @@ class GitHubSnapshot(unittest.TestCase):
         self.assertFalse((self.project / ".git").exists())
         self.assertFalse((self.project / ".direnv").exists())
         self.assertFalse((self.project / "untracked-canary.txt").exists())
-        for relative in ("docs/prd.md", "README.md", "scripts/validate_project.py"):
+        for relative in ("docs/prd.md", "README.md", "scripts/validate-project"):
             path = self.project / relative
             path.chmod(path.stat().st_mode | 0o600)
 
@@ -132,7 +131,7 @@ class GitHubSnapshot(unittest.TestCase):
         self.assertIn("READINESS_README_BOILERPLATE", untouched.stderr)
         _ = (self.project / "docs/prd.md").write_text(PRD, encoding="utf-8")
         _ = (self.project / "README.md").write_text(README, encoding="utf-8")
-        hook = self.project / "scripts/validate_project.py"
+        hook = self.project / "scripts/validate-project"
         _ = hook.write_text(f"#!{sys.executable}\nprint('ok')\n", encoding="utf-8")
         hook.chmod(hook.stat().st_mode | 0o100)
         configured = self.run_validator()
@@ -151,6 +150,25 @@ class GitHubBootstrapTests(unittest.TestCase):
     @override
     def tearDown(self) -> None:
         self.tmp.cleanup()
+
+    def test_source_exposes_only_the_canonical_validation_hook(self) -> None:
+        legacy_hook = ROOT / "scripts" / ("validate" + "_project.py")
+        hook = ROOT / "scripts/validate-project"
+        self.assertTrue(hook.is_file())
+        self.assertNotEqual(hook.stat().st_mode & 0o111, 0)
+        configured = run([str(hook)], cwd=ROOT)
+        self.assertEqual(configured.returncode, 1)
+        self.assertIn(
+            "agentic-template:unconfigured:validate-project", configured.stderr
+        )
+        usage = run([str(hook), "unexpected"], cwd=ROOT)
+        self.assertEqual(usage.returncode, 2)
+        self.assertIn("usage: scripts/validate-project", usage.stderr)
+        self.assertFalse(legacy_hook.exists())
+        self.assertNotIn(
+            legacy_hook.relative_to(ROOT).as_posix(),
+            (ROOT / "scripts/check_project_readiness.py").read_text(encoding="utf-8"),
+        )
 
     def _snapshot(self, name: str) -> tuple[Path, Path]:
         """Copy the tracked source, overlay the seed-once scaffold, git-init."""

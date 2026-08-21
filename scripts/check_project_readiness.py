@@ -7,11 +7,6 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from scripts.bootstrap.readiness import MechanicalReadinessResult
-
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.dont_write_bytecode = True
@@ -20,26 +15,54 @@ sys.path.insert(0, str(ROOT))
 from scripts.bootstrap.entrypoint import reject_arguments  # noqa: E402
 from scripts.bootstrap.presentation import render_text  # noqa: E402
 from scripts.bootstrap.readiness import (  # noqa: E402
-    Finding,
+    Finding as CoreFinding,
+)
+from scripts.bootstrap.readiness import (  # noqa: E402
     MechanicalReadinessResult,
+    Repository,
+    SubjectPath,
+)
+from scripts.bootstrap.readiness_rules import (  # noqa: E402
+    HOOK_PATH,
+    HOOK_SENTINEL,
+    PRD_BOILERPLATE_PATTERN,
+    PRD_MARKER,
+    README_BOILERPLATE_PATTERNS,
+    README_MARKER,
+    README_VALIDATION_COMMAND,
+    REQUIRED_PRD_HEADINGS,
+    REQUIRED_README_SECTIONS,
+    REQUIREMENT_DECLARATION_PATTERN,
+    finding_code_is_known,
+    rule_by_code,
 )
 
 PRD = ROOT / "docs" / "prd.md"
 README = ROOT / "README.md"
-HOOK = ROOT / "scripts" / "validate_project.py"
-PRD_MARKER = "<!-- agentic-template:placeholder:prd -->"
-README_MARKER = "<!-- agentic-template:placeholder:readme -->"
-HOOK_SENTINEL = "agentic-template:unconfigured:validate-project"
-REQUIRED_HEADINGS = (
-    "Problem",
-    "Goals",
-    "Non-goals",
-    "Users and workflows",
-    "Requirements",
-    "Quality attributes",
-    "Release criteria",
-    "Open questions",
-)
+HOOK = ROOT / HOOK_PATH
+
+
+def _finding(
+    code: str,
+    path: Path,
+    message: str,
+    next_action: str,
+) -> CoreFinding:
+    """Build the structured finding shared by readiness and bootstrap."""
+    try:
+        subject = path.relative_to(ROOT).as_posix()
+    except ValueError:
+        subject = path.as_posix()
+    definition = rule_by_code(code) if finding_code_is_known(code) else None
+    return CoreFinding(
+        code=code,
+        subject_at=Repository() if subject == "" else SubjectPath(subject),
+        subject=subject,
+        rule=definition.rule if definition is not None else code,
+        severity=definition.severity if definition is not None else "blocking",
+        message=message,
+        next_action=next_action,
+    )
 
 
 @dataclass(frozen=True)
@@ -69,21 +92,21 @@ def visible_lines(text: str) -> tuple[tuple[int, str], ...]:
     return tuple(result)
 
 
-def evaluate_prd(text: str, path: Path) -> tuple[Finding, ...]:
-    findings: list[Finding] = []
+def evaluate_prd(text: str, path: Path) -> tuple[CoreFinding, ...]:
+    findings: list[CoreFinding] = []
     lines = visible_lines(text)
     if PRD_MARKER in text:
         findings.append(
-            Finding(
+            _finding(
                 "READINESS_PRD_MARKER",
                 path,
                 "template replacement marker remains",
                 "replace the marked PRD with product requirements",
             )
         )
-    if "This file is authoritative for the Agentic Delivery Template" in text:
+    if PRD_BOILERPLATE_PATTERN in text:
         findings.append(
-            Finding(
+            _finding(
                 "READINESS_PRD_BOILERPLATE",
                 path,
                 "template-source boilerplate remains",
@@ -97,7 +120,7 @@ def evaluate_prd(text: str, path: Path) -> tuple[Finding, ...]:
         if (match := re.match(r"^##\s+(.+?)\s*$", line))
     )
     positions: list[int] = []
-    for title in REQUIRED_HEADINGS:
+    for title in REQUIRED_PRD_HEADINGS:
         # A list (not tuple) keeps basedpyright's indexing analysis happy:
         # `tuple(generator)` is inferred as `tuple[()]`, which basic mode flags
         # at `matches[0]` below even though `matches` is non-empty in this
@@ -105,7 +128,7 @@ def evaluate_prd(text: str, path: Path) -> tuple[Finding, ...]:
         matches = [number for number, heading in headings if heading == title]
         if not matches:
             findings.append(
-                Finding(
+                _finding(
                     "READINESS_PRD_HEADING_MISSING",
                     path,
                     f"required heading '## {title}' is missing",
@@ -115,7 +138,7 @@ def evaluate_prd(text: str, path: Path) -> tuple[Finding, ...]:
         else:
             if len(matches) > 1:
                 findings.append(
-                    Finding(
+                    _finding(
                         "READINESS_PRD_HEADING_DUPLICATE",
                         path,
                         f"heading '## {title}' appears {len(matches)} times",
@@ -125,7 +148,7 @@ def evaluate_prd(text: str, path: Path) -> tuple[Finding, ...]:
             positions.append(matches[0])
     if positions and positions != sorted(positions):
         findings.append(
-            Finding(
+            _finding(
                 "READINESS_PRD_HEADING_ORDER",
                 path,
                 "required headings are out of order",
@@ -146,14 +169,14 @@ def evaluate_prd(text: str, path: Path) -> tuple[Finding, ...]:
         (number, line) for number, line in lines if req_section < number < req_end
     )
     declarations: dict[str, tuple[int, str]] = {}
-    declaration_pattern = re.compile(r"^###\s+(REQ-(\d{3})):\s*(.*?)\s*$")
+    declaration_pattern = re.compile(REQUIREMENT_DECLARATION_PATTERN)
     for number, line in req_lines:
         match = declaration_pattern.match(line)
         if match:
             identifier, digits, title = match.groups()
             if digits == "000":
                 findings.append(
-                    Finding(
+                    _finding(
                         "READINESS_REQUIREMENT_ID",
                         path,
                         f"requirement {identifier} has an invalid identifier",
@@ -162,7 +185,7 @@ def evaluate_prd(text: str, path: Path) -> tuple[Finding, ...]:
                 )
             if identifier in declarations:
                 findings.append(
-                    Finding(
+                    _finding(
                         "READINESS_REQUIREMENT_DUPLICATE",
                         path,
                         f"requirement {identifier} is declared more than once",
@@ -172,7 +195,7 @@ def evaluate_prd(text: str, path: Path) -> tuple[Finding, ...]:
             declarations[identifier] = (number, title)
             if title == "":
                 findings.append(
-                    Finding(
+                    _finding(
                         "READINESS_REQUIREMENT_TITLE",
                         path,
                         f"requirement {identifier} has an empty title",
@@ -182,7 +205,7 @@ def evaluate_prd(text: str, path: Path) -> tuple[Finding, ...]:
             continue
         if re.match(r"^###\s+(REQ-[^:]+):", line):
             findings.append(
-                Finding(
+                _finding(
                     "READINESS_REQUIREMENT_ID",
                     path,
                     "requirement heading has an invalid identifier",
@@ -191,7 +214,7 @@ def evaluate_prd(text: str, path: Path) -> tuple[Finding, ...]:
             )
     if not declarations:
         findings.append(
-            Finding(
+            _finding(
                 "READINESS_REQUIREMENT_MISSING",
                 path,
                 "no requirement declaration exists",
@@ -214,7 +237,7 @@ def evaluate_prd(text: str, path: Path) -> tuple[Finding, ...]:
         )
         if not body:
             findings.append(
-                Finding(
+                _finding(
                     "READINESS_REQUIREMENT_BODY",
                     path,
                     f"requirement {identifier} has no body",
@@ -224,40 +247,31 @@ def evaluate_prd(text: str, path: Path) -> tuple[Finding, ...]:
     return tuple(findings)
 
 
-def evaluate_readme(text: str, path: Path) -> tuple[Finding, ...]:
-    findings: list[Finding] = []
+def evaluate_readme(text: str, path: Path) -> tuple[CoreFinding, ...]:
+    findings: list[CoreFinding] = []
     lines = visible_lines(text)
     if README_MARKER in text:
         findings.append(
-            Finding(
+            _finding(
                 "READINESS_README_MARKER",
                 path,
                 "template replacement marker remains",
                 "replace the marked README with project documentation",
             )
         )
-    if "# Agentic Delivery Template" in text:
+    if any(pattern in text for pattern in README_BOILERPLATE_PATTERNS):
         findings.append(
-            Finding(
+            _finding(
                 "READINESS_README_BOILERPLATE",
                 path,
-                "template title remains",
-                "replace the template title with the project title",
-            )
-        )
-    if "A language-neutral GitHub repository template for planning" in text:
-        findings.append(
-            Finding(
-                "READINESS_README_BOILERPLATE",
-                path,
-                "template introduction remains",
+                "template README boilerplate remains",
                 "replace the template introduction with project documentation",
             )
         )
     titles = tuple(line for _, line in lines if re.match(r"^#\s+", line))
     if len(titles) != 1:
         findings.append(
-            Finding(
+            _finding(
                 "READINESS_README_TITLE",
                 path,
                 "README must contain exactly one level-one project title",
@@ -269,7 +283,7 @@ def evaluate_readme(text: str, path: Path) -> tuple[Finding, ...]:
         (number, line) for number, line in lines if re.match(r"^##\s+.+?\s*$", line)
     )
     section_spans: dict[str, tuple[int, int]] = {}
-    for section in ("Setup", "Validation"):
+    for section in REQUIRED_README_SECTIONS:
         matches = tuple(
             number
             for number, line in headings
@@ -277,7 +291,7 @@ def evaluate_readme(text: str, path: Path) -> tuple[Finding, ...]:
         )
         if len(matches) != 1:
             findings.append(
-                Finding(
+                _finding(
                     "READINESS_README_SECTION",
                     path,
                     f"README must contain exactly one '## {section}' section",
@@ -297,7 +311,7 @@ def evaluate_readme(text: str, path: Path) -> tuple[Finding, ...]:
             )
             if not any(line.strip() for line in body):
                 findings.append(
-                    Finding(
+                    _finding(
                         "READINESS_README_SECTION_EMPTY",
                         path,
                         f"README section '## {section}' is empty",
@@ -315,10 +329,10 @@ def evaluate_readme(text: str, path: Path) -> tuple[Finding, ...]:
     if (
         validation_start is not None
         and validation_end is not None
-        and "scripts/validate_repository.py" not in validation_text
+        and README_VALIDATION_COMMAND not in validation_text
     ):
         findings.append(
-            Finding(
+            _finding(
                 "READINESS_README_COMMAND",
                 path,
                 "README does not name the canonical validation command",
@@ -328,38 +342,38 @@ def evaluate_readme(text: str, path: Path) -> tuple[Finding, ...]:
     return tuple(findings)
 
 
-def evaluate_hook(state: HookState) -> tuple[Finding, ...]:
+def evaluate_hook(state: HookState) -> tuple[CoreFinding, ...]:
     if not state.exists:
         return (
-            Finding(
+            _finding(
                 "READINESS_HOOK_MISSING",
                 state.path,
                 "project-validation hook is missing",
-                "create an executable scripts/validate_project.py hook",
+                f"create an executable {HOOK_PATH} hook",
             ),
         )
     if not state.regular_file:
         return (
-            Finding(
+            _finding(
                 "READINESS_HOOK_NOT_REGULAR",
                 state.path,
                 "project-validation hook is not a regular file",
-                "create a regular executable scripts/validate_project.py hook",
+                f"create a regular executable {HOOK_PATH} hook",
             ),
         )
-    findings: list[Finding] = []
+    findings: list[CoreFinding] = []
     if not state.executable:
         findings.append(
-            Finding(
+            _finding(
                 "READINESS_HOOK_NOT_EXECUTABLE",
                 state.path,
                 "project-validation hook is not executable",
-                "chmod +x scripts/validate_project.py",
+                f"chmod +x {HOOK_PATH}",
             )
         )
     if state.text is not None and HOOK_SENTINEL in state.text:
         findings.append(
-            Finding(
+            _finding(
                 "READINESS_HOOK_SENTINEL",
                 state.path,
                 "unconfigured hook sentinel remains",
@@ -374,8 +388,8 @@ def evaluate_readiness(
     prd: tuple[str, Path] | None,
     readme: tuple[str, Path] | None,
     hook: HookState,
-    initial_findings: tuple[Finding, ...] = (),
-) -> tuple[Finding, ...]:
+    initial_findings: tuple[CoreFinding, ...] = (),
+) -> tuple[CoreFinding, ...]:
     findings = list(initial_findings)
     if prd is not None:
         findings.extend(evaluate_prd(*prd))
@@ -386,35 +400,24 @@ def evaluate_readiness(
 
 
 def mechanical_readiness(
-    findings: tuple[Finding, ...],
+    findings: tuple[CoreFinding, ...],
 ) -> MechanicalReadinessResult:
     """Return the shared structured result used by bootstrap gating."""
-    return MechanicalReadinessResult(
-        1,
-        tuple(
-            Finding(
-                finding.code,
-                finding.path.relative_to(ROOT),
-                finding.message,
-                finding.next_action,
-            )
-            for finding in findings
-        ),
-    )
+    return MechanicalReadinessResult(1, findings)
 
 
-def exit_code(findings: tuple[Finding, ...]) -> int:
+def exit_code(findings: tuple[CoreFinding, ...]) -> int:
     if any(finding.code == "INTERNAL_READINESS_ERROR" for finding in findings):
         return 2
     return 1 if any(finding.severity == "blocking" for finding in findings) else 0
 
 
-def read_text(path: Path, findings: list[Finding]) -> str | None:
+def read_text(path: Path, findings: list[CoreFinding]) -> str | None:
     try:
         return path.read_text(encoding="utf-8")
     except FileNotFoundError:
         findings.append(
-            Finding(
+            _finding(
                 "READINESS_MISSING_FILE",
                 path,
                 "file is missing",
@@ -423,7 +426,7 @@ def read_text(path: Path, findings: list[Finding]) -> str | None:
         )
     except (OSError, UnicodeError) as exc:
         findings.append(
-            Finding(
+            _finding(
                 "INTERNAL_READINESS_ERROR",
                 path,
                 f"cannot read file ({exc})",
@@ -433,7 +436,7 @@ def read_text(path: Path, findings: list[Finding]) -> str | None:
     return None
 
 
-def inspect_hook(path: Path, findings: list[Finding]) -> HookState:
+def inspect_hook(path: Path, findings: list[CoreFinding]) -> HookState:
     if not path.exists():
         return HookState(path, False, False, False, None)
     if path.is_symlink() or not path.is_file():
@@ -453,7 +456,7 @@ def main(argv: list[str]) -> int:
         is not None
     ):
         return 2
-    initial_findings: list[Finding] = []
+    initial_findings: list[CoreFinding] = []
     try:
         prd_text = read_text(PRD, initial_findings)
         readme_text = read_text(README, initial_findings)
@@ -475,7 +478,7 @@ def main(argv: list[str]) -> int:
             "findings": [
                 {
                     "code": finding.code,
-                    "subject": finding.path.relative_to(ROOT).as_posix(),
+                    "subject": finding.subject,
                     "message": finding.message,
                     "next_action": finding.next_action,
                 }
