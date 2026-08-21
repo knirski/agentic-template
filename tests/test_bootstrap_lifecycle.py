@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import tempfile
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -57,8 +58,6 @@ def _execute(args: list[str]) -> CommandResult:
 
 
 def _raw_command(command: str, intent: Intent, project: Path) -> CommandResult:
-    from scripts.bootstrap.cli import ParsedCommand
-
     parsed = ParsedCommand(
         command=command,
         presentation=PresentationOptions(),
@@ -78,13 +77,9 @@ def _activate(raw: Path) -> tuple[Path, Path]:
 
 
 def test_recorded_render_preserves_profile_capability_closure() -> None:
-    answers = fixture_answers()
-    answers = answers.__class__(
-        project=answers.project,
+    answers = replace(
+        fixture_answers(),
         profile=ProfileSelection(id="custom", requested=("nix",)),
-        settings=answers.settings,
-        licensing=answers.licensing,
-        slots=answers.slots,
     )
     manifest = SimpleNamespace(
         answers=answers,
