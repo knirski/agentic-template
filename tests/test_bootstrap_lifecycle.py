@@ -1,4 +1,4 @@
-"""In-process lifecycle-executor tests: restore and reconcile run inside the test
+"""In-process lifecycle-executor tests: restore and reconcile run inside the test process.
 
 The CLI e2e suites exercise the executor through subprocesses, which pytest-cov
 cannot see; these tests call ``_execute_lifecycle`` directly so the lifecycle
