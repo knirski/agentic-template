@@ -20,7 +20,7 @@ REQUIRED_FILES: tuple[str, ...] = (
     ".github/workflows/project-validation.yml",
     "scripts/check_project_readiness.py",
     "scripts/check-release-eligibility.py",
-    "scripts/validate_project.py",
+    "scripts/validate-project",
     "scripts/validate_repository.py",
     "scripts/bootstrap/__init__.py",
     "scripts/bootstrap/canonical_json.py",

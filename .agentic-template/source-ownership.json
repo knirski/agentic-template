@@ -145,7 +145,6 @@
     "scripts/fixtures/workflows/nix.yml",
     "scripts/fixtures/workflows/pr-agent-gemini.yml",
     "scripts/fixtures/workflows/semantic-release.yml",
-    "scripts/validate_project.py",
     "scripts/validate_repository.py",
     "scripts/validate_template.py",
     "skills-lock.json"

@@ -63,7 +63,7 @@ class ReadinessFixtures(unittest.TestCase):
         _ = shutil.copytree(ROOT / "scripts/bootstrap", self.root / "scripts/bootstrap")
         self.write("docs/prd.md", VALID_PRD)
         self.write("README.md", VALID_README)
-        self.write("scripts/validate_project.py", VALID_HOOK, executable=True)
+        self.write("scripts/validate-project", VALID_HOOK, executable=True)
 
     @override
     def tearDown(self) -> None:
@@ -183,7 +183,7 @@ class ReadinessFixtures(unittest.TestCase):
         target = self.root / "real-validation-hook"
         _ = target.write_text(VALID_HOOK, encoding="utf-8")
         target.chmod(target.stat().st_mode | stat.S_IXUSR)
-        hook = self.root / "scripts/validate_project.py"
+        hook = self.root / "scripts/validate-project"
         hook.unlink()
         hook.symlink_to(target)
         result = self.run_checker()
@@ -208,7 +208,7 @@ class ReadinessFixtures(unittest.TestCase):
 
     def test_hook_is_inspected_without_execution_or_mutation(self) -> None:
         canary = self.root / "canary"
-        hook = self.root / "scripts/validate_project.py"
+        hook = self.root / "scripts/validate-project"
         _ = hook.write_text(
             f"#!/usr/bin/env python3\nfrom pathlib import Path\nPath({str(canary)!r}).write_text('executed')\n{HOOK_SENTINEL!r}\n",
             encoding="utf-8",

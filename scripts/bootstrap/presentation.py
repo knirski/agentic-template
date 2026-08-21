@@ -288,7 +288,7 @@ def render_text(
     """Render the outcome as deterministic, human-oriented prose.
 
     A plain value (shared validator findings mapping or a scalar) renders
-    with the legacy fallback.  ``explain`` appends the typed state and
+    with the plain-value fallback.  ``explain`` appends the typed state and
     decision constructors; ``color`` styles only the outcome-class line and
     never changes words or ordering.
     """

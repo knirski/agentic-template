@@ -121,7 +121,7 @@ def main() -> int:
             _ = run(project_git + list(args))
         _ = (project / "docs/prd.md").write_text(VALID_PRD, encoding="utf-8")
         _ = (project / "README.md").write_text(VALID_README, encoding="utf-8")
-        project_hook = project / "scripts/validate_project.py"
+        project_hook = project / "scripts/validate-project"
         _ = project_hook.write_text(
             "#!/usr/bin/env python3\nprint('ok')\n", encoding="utf-8"
         )
@@ -135,10 +135,10 @@ def main() -> int:
         shutil.rmtree(project / "scripts/__pycache__", ignore_errors=True)
         with (source / "NOTICE.md").open("a", encoding="utf-8") as handle:
             _ = handle.write("\nCopier smoke-test marker.\n")
-        source_hook = source / "scripts/validate_project.py"
+        source_hook = source / "scripts/validate-project"
         with source_hook.open("a", encoding="utf-8") as handle:
             _ = handle.write("\n# template hook update\n")
-        _ = run([*git, "add", "NOTICE.md", "scripts/validate_project.py"])
+        _ = run([*git, "add", "NOTICE.md", "scripts/validate-project"])
         _ = run([*git, "commit", "-m", "template v0.2.0"])
         _ = run([*git, "tag", "v0.2.0"])
         with (project / "README.md").open("a", encoding="utf-8") as handle:
@@ -151,7 +151,7 @@ def main() -> int:
                 "add",
                 "README.md",
                 "docs/prd.md",
-                "scripts/validate_project.py",
+                "scripts/validate-project",
             ]
         )
         _ = run([*project_git, "commit", "-m", "project customization"])
@@ -168,10 +168,10 @@ def main() -> int:
             print(result.stdout + result.stderr, file=sys.stderr)
             return 1
         if (
-            # Until T20 ships the extensionless seed-once hook, the .py hook
-            # rides in the Copier copy; updates must still deliver template
-            # hook changes, with Copier's conflict markers preserving local
-            # edits (never a silent skip).
+            # Until the distinct generated-lifecycle scaffold blobs are
+            # introduced, the seed-once hook rides in the Copier copy;
+            # updates must still deliver template hook changes, with Copier's
+            # conflict markers preserving local edits (never a silent skip).
             "# template hook update" not in hook_text
             or "Copier smoke-test marker."
             not in (project / "NOTICE.md").read_text(encoding="utf-8")

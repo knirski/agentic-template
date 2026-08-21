@@ -1,10 +1,10 @@
 # Project Readiness Contract
 
-Status: Approved on 2026-08-04
-Supersession: upon approval of `docs/specs/2026-08-05-deterministic-project-bootstrap/design.md`
-(revision 16), this spec is superseded and this directory is archived at bootstrap activation; its
-v1 rules move verbatim into that design's frozen readiness-rule baseline v1. This note is
-informational until then; this spec remains the approved authority for the validator contract.
+Status: Superseded and archived on 2026-08-21
+Superseded by: `docs/specs/2026-08-05-deterministic-project-bootstrap/design.md` (revision 17)
+
+The readiness rules from this design were carried forward into the frozen readiness-rule baseline
+v1. This archived document is retained for historical context and is not an active authority.
 
 ## Problem
 
@@ -140,7 +140,7 @@ Acceptance criteria:
 
 ## Domain language
 
-Repository-wide terminology is defined in [`CONTEXT.md`](../../../CONTEXT.md). In particular:
+Repository-wide terminology is defined in [`CONTEXT.md`](../../../../CONTEXT.md). In particular:
 
 - a **generated-project contract** is shared behavior, not identical file packaging;
 - **project readiness** is deterministic configuration evidence, not product correctness;

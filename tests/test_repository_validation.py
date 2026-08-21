@@ -66,7 +66,7 @@ class AggregateFixtures(unittest.TestCase):
         for name, marker in (
             ("validate_template.py", "template"),
             ("check_project_readiness.py", "readiness"),
-            ("validate_project.py", "project"),
+            ("validate-project", "project"),
         ):
             self.write_stage(name, 0, marker)
         result = self.run_command()
@@ -81,7 +81,7 @@ class AggregateFixtures(unittest.TestCase):
     ) -> None:
         self.write_stage("validate_template.py", 0, "template")
         self.write_stage("check_project_readiness.py", 7, "readiness")
-        self.write_stage("validate_project.py", 0, "project")
+        self.write_stage("validate-project", 0, "project")
         result = self.run_command()
         self.assertEqual(result.returncode, 7)
         self.assertTrue((self.root / "template").exists())

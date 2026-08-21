@@ -164,7 +164,7 @@ def tracked_files(root: Path) -> list[str]:
         for entry in run(
             ["git", "-C", str(root), "ls-files", "-co", "--exclude-standard", "-z"]
         ).stdout.split("\0")
-        if entry
+        if entry and (root / entry).is_file()
     ]
     return sorted(files)
 

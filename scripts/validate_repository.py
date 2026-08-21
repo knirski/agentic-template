@@ -22,7 +22,7 @@ from scripts.bootstrap.validation_program import (  # noqa: E402
 STAGES = (
     ("template contract", ROOT / "scripts/validate_template.py", True),
     ("project readiness", ROOT / "scripts/check_project_readiness.py", True),
-    ("project validation", ROOT / "scripts/validate_project.py", False),
+    ("project validation", ROOT / "scripts/validate-project", False),
 )
 
 
