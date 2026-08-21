@@ -1334,11 +1334,24 @@
           "inputs": [
             "repository validation instructions; release gate; verification-before-completion and substantive code-review requirements."
           ],
-          "description": "Run the complete source and generated fixture suites, explicit Python 3.14 lane, transaction/recovery/path-safety suites, actionlint, uv lock validation, formatting, linting, strict ty, and repository-defined checks. Review the final diff for unintended changes and record any remaining issue without weakening validation.",
+          "description": "Run the complete source and generated fixture suites, explicit Python 3.14 lane, transaction/recovery/path-safety suites, actionlint, uv lock validation, formatting, linting, basedpyright, and repository-defined checks. Review the final diff for unintended changes and record any remaining issue without weakening validation.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "github_prs": [],
+            "completion": {
+              "completed_at": "2026-08-21",
+              "commits": [],
+              "evidence": [
+                "uv sync --all-groups --locked and uv lock --check passed",
+                "uv run pytest (1198 passed in 37.86s), including transaction, recovery, path-safety, source, and generated-fixture coverage",
+                "uv run ruff check and uv run ruff format --check passed (95 files already formatted)",
+                "uv run basedpyright passed with 0 errors, 0 warnings, and 0 notes",
+                "Python 3.14 readiness, repository-validation, and delivery-contract fixtures passed",
+                "actionlint workflow checks, generated-project canonical validation, template validation, and git diff --check passed",
+                "post-fix code review completed with no actionable findings"
+              ]
+            }
           },
           "files": {
             "create": [],
@@ -1350,7 +1363,7 @@
               "`uv run pytest`",
               "`uv run ruff check`",
               "`uv run ruff format --check`",
-              "`uv run ty check`",
+              "`uv run basedpyright`",
               "`uv lock --check`",
               "CI checks, including the standalone actionlint job",
               "`git diff --check`",
