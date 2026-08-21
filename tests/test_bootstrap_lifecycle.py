@@ -231,6 +231,10 @@ def test_reconcile_binds_receipt_in_process() -> None:
     with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
         project, _record = _activate(Path(raw))
         as_copier_project(project)
+        # An unselected capability artifact can remain in a Copier source tree;
+        # both lifecycle inventories must exclude it as declaratively managed.
+        unselected_artifact = project / ".releaserc"
+        _ = unselected_artifact.write_bytes((ROOT / ".releaserc").read_bytes())
         source = project / "docs/agents/domain.md"
         _ = source.write_text("drifted source\n", encoding="utf-8")
         managed = project / test_source_bootstrap.CORE_CI_PATH
@@ -252,6 +256,7 @@ def test_reconcile_binds_receipt_in_process() -> None:
         assert isinstance(planned.outcome, Succeeded), planned.outcome
         assert receipt.exists()
         assert source.read_text(encoding="utf-8") == "drifted source\n"
+        assert unselected_artifact.read_bytes() == (ROOT / ".releaserc").read_bytes()
 
         # The matching preview binds execution and repairs the managed drift.
         _ = managed.write_bytes(b"adopter edit\n")
@@ -281,6 +286,7 @@ def test_reconcile_binds_receipt_in_process() -> None:
         assert isinstance(reconciled.outcome, Succeeded), reconciled.outcome
         assert managed.read_bytes() == compiled
         assert source.read_text(encoding="utf-8") == "drifted source\n"
+        assert unselected_artifact.read_bytes() == (ROOT / ".releaserc").read_bytes()
 
 
 def test_reconcile_refuses_stale_receipt_in_process() -> None:

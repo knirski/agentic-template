@@ -1605,7 +1605,7 @@ def _compile_lifecycle_plan(
     overwrite = cast("Reconcile | PlanReconcile", parsed.intent).options.overwrite_drift
     match collect_template_source_entries(
         template_root,
-        managed_paths={file.path for file in rendered},
+        managed_paths=_declared_managed_paths(),
         limits=limits,
     ):
         case Err(error):
