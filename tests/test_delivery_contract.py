@@ -47,6 +47,11 @@ def main() -> int:
     if "if: github.repository != 'knirski/agentic-template'" not in validation_workflow:
         fail("template-source project validation must preserve its readiness guard")
     if (
+        "enable-cache: ${{ github.repository != 'knirski/agentic-template' }}"
+        not in validation_workflow
+    ):
+        fail("template-source project validation must disable uv caching")
+    if (
         "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
         not in validation_workflow
     ):
