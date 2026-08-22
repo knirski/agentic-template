@@ -16,7 +16,11 @@ from unittest.mock import patch
 from scripts import check_project_readiness as readiness
 from scripts import validate_repository as repository
 from scripts import validate_template as template
+from scripts.bootstrap import validation_presentation as presentation
+from scripts.bootstrap.errors import ProcessError, ProcessErrorKind
+from scripts.bootstrap.readiness import Finding, SubjectPath
 from scripts.bootstrap.validation_program import (
+    CapturedStream,
     STREAM_PREFIX_LIMIT,
     StageFailed,
     StageLaunchFailed,
@@ -143,11 +147,122 @@ A language-neutral GitHub repository template for planning.
         self.assertEqual(document["command"], "validate_template")
         self.assertEqual(document["outcome_class"], "invalid_request")
 
+    def test_validation_presentation_parsing_and_safe_text(self) -> None:
+        self.assertEqual(
+            presentation.parse_options(
+                ["--explain", "--quiet", "--format", "text", "--color", "never"]
+            ),
+            presentation.ValidationOptions("text", "never", True, True),
+        )
+        self.assertEqual(
+            presentation.parse_options(["--format", "json"]),
+            presentation.ValidationOptions("json", "auto", False, False),
+        )
+        for argv in (
+            ["--format"],
+            ["--format", "yaml"],
+            ["--color", "rainbow"],
+            ["--unknown"],
+            ["--format", "json", "--quiet"],
+            ["--format", "json", "--color", "always"],
+        ):
+            self.assertIsNone(presentation.parse_options(argv))
+        self.assertTrue(presentation.requested_json(["--format", "json"]))
+        self.assertTrue(presentation.requested_json(["--format=json"]))
+        self.assertFalse(presentation.requested_json(["--format", "text"]))
+        self.assertEqual(
+            presentation.safe_text("line\n\x1b\u202e"),
+            "line\\x0a\\x1b\\u202e",
+        )
+
+    def test_validation_presentation_renders_text_and_json_findings(self) -> None:
+        finding = Finding(
+            "READINESS_TEST",
+            SubjectPath("README.md"),
+            "README.md",
+            "rule",
+            "blocking",
+            "bad",
+            "fix it",
+        )
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            result = presentation.render_findings(
+                command="check_project_readiness",
+                findings=(finding,),
+                exit_code=1,
+                options=presentation.ValidationOptions(format="json"),
+                diagnostic="bad\ninput",
+            )
+        self.assertEqual(result, 1)
+        self.assertIn('"outcome_class":"validation_failed"', stdout.getvalue())
+        self.assertIn("bad", stdout.getvalue())
+        self.assertIn("input", stdout.getvalue())
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            result = presentation.render_findings(
+                command="check_project_readiness",
+                findings=(finding,),
+                exit_code=2,
+                options=presentation.ValidationOptions(explain=True, color="never"),
+                diagnostic="internal",
+            )
+        self.assertEqual(result, 2)
+        self.assertIn("state: check_project_readiness", stderr.getvalue())
+        self.assertIn("READINESS_TEST: README.md", stderr.getvalue())
+
+    def test_repository_stage_documents_and_text_presentation(self) -> None:
+        stream = CapturedStream.from_bytes(b"output\x1b\n")
+        observations = (
+            StagePassed(stdout=stream),
+            StageFailed(7, stderr=stream),
+            StageSignalled(15),
+            StageLaunchFailed(ProcessError(ProcessErrorKind.EXECUTABLE_NOT_FOUND)),
+        )
+        for observation in observations:
+            document = repository._stage_document("stage", observation)  # pyright: ignore[reportPrivateUsage]
+            self.assertIn("kind", document)
+        self.assertEqual(
+            repository._stream_text(  # pyright: ignore[reportPrivateUsage]
+                CapturedStream(1, "0" * 64, "!", False)
+            ),
+            "<invalid captured prefix>",
+        )
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            repository._render_text_stage(  # pyright: ignore[reportPrivateUsage]
+                "stage",
+                StageFailed(3, stdout=stream, stderr=stream),
+                presentation.ValidationOptions(explain=True, color="never"),
+            )
+        self.assertIn("==> stage", stdout.getvalue())
+        self.assertIn("stage: failed exit=3", stdout.getvalue())
+        self.assertIn("stderr:", stderr.getvalue())
+
+    def test_repository_json_main_serializes_stage_documents(self) -> None:
+        with (
+            patch(
+                "scripts.validate_repository.run_stage",
+                side_effect=(StagePassed(), StagePassed(), StagePassed()),
+            ),
+            contextlib.redirect_stdout(io.StringIO()) as output,
+        ):
+            self.assertEqual(repository.main(["--format", "json"]), 0)
+        document = cast(dict[str, object], json.loads(output.getvalue()))
+        self.assertEqual(document["outcome_class"], "succeeded")
+        self.assertEqual(len(cast(list[object], document["stages"])), 3)
+
     def test_repository_core_stops_after_nonzero_stage(self) -> None:
         self.assertTrue(stage_failed(7))
         self.assertFalse(stage_failed(0))
         self.assertTrue(stage_failed(StageFailed(7)))
         self.assertFalse(stage_failed(StagePassed(0)))
+
+    def test_captured_stream_rejects_negative_prefix_limits(self) -> None:
+        with self.assertRaises(ValueError):
+            _ = CapturedStream.from_bytes(b"data", prefix_limit=-1)
 
     def test_repository_adapter_folds_successful_stages(self) -> None:
         with patch(
