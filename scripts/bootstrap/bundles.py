@@ -95,6 +95,7 @@ def _read_bundle_relative_file(
     """Read one bundle file below a no-follow directory descriptor."""
 
     parent_fds: list[int] = []
+    file_fd = -1
     try:
         current = os.open(
             os.path.abspath(root),
@@ -111,14 +112,19 @@ def _read_bundle_relative_file(
             parent_fds.append(current)
         file_fd = os.open(
             components[-1],
-            os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
+            os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC,
             dir_fd=current,
         )
-        with os.fdopen(file_fd, "rb") as handle:
-            info = os.fstat(handle.fileno())
+        try:
+            info = os.fstat(file_fd)
             if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
                 return Err(InputError(InputErrorKind.WRONG_KIND, subject))
-            content = handle.read(DEFAULT_LIMITS.max_file_bytes + 1)
+            with os.fdopen(file_fd, "rb") as handle:
+                file_fd = -1
+                content = handle.read(DEFAULT_LIMITS.max_file_bytes + 1)
+        finally:
+            if file_fd >= 0:
+                os.close(file_fd)
     except FileNotFoundError:
         return Err(InputError(InputErrorKind.MISSING_INPUT, subject))
     except OSError:

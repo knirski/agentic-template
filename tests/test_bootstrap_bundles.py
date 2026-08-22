@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -87,6 +89,34 @@ class DecodeBundleInputTests(unittest.TestCase):
                 self.assertEqual(error.kind, InputErrorKind.MISSING_INPUT)
             case Ok(_):
                 self.fail("expected MISSING_INPUT")
+
+    def test_decode_rejects_a_fifo_bundle_file_without_blocking(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fifo = Path(tmp) / "bootstrap.json"
+            os.mkfifo(fifo)
+            script = (
+                "import sys\n"
+                "from scripts.bootstrap.bundles import decode_bundle_input\n"
+                "from scripts.bootstrap.result import Err\n"
+                "result = decode_bundle_input(sys.argv[1])\n"
+                "if not isinstance(result, Err):\n"
+                "    raise SystemExit('expected Err')\n"
+                "print(result.error.kind.name)\n"
+            )
+            child = subprocess.Popen(
+                [sys.executable, "-c", script, str(fifo)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            try:
+                stdout, stderr = child.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                _ = child.communicate()
+                self.fail("FIFO input caused bundle decoding to block")
+            self.assertEqual(child.returncode, 0, stderr)
+            self.assertEqual(stdout.strip(), InputErrorKind.WRONG_KIND.name)
 
     def test_decode_rejects_an_oversized_bundle(self) -> None:
         json_path = _write_bundle(_valid_bundle(), payload=b"x" * (_MAX_FILE_BYTES + 1))
