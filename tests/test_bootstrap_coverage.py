@@ -571,5 +571,16 @@ def test_decode_additions_input_rejects_unsafe_and_invalid_documents(
     result = _decode_additions_input(str(valid), DEFAULT_LIMITS)
     assert isinstance(result, Ok)
 
+    with patch(
+        "scripts.bootstrap.cli.AdditionsInput.model_validate",
+        side_effect=RuntimeError("unexpected validator failure"),
+    ):
+        try:
+            _ = _decode_additions_input(str(valid), DEFAULT_LIMITS)
+        except RuntimeError as error:
+            assert str(error) == "unexpected validator failure"
+        else:
+            raise AssertionError("unexpected validator failures must propagate")
+
     with patch("scripts.bootstrap.cli.os.open", side_effect=OSError("blocked")):
         assert error_kind(str(valid)) is InputErrorKind.MISSING_INPUT

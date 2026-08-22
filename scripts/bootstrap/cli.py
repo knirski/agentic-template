@@ -21,6 +21,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Literal, NoReturn, cast, override
 
+from pydantic import ValidationError
+
 from scripts.bootstrap.blobs import VerifiedBlobStore
 from scripts.bootstrap.bundles import (
     _BUNDLE_FILE,  # pyright: ignore[reportPrivateUsage]  shared bundle-path constant with the init executor
@@ -1512,6 +1514,54 @@ def _decode_existing_manifest(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _BoundedReadFailure:
+    """Typed failure from a bounded regular-file read before domain mapping."""
+
+    kind: Literal["missing", "wrong_kind", "limit_exceeded", "unreadable"]
+    detail: str = ""
+
+
+def _read_bounded_regular_file(
+    path: str, limits: ResourceLimits
+) -> Result[bytes, _BoundedReadFailure]:
+    """Read a regular file with a bounded, identity-rechecked descriptor."""
+
+    absolute = os.path.abspath(path)
+    try:
+        before = os.lstat(absolute)
+    except OSError as error:
+        return Err(_BoundedReadFailure("missing", str(error)))
+    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+        return Err(_BoundedReadFailure("wrong_kind"))
+    if before.st_size > limits.max_file_bytes:
+        return Err(_BoundedReadFailure("limit_exceeded"))
+
+    fd = -1
+    try:
+        fd = os.open(absolute, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            opened = os.fstat(fd)
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or opened.st_nlink != 1
+                or opened.st_dev != before.st_dev
+                or opened.st_ino != before.st_ino
+            ):
+                return Err(_BoundedReadFailure("wrong_kind"))
+            with os.fdopen(fd, "rb") as handle:
+                fd = -1
+                raw = handle.read(limits.max_file_bytes + 1)
+        finally:
+            if fd >= 0:
+                os.close(fd)
+    except OSError as error:
+        return Err(_BoundedReadFailure("unreadable", str(error)))
+    if len(raw) > limits.max_file_bytes:
+        return Err(_BoundedReadFailure("limit_exceeded"))
+    return Ok(raw)
+
+
 def _decode_additions_input(
     input_path: str | None, limits: ResourceLimits
 ) -> Result[AdditionsInput, CommandError]:
@@ -1519,31 +1569,15 @@ def _decode_additions_input(
 
     if input_path is None:
         return Err(InputError(InputErrorKind.MISSING_INPUT, "--input"))
-    absolute = os.path.abspath(input_path)
-    try:
-        before = os.lstat(absolute)
-    except OSError:
-        return Err(InputError(InputErrorKind.MISSING_INPUT, input_path))
-    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
-        return Err(InputError(InputErrorKind.WRONG_KIND, input_path))
-    if before.st_size > limits.max_file_bytes:
-        return Err(InputError(InputErrorKind.INPUT_LIMIT_EXCEEDED, input_path))
-    try:
-        fd = os.open(absolute, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-        with os.fdopen(fd, "rb") as handle:
-            opened = os.fstat(handle.fileno())
-            if (
-                not stat.S_ISREG(opened.st_mode)
-                or opened.st_nlink != 1
-                or opened.st_dev != before.st_dev
-                or opened.st_ino != before.st_ino
-            ):
+    match _read_bounded_regular_file(input_path, limits):
+        case Err(failure):
+            if failure.kind == "wrong_kind":
                 return Err(InputError(InputErrorKind.WRONG_KIND, input_path))
-            raw = handle.read(limits.max_file_bytes + 1)
-    except OSError:
-        return Err(InputError(InputErrorKind.MISSING_INPUT, input_path))
-    if len(raw) > limits.max_file_bytes:
-        return Err(InputError(InputErrorKind.INPUT_LIMIT_EXCEEDED, input_path))
+            if failure.kind == "limit_exceeded":
+                return Err(InputError(InputErrorKind.INPUT_LIMIT_EXCEEDED, input_path))
+            return Err(InputError(InputErrorKind.MISSING_INPUT, input_path))
+        case Ok(raw):
+            pass
     try:
         value = decode_json(raw)
     except ValueError, RecursionError:
@@ -1552,7 +1586,7 @@ def _decode_additions_input(
         return Err(InputError(InputErrorKind.SCHEMA_VIOLATION, input_path))
     try:
         additions = AdditionsInput.model_validate(value)
-    except Exception as error:
+    except ValidationError as error:
         return Err(InputError(InputErrorKind.SCHEMA_VIOLATION, str(error)[:200]))
     return Ok(additions)
 
@@ -1960,51 +1994,17 @@ def _verify_reconcile_receipt(
 ) -> Result[None, CommandError]:
     """Bind a destructive overwrite to the preview receipt that authorized it."""
 
-    absolute = os.path.abspath(plan_path)
-    no_follow = getattr(os, "O_NOFOLLOW", 0)
-    try:
-        info = os.lstat(absolute)
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-            return Err(
-                UsageError(
-                    UsageErrorKind.INVALID_VALUE,
-                    "--plan must be a regular receipt file",
-                )
-            )
-        if info.st_size > limits.max_file_bytes:
-            return Err(
-                UsageError(
-                    UsageErrorKind.INVALID_VALUE,
-                    "--plan exceeds the receipt size limit",
-                )
-            )
-        fd = os.open(absolute, os.O_RDONLY | no_follow)
-        with os.fdopen(fd, "rb") as handle:
-            opened = os.fstat(handle.fileno())
-            if (
-                not stat.S_ISREG(opened.st_mode)
-                or opened.st_nlink != 1
-                or opened.st_dev != info.st_dev
-                or opened.st_ino != info.st_ino
-            ):
-                return Err(
-                    UsageError(
-                        UsageErrorKind.INVALID_VALUE,
-                        "--plan must be a regular receipt file",
-                    )
-                )
-            raw = handle.read(limits.max_file_bytes + 1)
-    except OSError as error:
-        return Err(
-            UsageError(UsageErrorKind.INVALID_VALUE, f"--plan unreadable: {error}")
-        )
-    if len(raw) > limits.max_file_bytes:
-        return Err(
-            UsageError(
-                UsageErrorKind.INVALID_VALUE,
-                "--plan exceeds the receipt size limit",
-            )
-        )
+    match _read_bounded_regular_file(plan_path, limits):
+        case Err(failure):
+            if failure.kind == "wrong_kind":
+                subject = "--plan must be a regular receipt file"
+            elif failure.kind == "limit_exceeded":
+                subject = "--plan exceeds the receipt size limit"
+            else:
+                subject = f"--plan unreadable: {failure.detail}"
+            return Err(UsageError(UsageErrorKind.INVALID_VALUE, subject))
+        case Ok(raw):
+            pass
     match decode_receipt(raw):
         case Err(_):
             return Err(
