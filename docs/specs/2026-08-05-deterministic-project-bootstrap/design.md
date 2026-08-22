@@ -1168,8 +1168,8 @@ v1.3.0 checker:
 
 The old checker's rule constants and the four-argument `Finding` adapter contract are removed at
 activation; the shared core is the only rule source. The compatibility corpus and automated baseline
-comparison are deferred to post-v1; until then the adopter-facing catalog rules are immutable for
-manifest schema v1 and enforced by review.
+comparison freeze the adopter-facing catalog for manifest schema v1, and `validate_template.py`
+enforces that compatibility boundary.
 
 ## Input boundary
 
@@ -2152,7 +2152,7 @@ recovery stop at the first failure where continuing could mutate state or destro
 | Workflow validation | Shared pure bounded checks in the generated project; no source workflow parser | A portable structured parser |
 | Dependencies | uv-managed source and generated-project dependencies; pinned ty, pytest, Hypothesis, and Ruff for source assurance | Hermetic distribution, dependency provenance, and the same core/shell conformance suite |
 | Template-source CI | The source is the integrated-profile fixture; conformance is managed drift; no Actions YAML parser, allowlist, or trust-predicate fixture; PyYAML is declared for scalar encoding only | A semantic conformance fixture if a second hand-written workflow appears |
-| Readiness-rule evolution | The rule catalog is frozen; automated baseline comparison and corpus are deferred to post-v1 | Automated comparison before the first compatible update |
+| Readiness-rule evolution | The rule catalog is frozen; `validate_template.py` enforces its automated baseline comparison and compatibility corpus | A deliberate schema-versioned evolution policy |
 | `init` | `--from` only; no interactive mode | Interactive bundle authoring |
 | Apply on an installed project | Refused with `status`/canonical-validator next action; no `EquivalentVerification` | A re-verification mode if a concrete need appears |
 | Slots | `Many` cardinality with YAML or Markdown contexts only | Additional cardinalities and encoders when a catalog consumer needs them |
@@ -2644,7 +2644,7 @@ Exit semantics:
 | REQ-010 closed lifecycle | Total status/plan/apply/add/restore/reconcile/recover behavior and operation-specific inventory oracles |
 | REQ-011 recoverable mutation | Lock, journal phases, exact rollback or forward cleanup, and third-state preservation without atomic multi-file visibility |
 | REQ-012 installation and readiness | Mechanical gating and point-in-time hook evidence remain distinct; a completed installation whose hook fails exits 1 |
-| REQ-013 evolution compatibility | Stable definitions prevent compatible updates from creating unsatisfiable obligations; the automated comparison and corpus are deferred to post-v1 |
+| REQ-013 evolution compatibility | Stable definitions prevent compatible updates from creating unsatisfiable obligations; the automated comparison and corpus enforce the schema-v1 compatibility boundary |
 | REQ-014 typed CLI | Functional core, total transition algebra, rich text/JSON outcomes, and explicit sad paths |
 | REQ-015 durable extensibility | Managed operational documentation, adopter-owned validation extension, and declarative capability growth |
 
@@ -2688,7 +2688,7 @@ This revision incorporates the following changes into `CONTEXT.md`:
 | Replacement crosses a filesystem boundary | Existing-parent staging and new-tree staging adjacent to the relevant existing ancestor |
 | An ancestor is substituted between check and use | Root-anchored per-component walk and re-resolution |
 | A security guarantee exceeds its primitives | The threat model is stated narrowly and excludes a concurrent local adversary |
-| A compatible update tightens a same-ID readiness predicate | Frozen rule catalog plus review; automated corpus comparison deferred to post-v1 |
+| A compatible update tightens a same-ID readiness predicate | Frozen rule catalog plus `validate_template.py` automated corpus comparison |
 | Snapshots acquire an update lifecycle by accident | `reconcile` is unavailable; source inventory names baseline repair or regeneration only |
 | Hypothetical legacy support creates dead branches | Greenfield activation contains one hook and manifest contract with no compatibility machinery |
 | An intermediate merge changes behavior | Reviewable batch PRs with per-batch validation and a single activation baseline |
