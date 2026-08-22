@@ -22,20 +22,20 @@ from scripts.bootstrap.cli import (
     parse_argv,
 )
 from scripts.bootstrap.diagnostics import (
-    ActionRequired,
     ContractFailure,
     InvalidRequest,
     Succeeded,
 )
-from scripts.bootstrap.intents import Add, AddOptions, GenerationPath, Intent
+from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.manifest import (
     CandidateManifest,
     MaintenanceRecord,
     ManifestAdditions,
     ProfileSelection,
     ProvenanceRecord,
+    decode_manifest,
 )
-from scripts.bootstrap.presentation import CommandResult, PresentationOptions
+from scripts.bootstrap.presentation import CommandResult
 from scripts.bootstrap.result import Ok
 from scripts.bootstrap.values import DEFAULT_LIMITS
 from tests import test_source_bootstrap
@@ -54,21 +54,6 @@ def _parsed(args: list[str]) -> ParsedCommand:
 
 def _execute(args: list[str]) -> CommandResult:
     parsed = _parsed(args)
-    return _execute_lifecycle(parsed, template_root=str(ROOT), limits=DEFAULT_LIMITS)
-
-
-def _raw_command(command: str, intent: Intent, project: Path) -> CommandResult:
-    parsed = ParsedCommand(
-        command=command,
-        presentation=PresentationOptions(),
-        intent=intent,
-        target=str(project),
-        bundle_path=None,
-        input_path=None,
-        out_path=None,
-        plan_path=None,
-        leave_maintenance_artifacts=False,
-    )
     return _execute_lifecycle(parsed, template_root=str(ROOT), limits=DEFAULT_LIMITS)
 
 
@@ -158,12 +143,87 @@ def test_out_occupied_is_refused_in_process() -> None:
         assert receipt.read_text(encoding="utf-8") == "occupied"
 
 
-def test_add_is_deferred_in_process() -> None:
+def test_add_installs_an_append_only_capability_in_process() -> None:
     with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
-        project, _record = _activate(Path(raw))
-        result = _raw_command("add", Add(AddOptions()), project)
-        assert isinstance(result.outcome, ActionRequired), result.outcome
-        assert "later lifecycle task" in str(result.outcome)
+        parent = Path(raw)
+        project, _record = _activate(parent)
+        additions = parent / "additions.json"
+        _ = additions.write_text(
+            '{"schema_version": 1, "add_capabilities": ["semantic-release"]}',
+            encoding="utf-8",
+        )
+        result = _execute(
+            [
+                "add",
+                "--target",
+                str(project),
+                "--input",
+                str(additions),
+            ]
+        )
+        assert isinstance(result.outcome, Succeeded), result.outcome
+        assert (project / ".releaserc").is_file()
+        decoded = decode_manifest(
+            (project / ".agentic-template/project.json").read_bytes()
+        )
+        assert isinstance(decoded, Ok)
+        assert decoded.value.additions.requested == ("semantic-release",)
+
+
+def test_add_persists_complete_normalized_dependency_settings_in_process() -> None:
+    with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
+        parent = Path(raw)
+        project, _record = _activate(parent)
+        additions = parent / "additions.json"
+        _ = additions.write_text(
+            (
+                '{"schema_version": 1, "add_capabilities": ["cachix-publish"], '
+                '"capability_settings": {"cachix-publish": {"cache_name": " example "}}}'
+            ),
+            encoding="utf-8",
+        )
+        result = _execute(["add", "--target", str(project), "--input", str(additions)])
+        assert isinstance(result.outcome, Succeeded), result.outcome
+        decoded = decode_manifest(
+            (project / ".agentic-template/project.json").read_bytes()
+        )
+        assert isinstance(decoded, Ok)
+        assert decoded.value.additions.settings == {
+            "cachix-publish": {"cache_name": "example"},
+            "nix": {},
+        }
+
+
+def test_plan_add_writes_an_append_only_receipt_without_mutating_in_process() -> None:
+    with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
+        parent = Path(raw)
+        project, _record = _activate(parent)
+        additions = parent / "additions.json"
+        _ = additions.write_text(
+            '{"schema_version": 1, "add_capabilities": ["semantic-release"]}',
+            encoding="utf-8",
+        )
+        receipt = parent / "add-plan.json"
+        result = _execute(
+            [
+                "plan",
+                "add",
+                "--target",
+                str(project),
+                "--input",
+                str(additions),
+                "--out",
+                str(receipt),
+            ]
+        )
+        assert isinstance(result.outcome, Succeeded), result.outcome
+        assert receipt.is_file()
+        assert not (project / ".releaserc").exists()
+        decoded = decode_manifest(
+            (project / ".agentic-template/project.json").read_bytes()
+        )
+        assert isinstance(decoded, Ok)
+        assert decoded.value.additions.requested == ()
 
 
 def test_restore_no_drift_is_a_no_op_in_process() -> None:

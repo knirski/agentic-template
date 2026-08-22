@@ -19,8 +19,9 @@ import sys
 import tempfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from types import MappingProxyType
 from typing import Literal, NoReturn, cast, override
+
+from pydantic import ValidationError
 
 from scripts.bootstrap.blobs import VerifiedBlobStore
 from scripts.bootstrap.bundles import (
@@ -30,7 +31,7 @@ from scripts.bootstrap.bundles import (
     decode_bundle,
     decode_bundle_input,
 )
-from scripts.bootstrap.canonical_json import canonical_json
+from scripts.bootstrap.canonical_json import canonical_json, decode_json
 from scripts.bootstrap.capability_fragments import (
     capability_definitions,
     core_definition,
@@ -155,6 +156,7 @@ from scripts.bootstrap.planner import (
     DirectoryOperation,
     ExpectedFile,
     ExpectedGatePass,
+    ExpectedGateRefusal,
     ExpectedTarget,
     FileOperation,
     ObservedDirectoryEntry,
@@ -165,6 +167,7 @@ from scripts.bootstrap.planner import (
     RetainMaintenance,
     TargetSnapshot,
     apply_plan,
+    compile_add_plan,
     compile_reconcile_plan,
     compile_restore_plan,
     evaluate_expected,
@@ -190,6 +193,7 @@ from scripts.bootstrap.process_effects import (
 )
 from scripts.bootstrap.readiness import (
     Finding,
+    MechanicalReadinessResult,
     gate_readiness,
 )
 from scripts.bootstrap.render import (
@@ -200,10 +204,13 @@ from scripts.bootstrap.render import (
     ProjectInfo,
 )
 from scripts.bootstrap.resolver import (
+    ResolvedBundle,
+    resolve_additions,
     resolve_bundle,
     resolve_recorded_selection,
 )
 from scripts.bootstrap.result import Err, Ok, Result
+from scripts.bootstrap.schemas import AdditionsInput
 from scripts.bootstrap.source_baseline import (
     LifecycleSourceEntry,
     derive_source_baseline,
@@ -621,6 +628,60 @@ def _expected_target_from_snapshot(snapshot: TargetSnapshot) -> ExpectedTarget:
     )
 
 
+def _runtime_artifact_path(path: RepoPath) -> bool:
+    """Identify transient transaction paths excluded from project identity."""
+
+    components = tuple(path.value.split("/"))
+    return (
+        path.value
+        in {
+            ".agentic-template/lock",
+            ".agentic-template/journal.json",
+            ".agentic-template/journal.pending",
+        }
+        or ".agentic-template-stage" in components
+        or components[:2]
+        == (
+            ".agentic-template",
+            "transactions",
+        )
+    )
+
+
+def _post_state_matches_expected(
+    expected: ExpectedTarget, observed: TargetSnapshot
+) -> bool:
+    """Compare all non-administrative target paths against the plan overlay."""
+
+    expected_files = {
+        file.path.value: (file.kind, file.mode, file.content)
+        for file in expected.files
+        if not _runtime_artifact_path(file.path)
+    }
+    observed_files = {
+        entry.path.value: (
+            entry.state.identity.kind,
+            entry.state.mode,
+            entry.content,
+        )
+        for entry in observed.files
+        if not _runtime_artifact_path(entry.path)
+        and entry.state.identity is not None
+        and entry.state.mode is not None
+    }
+    expected_dirs = {
+        entry.path.value: entry.mode
+        for entry in expected.directories
+        if not _runtime_artifact_path(entry.path)
+    }
+    observed_dirs = {
+        entry.path.value: entry.state.root_mode
+        for entry in observed.directories
+        if not _runtime_artifact_path(entry.path)
+    }
+    return expected_files == observed_files and expected_dirs == observed_dirs
+
+
 def _hook_failure_diagnostics() -> tuple[Diagnostic, ...]:
     return _transition_diagnostic(
         code="BOOTSTRAP_HOOK_FAILED",
@@ -698,6 +759,118 @@ def _cleanup_mismatch_diagnostic(system: SystemState) -> Diagnostic | None:
             )
         case _:
             return None
+
+
+def _compile_initial_candidate(
+    parsed: ParsedCommand,
+    observation: SystemObservation,
+    resolved: ResolvedShellTarget,
+    *,
+    template_root: str,
+    limits: ResourceLimits,
+) -> Result[tuple[OperationPlan, MechanicalReadinessResult], CommandError]:
+    """Decode all initial-install inputs and compile one candidate plan."""
+
+    assert parsed.bundle_path is not None
+    match decode_bundle_input(parsed.bundle_path):
+        case Err(error):
+            return Err(error)
+        case Ok(decoded):
+            pass
+    match resolve_bundle(decode_bundle(decoded.document)):
+        case Err(failure):
+            return Err(
+                InputError(
+                    InputErrorKind.SCHEMA_VIOLATION,
+                    f"{failure.kind.value}:{failure.subject}",
+                )
+            )
+        case Ok(resolved_bundle):
+            pass
+    from scripts.bootstrap.state import (
+        CleanupContractMismatch,
+        ProtectedTargetAvailable,
+    )
+    from scripts.bootstrap.state import ProjectAvailable as _ProjectAvailable
+    from scripts.bootstrap.state import RecognizedScaffold as _RecognizedScaffold
+
+    generation: GenerationPath
+    cleanup: CleanupContract | None
+    match observation.system:
+        case _ProjectAvailable(
+            worktree=worktree,
+            observation=(
+                _RecognizedScaffold(
+                    generation=recognized_generation,
+                    cleanup=cleanup_observation,
+                )
+            ),
+        ):
+            generation = recognized_generation
+            del worktree
+        case _:
+            return Err(
+                TransitionError(
+                    TransitionErrorKind.OPERATION_UNAVAILABLE,
+                    "initial install requires a recognized scaffold",
+                )
+            )
+
+    match cleanup_observation:
+        case CleanupContractValid(contract=contract):
+            cleanup = contract
+        case CleanupContractMismatch() if parsed.leave_maintenance_artifacts:
+            assert observation.pass_ is not None
+            match _retained_cleanup_contract(observation.pass_):
+                case Err(error):
+                    return Err(error)
+                case Ok(contract):
+                    cleanup = contract
+        case _:
+            cleanup = None
+    if isinstance(observation.system, ProtectedTargetAvailable):
+        return Err(
+            TransitionError(TransitionErrorKind.UNSUPPORTED_TARGET, "protected target")
+        )
+    maintenance: CleanMaintenance | RetainMaintenance = (
+        RetainMaintenance(cleanup.cleanup_paths)
+        if parsed.leave_maintenance_artifacts and cleanup is not None
+        else CleanMaintenance()
+    )
+    if parsed.leave_maintenance_artifacts and cleanup is None:
+        return Err(
+            ContractError(
+                ContractErrorKind.CLEANUP_CONTRACT_INVALID,
+                "--leave-maintenance-artifacts requires a maintenance inventory",
+            )
+        )
+    assert observation.pass_ is not None
+    snapshot_commit: str | None = None
+    if generation is GenerationPath.GITHUB:
+        worktree = resolved.worktree
+        assert worktree is not None
+        match run_git(("rev-parse", "HEAD"), cwd=worktree.root_abs):
+            case Ok(result) if result.returncode == 0:
+                snapshot_commit = result.stdout.decode("ascii", "replace").strip()
+            case _:
+                snapshot_commit = None
+    match compile_initial_install(
+        generation=generation,
+        decoded=decoded,
+        resolved=resolved_bundle,
+        scaffold=_scaffold_bytes(template_root),
+        template_root=template_root,
+        maintenance=maintenance,
+        cleanup=cleanup,
+        snapshot=_snapshot_from_pass(observation.pass_),
+        target_identity=observation.pass_.target,
+        snapshot_commit=snapshot_commit,
+        limits=limits,
+    ):
+        case Err(error):
+            return Err(error)
+        case Ok((plan, readiness)):
+            return Ok((plan, readiness))
 
 
 def _execute_mutation(
@@ -778,121 +951,11 @@ def _execute_mutation(
                 command,
                 outcome_for_error(CoreInternalFailure(InternalCode.IMPOSSIBLE_STATE)),
             )
-    assert parsed.bundle_path is not None
-    match decode_bundle_input(parsed.bundle_path):
-        case Err(error):
-            return _result(command, outcome_for_error(error))
-        case Ok(decoded):
-            pass
-    match resolve_bundle(decode_bundle(decoded.document)):
-        case Err(failure):
-            return _result(
-                command,
-                outcome_for_error(
-                    InputError(
-                        InputErrorKind.SCHEMA_VIOLATION,
-                        f"{failure.kind.value}:{failure.subject}",
-                    )
-                ),
-            )
-        case Ok(resolved_bundle):
-            pass
-    from scripts.bootstrap.state import (
-        ProjectAvailable as _ProjectAvailable,
-    )
-    from scripts.bootstrap.state import (
-        ProtectedTargetAvailable,
-    )
-    from scripts.bootstrap.state import (
-        RecognizedScaffold as _RecognizedScaffold,
-    )
-
-    generation: GenerationPath
-    cleanup: CleanupContract | None
-    match observation.system:
-        case _ProjectAvailable(
-            worktree=worktree,
-            observation=(
-                _RecognizedScaffold(
-                    generation=recognized_generation,
-                    cleanup=cleanup_observation,
-                )
-            ),
-        ):
-            generation = recognized_generation
-            del worktree
-        case _:
-            return _result(
-                command,
-                outcome_for_error(
-                    TransitionError(
-                        TransitionErrorKind.OPERATION_UNAVAILABLE,
-                        "initial install requires a recognized scaffold",
-                    )
-                ),
-            )
-    from scripts.bootstrap.state import (
-        CleanupContractMismatch,
-    )
-
-    match cleanup_observation:
-        case CleanupContractValid(contract=contract):
-            cleanup = contract
-        case CleanupContractMismatch() if parsed.leave_maintenance_artifacts:
-            assert observation.pass_ is not None
-            match _retained_cleanup_contract(observation.pass_):
-                case Err(error):
-                    return _result(command, outcome_for_error(error))
-                case Ok(contract):
-                    cleanup = contract
-        case _:
-            cleanup = None
-    if isinstance(observation.system, ProtectedTargetAvailable):
-        return _result(
-            command,
-            outcome_for_error(
-                TransitionError(
-                    TransitionErrorKind.UNSUPPORTED_TARGET, "protected target"
-                )
-            ),
-        )
-    maintenance: CleanMaintenance | RetainMaintenance = (
-        RetainMaintenance(cleanup.cleanup_paths)
-        if parsed.leave_maintenance_artifacts and cleanup is not None
-        else CleanMaintenance()
-    )
-    if parsed.leave_maintenance_artifacts and cleanup is None:
-        return _result(
-            command,
-            outcome_for_error(
-                ContractError(
-                    ContractErrorKind.CLEANUP_CONTRACT_INVALID,
-                    "--leave-maintenance-artifacts requires a maintenance inventory",
-                )
-            ),
-        )
-    assert observation.pass_ is not None
-    worktree = resolved.worktree
-    assert worktree is not None
-    snapshot_commit: str | None = None
-    if generation is GenerationPath.GITHUB:
-        match run_git(("rev-parse", "HEAD"), cwd=worktree.root_abs):
-            case Ok(result) if result.returncode == 0:
-                snapshot_commit = result.stdout.decode("ascii", "replace").strip()
-            case _:
-                snapshot_commit = None
-    scaffold = _scaffold_bytes(template_root)
-    match compile_initial_install(
-        generation=generation,
-        decoded=decoded,
-        resolved=resolved_bundle,
-        scaffold=scaffold,
+    match _compile_initial_candidate(
+        parsed,
+        observation,
+        resolved,
         template_root=template_root,
-        maintenance=maintenance,
-        cleanup=cleanup,
-        snapshot=_snapshot_from_pass(observation.pass_),
-        target_identity=observation.pass_.target,
-        snapshot_commit=snapshot_commit,
         limits=limits,
     ):
         case Err(error):
@@ -937,8 +1000,16 @@ def _execute_mutation(
         resolved,
         observation,
         limits,
+        template_root=template_root,
         findings=readiness.blocking,
         decision_kind="initial_install",
+        revalidate=lambda: _revalidate_initial(
+            parsed,
+            plan,
+            resolved,
+            template_root=template_root,
+            limits=limits,
+        ),
     )
 
 
@@ -1443,35 +1514,98 @@ def _decode_existing_manifest(
     )
 
 
-def _recorded_render(
-    manifest: CandidateManifest, limits: ResourceLimits
-) -> Result[ManagedRender, ContractError]:
-    settings: dict[str, Mapping[str, str | bool]] = {
-        **manifest.answers.settings,
-        **manifest.additions.settings,
-    }
-    match resolve_recorded_selection(
-        profile_id=manifest.answers.profile.id,
-        requested=manifest.answers.profile.requested,
-        additions=manifest.additions.requested,
-        settings=settings,
-    ):
+@dataclass(frozen=True, slots=True)
+class _BoundedReadFailure:
+    """Typed failure from a bounded regular-file read before domain mapping."""
+
+    kind: Literal["missing", "wrong_kind", "limit_exceeded", "unreadable"]
+    detail: str = ""
+
+
+def _read_bounded_regular_file(
+    path: str, limits: ResourceLimits
+) -> Result[bytes, _BoundedReadFailure]:
+    """Read a regular file with a bounded, identity-rechecked descriptor."""
+
+    absolute = os.path.abspath(path)
+    try:
+        before = os.lstat(absolute)
+    except OSError as error:
+        return Err(_BoundedReadFailure("missing", str(error)))
+    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+        return Err(_BoundedReadFailure("wrong_kind"))
+    if before.st_size > limits.max_file_bytes:
+        return Err(_BoundedReadFailure("limit_exceeded"))
+
+    fd = -1
+    try:
+        fd = os.open(absolute, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            opened = os.fstat(fd)
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or opened.st_nlink != 1
+                or opened.st_dev != before.st_dev
+                or opened.st_ino != before.st_ino
+            ):
+                return Err(_BoundedReadFailure("wrong_kind"))
+            with os.fdopen(fd, "rb") as handle:
+                fd = -1
+                raw = handle.read(limits.max_file_bytes + 1)
+        finally:
+            if fd >= 0:
+                os.close(fd)
+    except OSError as error:
+        return Err(_BoundedReadFailure("unreadable", str(error)))
+    if len(raw) > limits.max_file_bytes:
+        return Err(_BoundedReadFailure("limit_exceeded"))
+    return Ok(raw)
+
+
+def _decode_additions_input(
+    input_path: str | None, limits: ResourceLimits
+) -> Result[AdditionsInput, CommandError]:
+    """Read one bounded, regular additions document without following links."""
+
+    if input_path is None:
+        return Err(InputError(InputErrorKind.MISSING_INPUT, "--input"))
+    match _read_bounded_regular_file(input_path, limits):
         case Err(failure):
-            return Err(
-                ContractError(
-                    ContractErrorKind.INCOMPATIBLE_CATALOG,
-                    f"{failure.kind.value}:{failure.subject}",
-                )
-            )
-        case Ok(selection):
+            if failure.kind == "wrong_kind":
+                return Err(InputError(InputErrorKind.WRONG_KIND, input_path))
+            if failure.kind == "limit_exceeded":
+                return Err(InputError(InputErrorKind.INPUT_LIMIT_EXCEEDED, input_path))
+            return Err(InputError(InputErrorKind.MISSING_INPUT, input_path))
+        case Ok(raw):
             pass
+    try:
+        value = decode_json(raw)
+    except ValueError, RecursionError:
+        return Err(InputError(InputErrorKind.INVALID_JSON, input_path))
+    if not isinstance(value, Mapping):
+        return Err(InputError(InputErrorKind.SCHEMA_VIOLATION, input_path))
+    try:
+        additions = AdditionsInput.model_validate(value)
+    except ValidationError as error:
+        return Err(InputError(InputErrorKind.SCHEMA_VIOLATION, str(error)[:200]))
+    return Ok(additions)
+
+
+def _render_manifest_selection(
+    manifest: CandidateManifest,
+    selection: ResolvedBundle,
+    additions: tuple[str, ...],
+    limits: ResourceLimits,
+) -> Result[ManagedRender, ContractError]:
+    """Render recorded project metadata for one resolved append-only selection."""
+
     match render_generation(
         generation_path=manifest.provenance.generation_path,
         core=core_definition(),
         definitions=capability_definitions(),
         effective=selection.effective,
-        additions=manifest.additions.requested,
-        settings=MappingProxyType(dict(selection.settings)),
+        additions=additions,
+        settings=selection.settings,
         project=ProjectInfo(
             name=manifest.answers.project.name,
             default_branch=manifest.answers.project.default_branch,
@@ -1514,6 +1648,33 @@ def _declared_managed_paths() -> set[RepoPath]:
             RepoPath(fragment.document) for fragment in definition.document_fragments
         )
     return paths
+
+
+def _recorded_render(
+    manifest: CandidateManifest, limits: ResourceLimits
+) -> Result[ManagedRender, ContractError]:
+    settings: dict[str, Mapping[str, str | bool]] = {
+        **manifest.answers.settings,
+        **manifest.additions.settings,
+    }
+    match resolve_recorded_selection(
+        profile_id=manifest.answers.profile.id,
+        requested=manifest.answers.profile.requested,
+        additions=manifest.additions.requested,
+        settings=settings,
+    ):
+        case Err(failure):
+            return Err(
+                ContractError(
+                    ContractErrorKind.INCOMPATIBLE_CATALOG,
+                    f"{failure.kind.value}:{failure.subject}",
+                )
+            )
+        case Ok(selection):
+            pass
+    return _render_manifest_selection(
+        manifest, selection, manifest.additions.requested, limits
+    )
 
 
 def _manifest_identity(manifest: CandidateManifest) -> ManifestIdentity:
@@ -1583,6 +1744,82 @@ def _compile_lifecycle_plan(
     source_baseline = manifest.provenance.source_baseline
     generation = manifest.provenance.generation_path
     maintenance = manifest.provenance.maintenance
+    if parsed.command in ("add", "plan add"):
+        match _decode_additions_input(parsed.input_path, limits):
+            case Err(error):
+                return Err(error)
+            case Ok(additions_input):
+                pass
+        settings: dict[str, Mapping[str, str | bool]] = {
+            **manifest.answers.settings,
+            **manifest.additions.settings,
+        }
+        match resolve_recorded_selection(
+            profile_id=manifest.answers.profile.id,
+            requested=manifest.answers.profile.requested,
+            additions=manifest.additions.requested,
+            settings=settings,
+        ):
+            case Err(failure):
+                return Err(
+                    ContractError(
+                        ContractErrorKind.INCOMPATIBLE_CATALOG,
+                        f"{failure.kind.value}:{failure.subject}",
+                    )
+                )
+            case Ok(current_selection):
+                pass
+        match resolve_additions(current_selection, additions_input):
+            case Err(failure):
+                return Err(
+                    ContractError(
+                        ContractErrorKind.INCOMPATIBLE_CATALOG,
+                        f"{failure.kind.value}:{failure.subject}",
+                    )
+                )
+            case Ok(extended_selection):
+                pass
+        new_addition_ids = tuple(
+            capability_id
+            for capability_id in extended_selection.requested
+            if capability_id not in current_selection.requested
+        )
+        additions = tuple(
+            capability_id
+            for capability_id in extended_selection.requested
+            if capability_id not in manifest.answers.profile.requested
+        )
+        new_settings = {
+            capability_id: values
+            for capability_id, values in extended_selection.settings.items()
+            if capability_id not in current_selection.settings
+        }
+        match _render_manifest_selection(
+            manifest, extended_selection, additions, limits
+        ):
+            case Err(error):
+                return Err(error)
+            case Ok(new_managed):
+                pass
+        match compile_add_plan(
+            generation=generation,
+            target_identity=observation.pass_.target,
+            answers=manifest.answers,
+            existing_additions=manifest.additions,
+            new_addition_ids=new_addition_ids,
+            new_settings=new_settings,
+            old_render=rendered,
+            new_managed=new_managed,
+            existing_inventory=manifest.managed,
+            source_baseline=source_baseline,
+            maintenance=maintenance,
+            snapshot=snapshot,
+            limits=limits,
+        ):
+            case Err(error):
+                return Err(_lifecycle_compile_error(parsed.command, error))
+            case Ok(plan):
+                return Ok(plan)
     if parsed.command in ("restore", "plan restore"):
         requested = cast("Restore | PlanRestore", parsed.intent).options.paths
         match compile_restore_plan(
@@ -1663,6 +1900,7 @@ def _execute_lifecycle(
     """
 
     from scripts.bootstrap.decisions import (
+        AddCapabilities,
         CompileCandidate,
         ReconcileTemplate,
         RefuseMutation,
@@ -1672,17 +1910,6 @@ def _execute_lifecycle(
     )
 
     command = parsed.command
-    if command in ("add", "plan add"):
-        # T17's add wiring is intentionally deferred; keep its behavior honest.
-        return _result(
-            command,
-            outcome_for_error(
-                TransitionError(
-                    TransitionErrorKind.OPERATION_UNAVAILABLE,
-                    f"the {command} transition lands in a later lifecycle task",
-                )
-            ),
-        )
     if parsed.out_path is not None and os.path.lexists(parsed.out_path):
         return _result(
             command,
@@ -1707,7 +1934,12 @@ def _execute_lifecycle(
     match decide_project(cast(ProjectIntent, parsed.intent), observation.system):
         case RefusePlan(error=error) | RefuseMutation(error=error):
             return _result(command, outcome_for_error(error))
-        case RestoreManaged() | ReconcileTemplate() | CompileCandidate():
+        case (
+            AddCapabilities()
+            | RestoreManaged()
+            | ReconcileTemplate()
+            | CompileCandidate()
+        ):
             pass
         case decision:  # pragma: no cover
             del decision
@@ -1762,51 +1994,17 @@ def _verify_reconcile_receipt(
 ) -> Result[None, CommandError]:
     """Bind a destructive overwrite to the preview receipt that authorized it."""
 
-    absolute = os.path.abspath(plan_path)
-    no_follow = getattr(os, "O_NOFOLLOW", 0)
-    try:
-        info = os.lstat(absolute)
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-            return Err(
-                UsageError(
-                    UsageErrorKind.INVALID_VALUE,
-                    "--plan must be a regular receipt file",
-                )
-            )
-        if info.st_size > limits.max_file_bytes:
-            return Err(
-                UsageError(
-                    UsageErrorKind.INVALID_VALUE,
-                    "--plan exceeds the receipt size limit",
-                )
-            )
-        fd = os.open(absolute, os.O_RDONLY | no_follow)
-        with os.fdopen(fd, "rb") as handle:
-            opened = os.fstat(handle.fileno())
-            if (
-                not stat.S_ISREG(opened.st_mode)
-                or opened.st_nlink != 1
-                or opened.st_dev != info.st_dev
-                or opened.st_ino != info.st_ino
-            ):
-                return Err(
-                    UsageError(
-                        UsageErrorKind.INVALID_VALUE,
-                        "--plan must be a regular receipt file",
-                    )
-                )
-            raw = handle.read(limits.max_file_bytes + 1)
-    except OSError as error:
-        return Err(
-            UsageError(UsageErrorKind.INVALID_VALUE, f"--plan unreadable: {error}")
-        )
-    if len(raw) > limits.max_file_bytes:
-        return Err(
-            UsageError(
-                UsageErrorKind.INVALID_VALUE,
-                "--plan exceeds the receipt size limit",
-            )
-        )
+    match _read_bounded_regular_file(plan_path, limits):
+        case Err(failure):
+            if failure.kind == "wrong_kind":
+                subject = "--plan must be a regular receipt file"
+            elif failure.kind == "limit_exceeded":
+                subject = "--plan exceeds the receipt size limit"
+            else:
+                subject = f"--plan unreadable: {failure.detail}"
+            return Err(UsageError(UsageErrorKind.INVALID_VALUE, subject))
+        case Ok(raw):
+            pass
     match decode_receipt(raw):
         case Err(_):
             return Err(
@@ -1827,6 +2025,88 @@ def _verify_reconcile_receipt(
     return Ok(None)
 
 
+def _revalidate_initial(
+    parsed: ParsedCommand,
+    plan: OperationPlan,
+    resolved: ResolvedShellTarget,
+    *,
+    template_root: str,
+    limits: ResourceLimits,
+) -> Result[TargetSnapshot, TransactionError]:
+    """Re-observe and recompile an initial install while holding the lock."""
+
+    from scripts.bootstrap.decisions import (
+        CompileCandidate,
+        InitialInstall,
+        RefuseMutation,
+        RefusePlan,
+        decide_project,
+    )
+
+    match observe_system(
+        resolved, coherent=True, template_root=template_root, limits=limits
+    ):
+        case Err(error):
+            return Err(
+                TransactionError(
+                    TransactionErrorKind.PRECONDITION_CHANGED,
+                    subject=f"initial observation: {error}",
+                )
+            )
+        case Ok(observation):
+            pass
+    match decide_project(cast(ProjectIntent, parsed.intent), observation.system):
+        case RefusePlan(error=error) | RefuseMutation(error=error):
+            return Err(
+                TransactionError(
+                    TransactionErrorKind.PRECONDITION_CHANGED,
+                    subject=f"initial decision: {error}",
+                )
+            )
+        case CompileCandidate() | InitialInstall():
+            pass
+        case _:
+            return Err(
+                TransactionError(
+                    TransactionErrorKind.PRECONDITION_CHANGED,
+                    subject="initial decision changed",
+                )
+            )
+    match _compile_initial_candidate(
+        parsed,
+        observation,
+        resolved,
+        template_root=template_root,
+        limits=limits,
+    ):
+        case Err(error):
+            return Err(
+                TransactionError(
+                    TransactionErrorKind.PRECONDITION_CHANGED,
+                    subject=f"initial plan: {error}",
+                )
+            )
+        case Ok((fresh_plan, _readiness)):
+            pass
+    if plan_receipt_digest(build_receipt(plan)) != plan_receipt_digest(
+        build_receipt(fresh_plan)
+    ):
+        return Err(
+            TransactionError(
+                TransactionErrorKind.PRECONDITION_CHANGED,
+                subject="initial inputs changed while acquiring the transaction lock",
+            )
+        )
+    if observation.pass_ is None:
+        return Err(
+            TransactionError(
+                TransactionErrorKind.PRECONDITION_CHANGED,
+                subject="initial observation has no target pass",
+            )
+        )
+    return Ok(_snapshot_from_pass(observation.pass_))
+
+
 def _drive_transaction(
     command: str,
     plan: OperationPlan,
@@ -1834,6 +2114,7 @@ def _drive_transaction(
     observation: SystemObservation,
     limits: ResourceLimits,
     *,
+    template_root: str,
     findings: tuple[Finding, ...],
     decision_kind: str,
     revalidate: Callable[[], Result[TargetSnapshot, TransactionError]] | None = None,
@@ -1877,7 +2158,7 @@ def _drive_transaction(
                 ),
             )
     target_snapshot = _snapshot_from_pass(observation.pass_)
-    if plan.operation_kind in ("restore", "reconcile"):
+    if plan.operation_kind in ("add", "restore", "reconcile"):
         baseline = evaluate_slot_readiness(
             _expected_target_from_snapshot(target_snapshot)
         )
@@ -1897,6 +2178,30 @@ def _drive_transaction(
                 findings=readiness.blocking,
             )
         findings = readiness.blocking
+
+    def post_validate() -> bool:
+        match observe_system(
+            resolved, coherent=True, template_root=template_root, limits=limits
+        ):
+            case Err(_):
+                return False
+            case Ok(post_observation) if post_observation.pass_ is not None:
+                observed = _snapshot_from_pass(post_observation.pass_)
+            case Ok(_):
+                return False
+        if not _post_state_matches_expected(expected_target, observed):
+            return False
+        match evaluate_expected(_expected_target_from_snapshot(observed)):
+            case ExpectedGateRefusal():
+                return False
+            case ExpectedGatePass(live_readiness):
+                baseline = evaluate_slot_readiness(
+                    _expected_target_from_snapshot(target_snapshot)
+                )
+                return gate_readiness(
+                    plan.operation_kind, baseline, readiness, live_readiness
+                ).allowed
+
     compiled = CompiledTransaction.compile(
         plan,
         ExpectedGatePass(readiness),
@@ -1908,6 +2213,7 @@ def _drive_transaction(
         limits=limits,
         ownership_tokens=tokens,
         revalidate=revalidate,
+        post_validate=post_validate,
     )
     outcome = run_transaction_machine(compiled, resources)
     if resources.state_root_fd is not None:
@@ -2079,6 +2385,7 @@ def _run_lifecycle_transaction(
         resolved,
         observation,
         limits,
+        template_root=template_root,
         findings=(),
         decision_kind="lifecycle",
         revalidate=lambda: _revalidate_lifecycle(
@@ -2127,18 +2434,34 @@ def execute_command(
     )
 
 
+def _requested_json(argv: list[str]) -> bool:
+    """Return whether an invalid invocation explicitly requested JSON output."""
+
+    return any(
+        argument == "--format=json"
+        or (
+            argument == "--format"
+            and index + 1 < len(argv)
+            and argv[index + 1] == "json"
+        )
+        for index, argument in enumerate(argv)
+    )
+
+
 def main(argv: list[str]) -> int:
     """The adapter entry point: parse, execute, render, and choose the exit code."""
 
     match parse_argv(argv):
         case Err(error):
-            # Usage errors render as plain deterministic text on stderr: the
-            # JSON envelope guarantee applies to successfully parsed commands.
-            diagnostic = command_error_diagnostic(error)
-            print(
-                f"{diagnostic.code}: {diagnostic.subject}: {diagnostic.summary}; next: {_render_next_action(diagnostic.next_action)}",
-                file=sys.stderr,
-            )
+            result = _result("bootstrap", outcome_for_error(error))
+            if _requested_json(argv):
+                print(render_json(result))
+            else:
+                diagnostic = command_error_diagnostic(error)
+                print(
+                    f"{diagnostic.code}: {diagnostic.subject}: {diagnostic.summary}; next: {_render_next_action(diagnostic.next_action)}",
+                    file=sys.stderr,
+                )
             return 2
         case Ok(parsed):
             pass

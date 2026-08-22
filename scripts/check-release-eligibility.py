@@ -35,11 +35,32 @@ def main() -> int:
         )
         return 2
     try:
+        default_branch = subprocess.run(
+            [
+                "gh",
+                "api",
+                f"repos/{repository}",
+                "--jq",
+                ".default_branch",
+            ],
+            env={**os.environ, "GH_TOKEN": token},
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_GH_TIMEOUT_SECONDS,
+        )
+        if default_branch.returncode != 0:
+            print(f"gh api failed: {default_branch.stderr.strip()}", file=sys.stderr)
+            return 2
+        branch = default_branch.stdout.strip()
+        if not branch or re.fullmatch(r"[A-Za-z0-9_.\-/]+", branch) is None:
+            print("gh api returned an invalid default branch", file=sys.stderr)
+            return 2
         result = subprocess.run(
             [
                 "gh",
                 "api",
-                f"repos/{repository}/git/ref/heads/main",
+                f"repos/{repository}/git/ref/heads/{branch}",
                 "--jq",
                 ".object.sha",
             ],
@@ -60,7 +81,7 @@ def main() -> int:
         print("Release eligible.")
     else:
         print(
-            "Skipping release because this validated commit is no longer the main branch tip."
+            "Skipping release because this validated commit is no longer the default branch tip."
         )
     output = os.environ.get("GITHUB_OUTPUT", "")
     if output:

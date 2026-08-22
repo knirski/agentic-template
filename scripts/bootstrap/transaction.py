@@ -283,6 +283,7 @@ class OperationApplied:
 @dataclass(frozen=True, slots=True)
 class PostStateObserved:
     snapshot: TargetSnapshot
+    post_state_valid: bool = True
 
     def __post_init__(self) -> None:
         if not isinstance(self.snapshot, TargetSnapshot):  # pyright: ignore[reportUnnecessaryIsInstance]  deliberate runtime contract check
@@ -1152,10 +1153,12 @@ def step_transaction(
             )
         case (
             Verifying(mutating=mutating, trace=trace),
-            ObservedEffect(PostStateObserved(snapshot=snapshot)),
+            ObservedEffect(
+                PostStateObserved(snapshot=snapshot, post_state_valid=post_state_valid)
+            ),
         ):
             compiled = mutating.planned.validated.locked.compiled
-            if snapshot_matches_candidate(compiled.plan, snapshot):
+            if post_state_valid and snapshot_matches_candidate(compiled.plan, snapshot):
                 match compiled.expected_validation:
                     case ExpectedGatePass():
                         return TransactionInstruction(

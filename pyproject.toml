@@ -30,6 +30,8 @@ include = ["scripts/**/*.py", "tests/**/*.py", "pyproject.toml"]
 
 [tool.basedpyright]
 pythonVersion = "3.14"
+venvPath = "."
+venv = ".venv"
 include = ["scripts", "tests"]
 exclude = [".venv", ".pytest_cache", ".ruff_cache"]
 typeCheckingMode = "recommended"

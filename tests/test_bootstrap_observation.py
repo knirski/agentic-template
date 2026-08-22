@@ -61,6 +61,7 @@ from scripts.bootstrap.source_baseline import (
     CopierSourceBaseline,
     GitHubSourceBaseline,
     LifecycleSourceEntry,
+    template_source_fingerprint,
 )
 from scripts.bootstrap.state import (
     CleanupContractMismatch,
@@ -135,19 +136,26 @@ def _source_entries() -> tuple[LifecycleSourceEntry, ...]:
 def _github_baseline(
     *, entries: tuple[LifecycleSourceEntry, ...] | None = None
 ) -> GitHubSourceBaseline:
+    selected_entries = tuple(
+        sorted(
+            entries if entries is not None else _source_entries(),
+            key=lambda entry: entry.path.value.encode("utf-8"),
+        )
+    )
     return GitHubSourceBaseline(
         kind="github",
-        fingerprint=sha256_hex(b"source"),
-        entries=entries if entries is not None else _source_entries(),
+        fingerprint=template_source_fingerprint(selected_entries),
+        entries=selected_entries,
         snapshot_commit="0" * 40,
     )
 
 
 def _copier_baseline() -> CopierSourceBaseline:
+    entries = _source_entries()
     return CopierSourceBaseline(
         kind="copier",
-        fingerprint=sha256_hex(b"source"),
-        entries=_source_entries(),
+        fingerprint=template_source_fingerprint(entries),
+        entries=entries,
     )
 
 

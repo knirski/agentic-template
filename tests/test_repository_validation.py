@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import stat
 import subprocess
@@ -10,7 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import override
+from typing import cast, override
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -90,6 +91,48 @@ class AggregateFixtures(unittest.TestCase):
 
     def test_usage_error_is_two(self) -> None:
         self.assertEqual(self.run_command("unexpected").returncode, 2)
+
+    def test_json_usage_error_is_one_machine_owned_document(self) -> None:
+        result = self.run_command("--format", "json", "unexpected")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stderr, "")
+        document = cast(dict[str, object], json.loads(result.stdout))
+        self.assertEqual(document["command"], "validate_repository")
+        self.assertEqual(document["outcome_class"], "invalid_request")
+        self.assertEqual(document["exit_code"], 2)
+
+    def test_json_output_is_one_safe_document(self) -> None:
+        for name, marker in (
+            ("validate_template.py", "template"),
+            ("check_project_readiness.py", "readiness"),
+            ("validate-project", "project"),
+        ):
+            self.write_stage(name, 0, marker)
+        result = self.run_command("--format", "json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("==>", result.stdout)
+        document = cast(dict[str, object], json.loads(result.stdout))
+        self.assertEqual(document["outcome_class"], "succeeded")
+        stages = cast(list[dict[str, str]], document["stages"])
+        self.assertEqual(
+            [stage["label"] for stage in stages],
+            [
+                "template contract",
+                "project readiness",
+                "project validation",
+            ],
+        )
+
+    def test_quiet_text_output_omits_stage_headers(self) -> None:
+        for name, marker in (
+            ("validate_template.py", "template"),
+            ("check_project_readiness.py", "readiness"),
+            ("validate-project", "project"),
+        ):
+            self.write_stage(name, 0, marker)
+        result = self.run_command("--quiet")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("==>", result.stdout)
 
     def test_adapter_uses_shared_typed_validation_program(self) -> None:
         self.assertIs(

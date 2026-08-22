@@ -12,8 +12,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT))
 
-from scripts.bootstrap.entrypoint import reject_arguments  # noqa: E402
-from scripts.bootstrap.presentation import render_text  # noqa: E402
 from scripts.bootstrap.readiness import (  # noqa: E402
     Finding as CoreFinding,
 )
@@ -23,6 +21,7 @@ from scripts.bootstrap.readiness import (  # noqa: E402
     SubjectPath,
 )
 from scripts.bootstrap.readiness_rules import (  # noqa: E402
+    CONTRIBUTING_MARKER,
     HOOK_PATH,
     HOOK_SENTINEL,
     PRD_BOILERPLATE_PATTERN,
@@ -33,12 +32,21 @@ from scripts.bootstrap.readiness_rules import (  # noqa: E402
     REQUIRED_PRD_HEADINGS,
     REQUIRED_README_SECTIONS,
     REQUIREMENT_DECLARATION_PATTERN,
+    SECURITY_MARKER,
     finding_code_is_known,
     rule_by_code,
+)
+from scripts.bootstrap.validation_presentation import (  # noqa: E402
+    parse_options,
+    render_findings,
+    render_usage_error,
+    requested_json,
 )
 
 PRD = ROOT / "docs" / "prd.md"
 README = ROOT / "README.md"
+SECURITY = ROOT / "SECURITY.md"
+CONTRIBUTING = ROOT / "CONTRIBUTING.md"
 HOOK = ROOT / HOOK_PATH
 
 
@@ -383,11 +391,32 @@ def evaluate_hook(state: HookState) -> tuple[CoreFinding, ...]:
     return tuple(findings)
 
 
+def evaluate_seed_slot(
+    value: tuple[str, Path] | None,
+    *,
+    marker: str,
+    code: str,
+    next_action: str,
+) -> tuple[CoreFinding, ...]:
+    if value is None or marker not in value[0]:
+        return ()
+    return (
+        _finding(
+            code,
+            value[1],
+            "template replacement marker remains",
+            next_action,
+        ),
+    )
+
+
 def evaluate_readiness(
     *,
     prd: tuple[str, Path] | None,
     readme: tuple[str, Path] | None,
     hook: HookState,
+    security_policy: tuple[str, Path] | None = None,
+    contributing: tuple[str, Path] | None = None,
     initial_findings: tuple[CoreFinding, ...] = (),
 ) -> tuple[CoreFinding, ...]:
     findings = list(initial_findings)
@@ -395,6 +424,22 @@ def evaluate_readiness(
         findings.extend(evaluate_prd(*prd))
     if readme is not None:
         findings.extend(evaluate_readme(*readme))
+    findings.extend(
+        evaluate_seed_slot(
+            security_policy,
+            marker=SECURITY_MARKER,
+            code="READINESS_SECURITY_MARKER",
+            next_action="replace the marked security policy with project policy",
+        )
+    )
+    findings.extend(
+        evaluate_seed_slot(
+            contributing,
+            marker=CONTRIBUTING_MARKER,
+            code="READINESS_CONTRIBUTING_MARKER",
+            next_action="replace the marked contributing guide with project guidance",
+        )
+    )
     findings.extend(evaluate_hook(hook))
     return tuple(sorted(findings, key=lambda finding: finding.identity()))
 
@@ -447,48 +492,53 @@ def inspect_hook(path: Path, findings: list[CoreFinding]) -> HookState:
 
 
 def main(argv: list[str]) -> int:
-    if (
-        reject_arguments(
-            argv,
-            "scripts/check_project_readiness.py",
-            message="READINESS_USAGE_ERROR: scripts/check_project_readiness.py: unexpected arguments; next: run it without arguments",
+    options = parse_options(argv)
+    if options is None:
+        return render_usage_error(
+            "check_project_readiness",
+            (
+                "READINESS_USAGE_ERROR: scripts/check_project_readiness.py: invalid presentation options; "
+                "next: use --format text|json --color auto|always|never --explain --quiet"
+            ),
+            json_output=requested_json(argv),
         )
-        is not None
-    ):
-        return 2
     initial_findings: list[CoreFinding] = []
     try:
         prd_text = read_text(PRD, initial_findings)
         readme_text = read_text(README, initial_findings)
+        security_text = read_text(SECURITY, initial_findings)
+        contributing_text = read_text(CONTRIBUTING, initial_findings)
         hook_state = inspect_hook(HOOK, initial_findings)
         findings = evaluate_readiness(
             prd=(prd_text, PRD) if prd_text is not None else None,
             readme=(readme_text, README) if readme_text is not None else None,
+            security_policy=(security_text, SECURITY)
+            if security_text is not None
+            else None,
+            contributing=(contributing_text, CONTRIBUTING)
+            if contributing_text is not None
+            else None,
             hook=hook_state,
             initial_findings=tuple(initial_findings),
         )
     except Exception as exc:  # defensive boundary for an internal evaluation failure
-        print(
-            f"INTERNAL_READINESS_ERROR: repository: {exc}; next: fix the checker input or implementation",
-            file=sys.stderr,
+        return render_findings(
+            command="check_project_readiness",
+            findings=(),
+            exit_code=2,
+            options=options,
+            diagnostic=(
+                "INTERNAL_READINESS_ERROR: repository: "
+                + str(exc)
+                + "; next: fix the checker input or implementation"
+            ),
         )
-        return 2
-    rendered = render_text(
-        {
-            "findings": [
-                {
-                    "code": finding.code,
-                    "subject": finding.subject,
-                    "message": finding.message,
-                    "next_action": finding.next_action,
-                }
-                for finding in findings
-            ]
-        }
+    return render_findings(
+        command="check_project_readiness",
+        findings=findings,
+        exit_code=exit_code(findings),
+        options=options,
     )
-    if rendered:
-        print(rendered, file=sys.stderr)
-    return exit_code(findings)
 
 
 if __name__ == "__main__":

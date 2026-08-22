@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, cast
@@ -88,15 +89,59 @@ class DecodedBundle:
     bundle_digest: str
 
 
-def _read_bundle_file(path: str, subject: str) -> Result[bytes, InputError]:
+def _read_bundle_relative_file(
+    root: str, relative: str, subject: str
+) -> Result[bytes, InputError]:
+    """Read one bundle file below a no-follow directory descriptor."""
+
+    parent_fds: list[int] = []
+    file_fd = -1
     try:
-        with open(path, "rb") as handle:
-            content = handle.read()
-    except OSError:
+        current = os.open(
+            os.path.abspath(root),
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+        )
+        parent_fds.append(current)
+        components = tuple(os.fsencode(part) for part in relative.split("/"))
+        for component in components[:-1]:
+            current = os.open(
+                component,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                dir_fd=current,
+            )
+            parent_fds.append(current)
+        file_fd = os.open(
+            components[-1],
+            os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC,
+            dir_fd=current,
+        )
+        try:
+            info = os.fstat(file_fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                return Err(InputError(InputErrorKind.WRONG_KIND, subject))
+            with os.fdopen(file_fd, "rb") as handle:
+                file_fd = -1
+                content = handle.read(DEFAULT_LIMITS.max_file_bytes + 1)
+        finally:
+            if file_fd >= 0:
+                os.close(file_fd)
+    except FileNotFoundError:
         return Err(InputError(InputErrorKind.MISSING_INPUT, subject))
+    except OSError:
+        return Err(InputError(InputErrorKind.WRONG_KIND, subject))
+    finally:
+        for fd in reversed(parent_fds):
+            os.close(fd)
     if len(content) > DEFAULT_LIMITS.max_file_bytes:
         return Err(InputError(InputErrorKind.INPUT_LIMIT_EXCEEDED, subject))
     return Ok(content)
+
+
+def _read_bundle_file(path: str, subject: str) -> Result[bytes, InputError]:
+    absolute = os.path.abspath(path)
+    return _read_bundle_relative_file(
+        os.path.dirname(absolute), os.path.basename(absolute), subject
+    )
 
 
 def _bundle_json_path(bundle_path: str) -> str:
@@ -127,13 +172,11 @@ def _read_content_slot(
         os.path.normpath(root) + os.sep
     ) and absolute != os.path.normpath(root):
         return Err(InputError(InputErrorKind.UNSAFE_RELATIVE_PATH, raw_path))
-    match _read_bundle_file(absolute, relative.value):
+    match _read_bundle_relative_file(root, relative.value, relative.value):
         case Err(error):
             return Err(error)
         case Ok(content):
             pass
-    if not os.path.isfile(absolute) or os.path.islink(absolute):
-        return Err(InputError(InputErrorKind.WRONG_KIND, relative.value))
     if text:
         try:
             _ = content.decode("utf-8")

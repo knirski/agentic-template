@@ -51,6 +51,7 @@ from scripts.bootstrap.source_baseline import (
     CopierSourceBaseline,
     GitHubSourceBaseline,
     LifecycleSourceEntry,
+    template_source_fingerprint,
 )
 
 TARGET = target_identity(b"/work/example", device=1, inode=2)
@@ -132,17 +133,26 @@ def fixture_answers() -> ManifestAnswers:
 def github_source_baseline() -> GitHubSourceBaseline:
     return GitHubSourceBaseline(
         kind="github",
-        fingerprint=sha256_hex(b"source-baseline"),
+        fingerprint=template_source_fingerprint(SOURCE_ENTRIES),
         entries=SOURCE_ENTRIES,
         snapshot_commit="0" * 40,
     )
 
 
 def copier_source_baseline(seed: bytes) -> CopierSourceBaseline:
+    entries = (
+        LifecycleSourceEntry(
+            path=SOURCE_ENTRIES[0].path,
+            kind=SOURCE_ENTRIES[0].kind,
+            mode=SOURCE_ENTRIES[0].mode,
+            sha256=sha256_hex(seed),
+        ),
+        *SOURCE_ENTRIES[1:],
+    )
     return CopierSourceBaseline(
         kind="copier",
-        fingerprint=sha256_hex(seed),
-        entries=SOURCE_ENTRIES,
+        fingerprint=template_source_fingerprint(entries),
+        entries=entries,
     )
 
 
