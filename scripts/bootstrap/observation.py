@@ -701,7 +701,7 @@ def _open_state_root(
                     return Err(
                         ObservationError(
                             ObservationErrorKind.PERMISSION_DENIED,
-                            "state root permissions",
+                            f"state root permissions are {stat.S_IMODE(info.st_mode):04o}; 0700 is required",
                         )
                     )
                 return Ok(fd)

@@ -401,7 +401,10 @@ class StateAndDecisionTests(unittest.TestCase):
         if isinstance(state_root_decision, RefuseRecovery):
             self.assertEqual(
                 state_root_decision.error,
-                TransactionError(TransactionErrorKind.INVALID_STATE_ROOT),
+                TransactionError(
+                    TransactionErrorKind.INVALID_STATE_ROOT,
+                    subject="state root evidence",
+                ),
             )
 
         # A canonical template source needs no recovery: the design maps it

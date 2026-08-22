@@ -246,7 +246,10 @@ def _recovery(_intent: Recover, state: SystemState) -> RecoveryDecision:
             return RefuseRecovery(_transition(TransitionErrorKind.UNSUPPORTED_TARGET))
         case StateRootInvalid():
             return RefuseRecovery(
-                TransactionError(TransactionErrorKind.INVALID_STATE_ROOT)
+                TransactionError(
+                    TransactionErrorKind.INVALID_STATE_ROOT,
+                    subject="state root evidence",
+                )
             )
         case ProtectedTargetAvailable():
             # A canonical template source needs no recovery: the design maps
@@ -285,7 +288,10 @@ def _blocked(state: BlockedState) -> CommandError:
         case StalePendingWrite() | JournalPending():
             return _transition(TransitionErrorKind.RECOVERY_REQUIRED)
         case StateRootInvalid():
-            return TransactionError(TransactionErrorKind.INVALID_STATE_ROOT)
+            return TransactionError(
+                TransactionErrorKind.INVALID_STATE_ROOT,
+                subject="state root evidence",
+            )
         case JournalAtDifferentTarget():
             return _transition(TransitionErrorKind.RECOVERY_TARGET_MISMATCH)
     return assert_never(

@@ -139,6 +139,8 @@ class FsEffectsTests(unittest.TestCase):
             result = _open_state_root(os.fsencode(state_root))
             error = cast(ObservationError, _err(result))
             self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
+            self.assertIn("0755", error.subject)
+            self.assertIn("0700", error.subject)
 
     def test_walk_returns_fd_of_final_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
