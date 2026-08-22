@@ -1351,8 +1351,7 @@
                 "actionlint workflow checks, generated-project canonical validation, template validation, and git diff --check passed",
                 "post-fix code review completed with no actionable findings"
               ]
-            },
-            "github_prs": []
+            }
           },
           "files": {
             "create": [],
