@@ -20,8 +20,8 @@ from scripts.bootstrap import validation_presentation as presentation
 from scripts.bootstrap.errors import ProcessError, ProcessErrorKind
 from scripts.bootstrap.readiness import Finding, SubjectPath
 from scripts.bootstrap.validation_program import (
-    CapturedStream,
     STREAM_PREFIX_LIMIT,
+    CapturedStream,
     StageFailed,
     StageLaunchFailed,
     StagePassed,
