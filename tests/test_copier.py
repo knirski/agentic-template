@@ -13,6 +13,8 @@ VERSION = "9.17.0"
 ROOT = Path(__file__).resolve().parent.parent
 VALID_PRD = """# Product\n## Problem\nProblem.\n## Goals\nGoals.\n## Non-goals\nNo.\n## Users and workflows\nUsers.\n## Requirements\n### REQ-001: Works\nBody.\n## Quality attributes\nReliable.\n## Release criteria\nGreen.\n## Open questions\nNone.\n"""
 VALID_README = """# Product\n## Setup\nSetup.\n## Validation\nRun `python3.14 scripts/validate_repository.py`.\n"""
+VALID_SECURITY = "# Security\n\nReport issues privately.\n"
+VALID_CONTRIBUTING = "# Contributing\n\nContribution guidance.\n"
 
 
 def run(
@@ -109,6 +111,10 @@ def main() -> int:
         _ = shutil.copy2(
             ROOT / ".github/workflows/project-validation.yml",
             project / ".github/workflows/project-validation.yml",
+        )
+        _ = (project / "SECURITY.md").write_text(VALID_SECURITY, encoding="utf-8")
+        _ = (project / "CONTRIBUTING.md").write_text(
+            VALID_CONTRIBUTING, encoding="utf-8"
         )
         project_git = ["git", "-C", str(project)]
         for args in (
