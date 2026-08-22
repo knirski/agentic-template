@@ -454,9 +454,7 @@ def _add_for_condition(
             SnapshotSourceSame(managed=ManagedDrift())
             | CopierSourceSame(managed=ManagedDrift())
         ):
-            return _refuse_for(
-                intent, _transition(TransitionErrorKind.OPERATION_UNAVAILABLE)
-            )
+            return _refuse_for(intent, _transition(TransitionErrorKind.MANAGED_DRIFT))
         case SnapshotSourceSame() | CopierSourceSame():
             return _accept_add(intent)
         case (
@@ -468,6 +466,9 @@ def _add_for_condition(
             return _refuse_for(
                 intent, _transition(TransitionErrorKind.OPERATION_UNAVAILABLE)
             )
+    return assert_never(
+        condition
+    )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
 
 
 def _accept_add(intent: Add | PlanAdd) -> CommandDecision:

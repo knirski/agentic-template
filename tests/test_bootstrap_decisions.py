@@ -674,8 +674,27 @@ class StateAndDecisionTests(unittest.TestCase):
         self.assertIsInstance(
             decide_project(Restore(RestoreOptions()), scaffold), RefuseMutation
         )
+        drift = CopierSourceSame(ManagedDrift(PathDelta((RepoPath("managed.txt"),))))
+        drift_state = ProjectAvailable(
+            worktree(),
+            ExistingProject(
+                CopierExistingProject(
+                    RecordedProjectState(GenerationPath.COPIER),
+                    drift,
+                    TargetSnapshot(()),
+                )
+            ),
+        )
+        drift_decision = decide_project(Add(AddOptions()), drift_state)
+        self.assertIsInstance(drift_decision, RefuseMutation)
+        if isinstance(drift_decision, RefuseMutation):
+            self.assertIsInstance(drift_decision.error, TransitionError)
+            if isinstance(drift_decision.error, TransitionError):
+                self.assertEqual(
+                    drift_decision.error.kind, TransitionErrorKind.MANAGED_DRIFT
+                )
+
         for condition in (
-            CopierSourceSame(ManagedDrift(PathDelta((RepoPath("managed.txt"),)))),
             CopierConflicted(PathDelta((RepoPath(".rej"),))),
             CopierSourceChanged(
                 SourceDelta((RepoPath("source.txt"),)), ManagedVerified()
