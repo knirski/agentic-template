@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -265,6 +266,24 @@ class CompatibilityCorpus(unittest.TestCase):
 
         self.assertEqual(validate_readiness_rule_catalog(ROOT), ())
 
+    def test_template_validator_rejects_malformed_corpus_shapes(self) -> None:
+        from scripts import validate_template
+
+        documents = (
+            b"[]",
+            b'{"schema_version": 2}',
+            b'{"schema_version": 1, "rules": [1]}',
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            corpus = root / "scripts/fixtures/readiness-rule-catalog-v1.json"
+            corpus.parent.mkdir(parents=True)
+            for document in documents:
+                _ = corpus.write_bytes(document)
+                self.assertEqual(
+                    len(validate_template.validate_readiness_rule_catalog(root)), 1
+                )
+
     def test_new_blocking_adopter_rule_is_rejected(self) -> None:
         from scripts import validate_template
         from scripts.bootstrap.readiness_rules import readiness_rule_surface
@@ -305,6 +324,21 @@ class CompatibilityCorpus(unittest.TestCase):
             failures = validate_template.validate_readiness_rule_catalog(ROOT)
         self.assertIn("removed stable readiness rules", failures[0])
         self.assertIn("added blocking adopter readiness rules", failures[0])
+
+    def test_stable_rule_change_is_rejected(self) -> None:
+        from scripts import validate_template
+        from scripts.bootstrap.readiness_rules import readiness_rule_surface
+
+        live = readiness_rule_surface()
+        changed = {**live[0], "severity": "advisory"}
+        with patch.object(
+            validate_template,
+            "readiness_rule_surface",
+            return_value=(changed, *live[1:]),
+            create=True,
+        ):
+            failures = validate_template.validate_readiness_rule_catalog(ROOT)
+        self.assertIn("changed stable readiness rules", failures[0])
 
 
 class CatalogTypeSafety(unittest.TestCase):

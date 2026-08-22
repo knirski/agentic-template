@@ -241,6 +241,18 @@ A language-neutral GitHub repository template for planning.
         self.assertIn("stage: failed exit=3", stdout.getvalue())
         self.assertIn("stderr:", stderr.getvalue())
 
+        colored = io.StringIO()
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            contextlib.redirect_stdout(colored),
+        ):
+            repository._render_text_stage(  # pyright: ignore[reportPrivateUsage]
+                "stage",
+                StagePassed(),
+                presentation.ValidationOptions(color="always"),
+            )
+        self.assertIn("\033[36m", colored.getvalue())
+
     def test_repository_json_main_serializes_stage_documents(self) -> None:
         with (
             patch(
@@ -253,6 +265,14 @@ A language-neutral GitHub repository template for planning.
         document = cast(dict[str, object], json.loads(output.getvalue()))
         self.assertEqual(document["outcome_class"], "succeeded")
         self.assertEqual(len(cast(list[object], document["stages"])), 3)
+
+    def test_repository_main_presents_invalid_options(self) -> None:
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            result = repository.main(["unexpected"])
+
+        self.assertEqual(result, 2)
+        self.assertIn("REPOSITORY_VALIDATION_USAGE_ERROR", stderr.getvalue())
 
     def test_repository_core_stops_after_nonzero_stage(self) -> None:
         self.assertTrue(stage_failed(7))
@@ -306,6 +326,31 @@ A language-neutral GitHub repository template for planning.
         self.assertTrue(observation.stdout.truncated)
         assert observation.stderr is not None
         self.assertEqual(observation.stderr.total_bytes, 4)
+
+    def test_repository_stage_success_and_outcome_classification(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / "success-stage.py"
+            _ = script.write_text("raise SystemExit(0)\n", encoding="utf-8")
+            observation = repository.run_stage([sys.executable, str(script)])
+
+        self.assertIsInstance(observation, StagePassed)
+        self.assertEqual(
+            repository._outcome_class(  # pyright: ignore[reportPrivateUsage]
+                2,
+                [
+                    StageLaunchFailed(
+                        ProcessError(ProcessErrorKind.EXECUTABLE_NOT_FOUND)
+                    ),
+                ],
+            ),
+            "internal_failure",
+        )
+        self.assertEqual(
+            repository._outcome_class(  # pyright: ignore[reportPrivateUsage]
+                2, [StageFailed(2)]
+            ),
+            "validation_failed",
+        )
 
     def test_repository_stage_capture_distinguishes_signal_and_launch_failure(
         self,
