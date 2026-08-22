@@ -157,6 +157,8 @@ from scripts.bootstrap.transaction import (
 from scripts.bootstrap.transaction_machine import (
     TransactionResources,
     _execute_prepare_one,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
+    _open_state_root_abs,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
+    _validate_stage_entries,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
 )
 from scripts.bootstrap.values import JournalPhase
 
@@ -1506,6 +1508,53 @@ class TestMachineEffectFailures:
 
 
 class TestContractGuards:
+    def test_state_root_descriptor_rejects_insecure_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state_root = os.path.join(tmp, "state")
+            os.mkdir(state_root, 0o755)
+
+            result = _open_state_root_abs(os.fsencode(state_root))
+
+        assert isinstance(result, Err)
+        assert isinstance(result.error, TransactionError)
+        assert result.error.kind is TransactionErrorKind.INVALID_STATE_ROOT
+
+    def test_state_root_descriptor_maps_fstat_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state_root = os.path.join(tmp, "state")
+            os.mkdir(state_root, 0o700)
+            with patch(
+                "scripts.bootstrap.transaction_machine.os.fstat",
+                side_effect=OSError("blocked"),
+            ):
+                result = _open_state_root_abs(os.fsencode(state_root))
+
+        assert isinstance(result, Err)
+        assert isinstance(result.error, TransactionError)
+        assert result.error.kind is TransactionErrorKind.PRIMITIVE_FAILED
+
+    def test_stage_entry_validation_rejects_unexpected_debris(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            stage_dir = os.path.join(tmp, "stage")
+            _ = os.mkdir(stage_dir)
+            with open(os.path.join(stage_dir, "unexpected"), "wb") as stream:
+                _ = stream.write(b"debris")
+
+            result = _validate_stage_entries(os.fsencode(stage_dir))
+
+        assert isinstance(result, Err)
+        assert isinstance(result.error, TransactionError)
+        assert result.error.kind is TransactionErrorKind.INVALID_STATE_ROOT
+
+    def test_stage_entry_validation_maps_listdir_failure(self) -> None:
+        with patch(
+            "scripts.bootstrap.transaction_machine.os.listdir",
+            side_effect=OSError("blocked"),
+        ):
+            result = _validate_stage_entries(b"/missing-stage")
+
+        assert isinstance(result, Err)
+
     @pytest.mark.parametrize(
         "label, factory, match",
         [

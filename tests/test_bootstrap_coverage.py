@@ -15,6 +15,7 @@ from scripts.bootstrap.blobs import ContentId, VerifiedBlobStore
 from scripts.bootstrap.cli import (
     ParsedCommand,
     _compile_lifecycle_plan,  # pyright: ignore[reportPrivateUsage]  targeted branch coverage
+    _decode_additions_input,  # pyright: ignore[reportPrivateUsage]  targeted branch coverage
     _decode_existing_manifest,  # pyright: ignore[reportPrivateUsage]  targeted branch coverage
     _execute_lifecycle,  # pyright: ignore[reportPrivateUsage]  targeted branch coverage
     _lifecycle_compile_error,  # pyright: ignore[reportPrivateUsage]  targeted branch coverage
@@ -26,6 +27,8 @@ from scripts.bootstrap.cli import (
 from scripts.bootstrap.errors import (
     ContractError,
     ContractErrorKind,
+    InputError,
+    InputErrorKind,
     TransitionError,
     TransitionErrorKind,
 )
@@ -72,7 +75,7 @@ from scripts.bootstrap.render import (
 )
 from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.scaffold import SOURCE_OWNERSHIP_PATH, decode_source_ownership
-from scripts.bootstrap.values import DEFAULT_LIMITS
+from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
 from tests.bootstrap_fixtures import (
     TARGET,
     copier_source_baseline,
@@ -517,3 +520,56 @@ def test_manifest_identity_can_be_recomputed() -> None:
     assert isinstance(candidate, Ok)
     identity = _manifest_identity(candidate.value)
     assert identity.digest
+
+
+def test_decode_additions_input_rejects_unsafe_and_invalid_documents(
+    tmp_path: Path,
+) -> None:
+    def error_kind(
+        path: str | None, limits: ResourceLimits = DEFAULT_LIMITS
+    ) -> InputErrorKind:
+        result = _decode_additions_input(path, limits)
+        assert isinstance(result, Err)
+        assert isinstance(result.error, InputError)
+        return result.error.kind
+
+    assert error_kind(None) is InputErrorKind.MISSING_INPUT
+    missing = tmp_path / "missing.json"
+    assert error_kind(str(missing)) is InputErrorKind.MISSING_INPUT
+
+    symlink = tmp_path / "link.json"
+    symlink.symlink_to(missing)
+    assert error_kind(str(symlink)) is InputErrorKind.WRONG_KIND
+
+    hardlink_source = tmp_path / "source.json"
+    _ = hardlink_source.write_bytes(b"{}")
+    hardlink = tmp_path / "hardlink.json"
+    os.link(hardlink_source, hardlink)
+    assert error_kind(str(hardlink)) is InputErrorKind.WRONG_KIND
+
+    oversized = tmp_path / "oversized.json"
+    _ = oversized.write_bytes(b"{}")
+    assert (
+        error_kind(str(oversized), ResourceLimits(max_file_bytes=1))
+        is InputErrorKind.INPUT_LIMIT_EXCEEDED
+    )
+
+    invalid = tmp_path / "invalid.json"
+    _ = invalid.write_bytes(b"{")
+    assert error_kind(str(invalid)) is InputErrorKind.INVALID_JSON
+
+    scalar = tmp_path / "scalar.json"
+    _ = scalar.write_bytes(b"[]")
+    assert error_kind(str(scalar)) is InputErrorKind.SCHEMA_VIOLATION
+
+    invalid_model = tmp_path / "model.json"
+    _ = invalid_model.write_bytes(b'{"schema_version": 2}')
+    assert error_kind(str(invalid_model)) is InputErrorKind.SCHEMA_VIOLATION
+
+    valid = tmp_path / "valid.json"
+    _ = valid.write_bytes(b'{"schema_version": 1}')
+    result = _decode_additions_input(str(valid), DEFAULT_LIMITS)
+    assert isinstance(result, Ok)
+
+    with patch("scripts.bootstrap.cli.os.open", side_effect=OSError("blocked")):
+        assert error_kind(str(valid)) is InputErrorKind.MISSING_INPUT
