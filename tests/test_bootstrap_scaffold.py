@@ -8,11 +8,15 @@ for absent manifests, strict ``decode_cleanup_inventory`` decoding, and
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 from typing import cast
 
 from scripts.bootstrap.canonical_json import StrictJsonValue, canonical_json
 from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.manifest import MANIFEST_PATH
+from scripts.bootstrap.observation import (
+    _scaffold_bytes,  # pyright: ignore[reportPrivateUsage]  intentional scaffold fixture access
+)
 from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.scaffold import (
@@ -67,6 +71,25 @@ def _entry(
 
 
 class ScaffoldRecognitionTests(unittest.TestCase):
+    def test_tracked_source_is_a_recognizable_github_scaffold(self) -> None:
+        root = Path(__file__).resolve().parent.parent
+        seed_once = {
+            path: (
+                (root / path.value).read_bytes()
+                if (root / path.value).is_file()
+                else None
+            )
+            for path in SEED_ONCE_PATHS
+        }
+        self.assertIs(
+            recognize_generation(
+                copier_answers=None,
+                seed_once=seed_once,
+                scaffold=_scaffold_bytes(str(root)),
+            ),
+            GenerationPath.GITHUB,
+        )
+
     def test_seed_once_observations_require_exact_slot_paths(self) -> None:
         with self.assertRaises(ValueError):
             _ = recognize_generation(copier_answers=None, seed_once={}, scaffold={})

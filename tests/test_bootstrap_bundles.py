@@ -152,6 +152,32 @@ class DecodeBundleInputTests(unittest.TestCase):
             case Ok(_):
                 self.fail("expected WRONG_KIND")
 
+    def test_decode_rejects_a_symlinked_bundle_ancestor(self) -> None:
+        tmp = Path(tempfile.mkdtemp())
+        root = tmp / "bundle"
+        root.mkdir()
+        outside = tmp / "outside"
+        outside.mkdir()
+        _ = (outside / "prd.md").write_bytes(b"escaped\n")
+        (root / "content").mkdir()
+        (root / "content" / "escape").symlink_to(outside, target_is_directory=True)
+        files = dict(_DEFAULT_FILES)
+        document = _valid_bundle()
+        content = cast(dict[str, object], document["content"])
+        content["prd"] = {"mode": "file", "path": "content/escape/prd.md"}
+        for relative, file_content in files.items():
+            target = root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if relative != "content/prd.md":
+                _ = target.write_bytes(file_content)
+        json_path = root / "bootstrap.json"
+        _ = json_path.write_bytes(json.dumps(document, sort_keys=True).encode())
+        match decode_bundle_input(str(json_path)):
+            case Err(error):
+                self.assertEqual(error.kind, InputErrorKind.WRONG_KIND)
+            case Ok(_):
+                self.fail("expected WRONG_KIND")
+
     def test_decode_rejects_invalid_utf8_content(self) -> None:
         files = dict(_DEFAULT_FILES)
         files["content/prd.md"] = b"\xff\xfe\x00"

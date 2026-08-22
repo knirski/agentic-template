@@ -257,6 +257,7 @@ class TransactionResources:
     rollback_tokens: tuple[bytes, ...] = ()
     rollback_preparations: tuple[PreparationIdentity, ...] = ()
     revalidate: Callable[[], Result[TargetSnapshot, TransactionError]] | None = None
+    post_validate: Callable[[], bool] | None = None
 
 
 def _err_effect[ValueT](error: EffectError) -> Result[ValueT, EffectError]:
@@ -329,6 +330,31 @@ def _open_directory_abs(directory: bytes) -> Result[int, TransactionError]:
                 os.fsdecode(directory),
             )
         )
+
+
+def _open_state_root_abs(directory: bytes) -> Result[int, TransactionError]:
+    """Open an administrative state root and enforce its private mode."""
+
+    match _open_directory_abs(directory):
+        case Err(error):
+            return Err(error)
+        case Ok(fd):
+            pass
+    try:
+        mode = stat.S_IMODE(os.fstat(fd).st_mode)
+    except OSError as error:
+        os.close(fd)
+        return Err(
+            TransactionError.primitive_failed(
+                TransactionPrimitive.READ_BACKUP,
+                sanitize_errno(error),
+                os.fsdecode(directory),
+            )
+        )
+    if mode != 0o700:
+        os.close(fd)
+        return Err(_invalid_state("state root permissions"))
+    return Ok(fd)
 
 
 @contextlib.contextmanager
@@ -1708,6 +1734,22 @@ def _remove_artifact(path: bytes, *, directory: bool) -> Result[None, EffectErro
     return Ok(None)
 
 
+def _validate_stage_entries(stage_dir: bytes) -> Result[None, EffectError]:
+    """Reject unexpected top-level stage debris before cleanup can remove it."""
+
+    try:
+        entries = set(os.listdir(stage_dir))
+    except OSError as error:
+        return _err_effect(map_observation_error(error, os.fsdecode(stage_dir)))
+    unexpected = entries - {
+        os.fsencode(_MARKER_NAME),
+        os.fsencode(_PAYLOAD_NAME),
+    }
+    if unexpected:
+        return _err_effect(_invalid_state(os.fsdecode(stage_dir)))
+    return Ok(None)
+
+
 def _marker_matches_identity(
     marker: tuple[str, int, str, str], identity: PreparationIdentity
 ) -> bool:
@@ -1780,6 +1822,11 @@ def _execute_clean_one(
             assert marker is not None
             if not _marker_matches_identity(marker, identity):
                 return _err_effect(_invalid_state(os.fsdecode(stage_dir)))
+            match _validate_stage_entries(stage_dir):
+                case Err(error):
+                    return _err_effect(error)
+                case Ok(_):
+                    pass
             payload = os.path.join(stage_dir, os.fsencode(_PAYLOAD_NAME))
             match _artifact_observation(
                 payload, directory=identity.expected_kind == "directory"
@@ -1918,7 +1965,7 @@ def _execute_effect(
             case AcquireLock():
                 state_root_abs = resources.worktree.state_root_abs
                 if resources.state_root_fd is None:
-                    match _open_directory_abs(state_root_abs):
+                    match _open_state_root_abs(state_root_abs):
                         case Ok(fd):
                             resources.state_root_fd = fd
                         case Err(_):
@@ -1933,7 +1980,7 @@ def _execute_effect(
                             return EffectFailed(EffectRequestKind.ACQUIRE_LOCK, error)
                         case Ok(_):
                             pass
-                    match _open_directory_abs(state_root_abs):
+                    match _open_state_root_abs(state_root_abs):
                         case Err(error):
                             return EffectFailed(EffectRequestKind.ACQUIRE_LOCK, error)
                         case Ok(fd):
@@ -2017,7 +2064,12 @@ def _execute_effect(
                     case Err(error):
                         return EffectFailed(EffectRequestKind.OBSERVE_POST_STATE, error)
                     case Ok(snapshot):
-                        return PostStateObserved(snapshot)
+                        post_state_valid = (
+                            resources.post_validate()
+                            if resources.post_validate
+                            else True
+                        )
+                        return PostStateObserved(snapshot, post_state_valid)
             case CleanOne():
                 if not isinstance(continuation, (CleaningForward, CleaningRollback)):
                     return EffectFailed(
@@ -2203,7 +2255,7 @@ def _execute_recover(  # pyright: ignore[reportUnusedFunction] — shared recove
     resources = TransactionResources(worktree=worktree, limits=limits)
     lock_error: EffectError | TransitionError | None = None
     state_root_abs = worktree.state_root_abs
-    match _open_directory_abs(state_root_abs):
+    match _open_state_root_abs(state_root_abs):
         case Ok(fd):
             resources.state_root_fd = fd
         case Err(_):
@@ -2216,7 +2268,7 @@ def _execute_recover(  # pyright: ignore[reportUnusedFunction] — shared recove
                 return _result(command, _recovery_outcome(error))
             case Ok(_):
                 pass
-        match _open_directory_abs(state_root_abs):
+        match _open_state_root_abs(state_root_abs):
             case Err(error):
                 return _result(command, _recovery_outcome(error))
             case Ok(fd):
@@ -2511,6 +2563,27 @@ def _execute_recovery_phase(
                         command,
                         _recovery_outcome(_invalid_state(os.fsdecode(stage_dir))),
                     )
+                match _validate_stage_entries(stage_dir):
+                    case Err(error):
+                        return _result(command, _recovery_outcome(error))
+                    case Ok(_):
+                        pass
+                payload = os.path.join(stage_dir, os.fsencode(_PAYLOAD_NAME))
+                match _artifact_observation(
+                    payload, directory=identity.expected_kind == "directory"
+                ):
+                    case Err(error):
+                        return _result(command, _recovery_outcome(error))
+                    case Ok(observed):
+                        pass
+                match cleanup_step(identity, observed):
+                    case CleanupMissing() | CleanupVerified():
+                        pass
+                    case CleanupThirdState():
+                        return _result(
+                            command,
+                            _recovery_outcome(_invalid_state(os.fsdecode(payload))),
+                        )
                 match _remove_artifact(stage_dir, directory=True):
                     case Err(error):
                         return _result(command, _recovery_outcome(error))

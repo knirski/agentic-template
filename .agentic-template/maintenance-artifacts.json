@@ -3,7 +3,7 @@
     {
       "kind": "file",
       "path": ".github/workflows/copier-smoke.yml",
-      "sha256": "c79d81a682686bef2861c7ce729046008e9530b1db24c9c734635673535f2de7"
+      "sha256": "58f4fb4a7c45fd8aee33f3eca4cc0ffaf51ec8278dacf71d79b0a36d6a84efa6"
     },
     {
       "kind": "file",
@@ -28,7 +28,7 @@
     {
       "kind": "file",
       "path": ".github/workflows/template-ci.yml",
-      "sha256": "cedd61d16d1f8b67dfa11db9e2434a3253eca2155344cc01886384cc084c980d"
+      "sha256": "cbb2cc3930fbbbda3fb48f298c682bbcb2f05aa0bdbf53ccf50ecb737e085104"
     },
     {
       "kind": "file",
@@ -48,7 +48,7 @@
     {
       "kind": "directory",
       "path": "docs/specs",
-      "sha256": "96f1965b7769ff85019050cb94fccdce0e9324d606afa5c0bb19a7c50cc7c797"
+      "sha256": "47e04a8e108bbb81279a176a05131822131f9feb35ca49ca3d0b54cc1afcc1bc"
     },
     {
       "kind": "file",
@@ -63,12 +63,12 @@
     {
       "kind": "file",
       "path": "pyproject.toml",
-      "sha256": "270e1198a398ec17e1e47bd60a1eeabba7261d2803db6b000610632024f360ee"
+      "sha256": "ffd3e4ae9dc9bd6d6f6bf4c7804f9ac0b39c46835a43f5bfcec0887c12ce4b01"
     },
     {
       "kind": "directory",
       "path": "tests",
-      "sha256": "713627db2cea2d9a3433b051504ec77fbb39ac3aa1fbb01ee8db0e204a42375c"
+      "sha256": "bfc2ffb42cc2dc4215355a50883fac92067bbfded9c0211dcae449a436f02f34"
     },
     {
       "kind": "file",

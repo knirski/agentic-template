@@ -96,7 +96,10 @@ def main() -> int:
         "test_repository_validation.py" not in maintainer
     ):
         fail("source-mode readiness fixtures must run in the maintainer workflow")
-    if "needs: [python-source, source-fixtures, workflow-lint]" not in maintainer:
+    if (
+        "needs: [python-source, source-fixtures, workflow-lint, copier-smoke]"
+        not in maintainer
+    ):
         fail("source release must require the maintainer check suite")
     print("delivery contract: ok")
     return 0

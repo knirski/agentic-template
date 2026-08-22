@@ -106,6 +106,7 @@ from scripts.bootstrap.source_baseline import (
     CopierSourceBaseline,
     GitHubSourceBaseline,
     LifecycleSourceEntry,
+    template_source_fingerprint,
 )
 from scripts.bootstrap.state import CleanupContract
 from scripts.bootstrap.template_contract import REQUIRED_FILES, REQUIRED_SKILLS
@@ -886,6 +887,19 @@ def _manifest_baseline_fingerprint(document: dict[str, object]) -> object:
     )
 
 
+def _manifest_baseline_fingerprint_mismatch(document: dict[str, object]) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    baseline = cast(dict[str, object], provenance["source_baseline"])
+    return baseline.__setitem__("fingerprint", "0" * 64)
+
+
+def _manifest_baseline_entries_unsorted(document: dict[str, object]) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    baseline = cast(dict[str, object], provenance["source_baseline"])
+    entries = cast(list[object], baseline["entries"])
+    return baseline.__setitem__("entries", list(reversed(entries)))
+
+
 def _manifest_baseline_entries_unsafe_path(document: dict[str, object]) -> object:
     provenance = cast(dict[str, object], document["provenance"])
     return cast(dict[str, object], provenance["source_baseline"]).__setitem__(
@@ -1144,7 +1158,7 @@ class TestManifest:
             maintenance=MaintenanceRecord(status="clean"),
             source_baseline=GitHubSourceBaseline(
                 kind="github",
-                fingerprint=sha256_hex(b"source"),
+                fingerprint=template_source_fingerprint(fixture_source_entries()),
                 entries=fixture_source_entries(),
                 snapshot_commit="0" * 40,
             ),
@@ -1166,7 +1180,7 @@ class TestManifest:
             maintenance=MaintenanceRecord(status="clean"),
             source_baseline=CopierSourceBaseline(
                 kind="copier",
-                fingerprint=sha256_hex(b"source"),
+                fingerprint=template_source_fingerprint(fixture_source_entries()),
                 entries=fixture_source_entries(),
             ),
         )
@@ -1238,6 +1252,45 @@ class TestManifest:
                 assert error.kind is ManifestErrorKind.CHECKSUM_MISMATCH
             case Ok(_):
                 raise AssertionError("tampered field decoded")
+
+    def test_manifest_rejects_a_valid_but_wrong_source_fingerprint(self) -> None:
+        provenance = replace(
+            self._github_manifest_value().provenance,
+            source_baseline=replace(
+                self._github_manifest_value().provenance.source_baseline,
+                fingerprint="0" * 64,
+            ),
+        )
+        match build_candidate_manifest(
+            answers=fixture_answers(),
+            additions=ManifestAdditions(),
+            provenance=provenance,
+            managed=(),
+        ):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("wrong source fingerprint accepted")
+
+    def test_manifest_rejects_unsorted_source_entries(self) -> None:
+        entries = fixture_source_entries()
+        provenance = replace(
+            self._github_manifest_value().provenance,
+            source_baseline=replace(
+                self._github_manifest_value().provenance.source_baseline,
+                entries=tuple(reversed(entries)),
+            ),
+        )
+        match build_candidate_manifest(
+            answers=fixture_answers(),
+            additions=ManifestAdditions(),
+            provenance=provenance,
+            managed=(),
+        ):
+            case Err(error):
+                assert error.kind is ManifestErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("unsorted source entries accepted")
 
     def test_unknown_schema_version_fails_before_any_write(self) -> None:
         encoded = bytearray(encode_manifest(self._github_manifest_value()))
@@ -1828,6 +1881,10 @@ class TestManifest:
             pytest.param(_manifest_baseline_kind, id="baseline kind"),
             pytest.param(_manifest_baseline_fingerprint, id="baseline fingerprint"),
             pytest.param(
+                _manifest_baseline_fingerprint_mismatch,
+                id="baseline fingerprint mismatch",
+            ),
+            pytest.param(
                 _manifest_baseline_entries_unsafe_path,
                 id="baseline entries unsafe path",
             ),
@@ -1836,6 +1893,10 @@ class TestManifest:
                 id="baseline missing snapshot commit",
             ),
             pytest.param(_manifest_baseline_kind_mismatch, id="baseline kind mismatch"),
+            pytest.param(
+                _manifest_baseline_entries_unsorted,
+                id="baseline entries unsorted",
+            ),
             pytest.param(_manifest_managed_unsorted, id="managed unsorted"),
             pytest.param(_manifest_managed_case_collision, id="managed case collision"),
             pytest.param(
@@ -1950,7 +2011,7 @@ class TestManifest:
             maintenance=MaintenanceRecord(status="clean"),
             source_baseline=GitHubSourceBaseline(
                 kind="github",
-                fingerprint=sha256_hex(b"source"),
+                fingerprint=template_source_fingerprint(fixture_source_entries()),
                 entries=fixture_source_entries(),
                 snapshot_commit="0" * 40,
             ),
@@ -1981,15 +2042,25 @@ class TestManifest:
             maintenance=MaintenanceRecord(status="clean"),
             source_baseline=GitHubSourceBaseline(
                 kind="github",
-                fingerprint=sha256_hex(b"source"),
+                fingerprint=template_source_fingerprint(
+                    (
+                        *fixture_source_entries(),
+                        LifecycleSourceEntry(
+                            path=RepoPath("scripts/bootstrap"),
+                            kind="directory",
+                            mode=PosixMode.DIRECTORY,
+                            sha256=sha256_hex(b"dir"),
+                        ),
+                    )
+                ),
                 entries=(
-                    *fixture_source_entries(),
                     LifecycleSourceEntry(
                         path=RepoPath("scripts/bootstrap"),
                         kind="directory",
                         mode=PosixMode.DIRECTORY,
                         sha256=sha256_hex(b"dir"),
                     ),
+                    *fixture_source_entries(),
                 ),
                 snapshot_commit="0" * 40,
             ),
@@ -4317,7 +4388,7 @@ class TestPlanDigest:
 
 
 class TestExpectedTarget:
-    def test_expected_readiness_matches_predicted_placeholder_findings(self) -> None:
+    def test_expected_readiness_includes_predicted_placeholder_findings(self) -> None:
         plan = github_plan()
         predicted = plan.gate_specification.expected_placeholder
         assert predicted == predicted_placeholder_findings(fixture_answers().slots)
@@ -4327,7 +4398,9 @@ class TestExpectedTarget:
             case Err(error):
                 raise AssertionError(f"apply_plan failed: {error}")
         evaluated = evaluate_slot_readiness(expected)
-        assert evaluated.findings == predicted
+        predicted_identities = {finding.identity() for finding in predicted}
+        evaluated_identities = {finding.identity() for finding in evaluated.findings}
+        assert predicted_identities <= evaluated_identities
         assert {finding.code for finding in predicted} == {
             "READINESS_PRD_MARKER",
             "READINESS_SECURITY_MARKER",
@@ -4445,7 +4518,7 @@ class TestExpectedTarget:
             case Err(error):
                 raise AssertionError(f"absent observed file broke the overlay: {error}")
 
-    def test_slot_readiness_skips_missing_and_invalid_text_files(self) -> None:
+    def test_slot_readiness_reports_missing_and_invalid_text_files(self) -> None:
         plan = github_plan()
         match apply_plan(github_snapshot(), plan):
             case Ok(expected):
@@ -4458,9 +4531,13 @@ class TestExpectedTarget:
                 file for file in expected.files if file.path.value != "README.md"
             ),
         )
-        assert (
-            evaluate_slot_readiness(without_readme).findings
-            == evaluate_slot_readiness(expected).findings
+        missing_findings = evaluate_slot_readiness(without_readme).findings
+        assert any(
+            finding.code == "READINESS_MISSING_FILE" and finding.subject == "README.md"
+            for finding in missing_findings
+        )
+        assert not any(
+            finding.code.startswith("READINESS_README_") for finding in missing_findings
         )
         invalid_utf8 = replace(
             expected,
@@ -4471,9 +4548,14 @@ class TestExpectedTarget:
                 for file in expected.files
             ),
         )
-        assert (
-            evaluate_slot_readiness(invalid_utf8).findings
-            == evaluate_slot_readiness(expected).findings
+        invalid_findings = evaluate_slot_readiness(invalid_utf8).findings
+        assert any(
+            finding.code == "INTERNAL_READINESS_ERROR"
+            and finding.subject == "README.md"
+            for finding in invalid_findings
+        )
+        assert not any(
+            finding.code.startswith("READINESS_README_") for finding in invalid_findings
         )
         marked = replace(
             expected,

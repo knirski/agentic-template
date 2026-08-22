@@ -1137,16 +1137,13 @@ ReadinessRuleDefinition =
 ```
 
 `PredicateKind` is a closed union implemented by total pure evaluators. Tightening a predicate requires
-changing its canonical definition. The baseline comparison and old-state corpus are deferred to
-post-v1: until the first compatible update, immutability of the frozen baseline is enforced by source
-review of the rule catalog rather than by automated comparison.
-
-The compatibility corpus is deferred with the comparison: it is not implemented in v1. The
-adopter-facing blocking rules in the catalog are immutable for manifest schema v1; new
-managed-output rules remain allowed because the candidate render proves them satisfied, so they
-impose no new adopter obligation. Reconcile additionally requires the readiness-rule
-`SourceBaseline.entries` to retain their recorded hashes. A corpus and automated comparison are
-prerequisites to the first compatible template update.
+changing its canonical definition. The checked-in
+`scripts/fixtures/readiness-rule-catalog-v1.json` corpus freezes the stable rule surface for
+released schema-v1 projects. `validate_template.py` compares the live catalog with that corpus:
+removed rules, changed definitions, and new blocking adopter-owned obligations are breaking changes.
+New non-blocking or managed rules remain compatible because they do not add an adopter obligation.
+Reconcile additionally requires the readiness-rule `SourceBaseline.entries` to retain their
+recorded hashes.
 
 ### Frozen readiness-rule baseline v1
 

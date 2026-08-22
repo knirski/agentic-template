@@ -75,6 +75,7 @@ def test_additions_close_dependencies_and_reject_reconfiguration() -> None:
         profile={"id": "portable"},
         capability_settings={"cachix-publish": {"cache_name": "example"}},
     )
+
     resolved = _ok(resolve_bundle(decode_bundle(data), additions=("cachix-publish",)))
     assert resolved.effective == ("nix", "cachix-publish")
 
@@ -109,6 +110,62 @@ def test_additions_close_dependencies_and_reject_reconfiguration() -> None:
         ).kind
         is ResolutionErrorKind.RECONFIGURE_SETTINGS
     )
+
+
+def test_addition_of_already_effective_capability_is_idempotent() -> None:
+    current = _ok(
+        resolve_bundle(
+            decode_bundle(
+                bundle_data(
+                    profile={"id": "portable"},
+                    capability_settings={"cachix-publish": {"cache_name": "example"}},
+                )
+            ),
+            additions=("cachix-publish",),
+        )
+    )
+
+    repeated = _ok(
+        resolve_additions(
+            current,
+            AdditionsInput(
+                schema_version=1,
+                add_capabilities=("nix", "cachix-publish"),
+                capability_settings={"cachix-publish": {"cache_name": " example "}},
+            ),
+        )
+    )
+
+    assert repeated.requested == current.requested
+    assert repeated.effective == current.effective
+    assert repeated.settings == current.settings
+
+
+def test_addition_of_effective_capability_rejects_conflicting_settings() -> None:
+    current = _ok(
+        resolve_bundle(
+            decode_bundle(
+                bundle_data(
+                    profile={"id": "portable"},
+                    capability_settings={"cachix-publish": {"cache_name": "example"}},
+                )
+            ),
+            additions=("cachix-publish",),
+        )
+    )
+
+    failure = _failure(
+        resolve_additions(
+            current,
+            AdditionsInput(
+                schema_version=1,
+                add_capabilities=("cachix-publish",),
+                capability_settings={"cachix-publish": {"cache_name": "other"}},
+            ),
+        )
+    )
+
+    assert failure.kind is ResolutionErrorKind.RECONFIGURE_SETTINGS
 
 
 def test_normalized_settings_identity_is_order_independent() -> None:
@@ -330,17 +387,12 @@ def test_resolution_rejects_cycles_and_duplicate_requests(
         ).kind
         is ResolutionErrorKind.DUPLICATE_ADDITION
     )
-    assert (
-        _failure(
-            resolve_additions(
-                _ok(resolve_bundle(decode_bundle(bundle_data()))),
-                AdditionsInput(
-                    schema_version=1, add_capabilities=("semantic-release",)
-                ),
-            )
-        ).kind
-        is ResolutionErrorKind.DUPLICATE_ADDITION
-    )
+    assert _ok(
+        resolve_additions(
+            _ok(resolve_bundle(decode_bundle(bundle_data()))),
+            AdditionsInput(schema_version=1, add_capabilities=("semantic-release",)),
+        )
+    ).requested == ("semantic-release", "nix", "cachix-publish", "pr-agent-gemini")
     assert (
         _failure(
             resolve_additions(

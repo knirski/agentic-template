@@ -49,6 +49,24 @@ SEED_ONCE_SLOTS: dict[str, RepoPath] = {
 }
 PROJECT_VALIDATION_PATH = SEED_ONCE_SLOTS["project_validation"]
 PROJECT_VALIDATION_SCAFFOLD = PROJECT_VALIDATION_WORKFLOW
+SCAFFOLD_SOURCE_PATHS: dict[RepoPath, RepoPath] = {
+    SEED_ONCE_SLOTS["readme"]: RepoPath(
+        "scripts/bootstrap/fragments/scaffolds/README.md"
+    ),
+    SEED_ONCE_SLOTS["prd"]: RepoPath("scripts/bootstrap/fragments/scaffolds/prd.md"),
+    SEED_ONCE_SLOTS["security_policy"]: RepoPath(
+        "scripts/bootstrap/fragments/scaffolds/security.md"
+    ),
+    SEED_ONCE_SLOTS["contributing"]: RepoPath(
+        "scripts/bootstrap/fragments/scaffolds/contributing.md"
+    ),
+    SEED_ONCE_SLOTS["validation_hook"]: RepoPath(
+        "scripts/bootstrap/fragments/scaffolds/validate-project"
+    ),
+    SEED_ONCE_SLOTS["project_validation"]: RepoPath(
+        "scripts/bootstrap/fragments/scaffolds/project-validation.yml"
+    ),
+}
 SEED_ONCE_PATHS: tuple[RepoPath, ...] = tuple(
     sorted((path for path in SEED_ONCE_SLOTS.values()), key=lambda p: p.value.encode())
 )

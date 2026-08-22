@@ -84,8 +84,8 @@ def readiness_rule_catalog_failures() -> tuple[str, ...]:
     """Validate readiness-rule catalog invariants as part of the template contract.
 
     The catalog is a generated-lifecycle source artifact.  These checks ensure
-    internal consistency; no baseline comparison or corpus machinery is
-    introduced.
+    internal consistency; the release-time compatibility comparison lives in
+    the template validator because it reads the checked-in corpus.
     """
     from scripts.bootstrap.readiness_rules import (
         FROZEN_CATALOG_V1,

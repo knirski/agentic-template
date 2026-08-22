@@ -2138,24 +2138,20 @@ def apply_plan(
 
 
 def evaluate_slot_readiness(expected: ExpectedTarget) -> MechanicalReadinessResult:
-    """Evaluate the frozen bootstrap slot rules over the expected project bytes."""
-    by_path = {file.path.value: file for file in expected.files}
-    findings: list[Finding] = []
-    for rule in SLOT_PLACEHOLDER_RULES:
-        file = by_path.get(rule.path.value)
-        if file is None:
-            continue
-        if rule.detection == "text":
-            try:
-                text = file.content.decode("utf-8")
-            except UnicodeDecodeError:
-                continue
-            found = rule.marker.decode("ascii") in text
-        else:
-            found = rule.marker in file.content
-        if found:
-            findings.append(_placeholder_finding(rule))
-    return MechanicalReadinessResult(1, tuple(findings))
+    """Evaluate the canonical project-readiness rules over expected bytes."""
+
+    from scripts.bootstrap.readiness import evaluate_project_files
+
+    return evaluate_project_files(
+        {
+            file.path.value: (
+                file.content,
+                file.kind,
+                file.mode == PosixMode.EXECUTABLE,
+            )
+            for file in expected.files
+        }
+    )
 
 
 def evaluate_expected_contract(expected: ExpectedTarget) -> tuple[str, ...]:

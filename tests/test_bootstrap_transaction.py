@@ -1092,6 +1092,23 @@ class TestMachineHappyPath:
 
 
 class TestMachineRevalidation:
+    def test_post_state_validation_failure_enters_rollback(self) -> None:
+        plan, _, _ = _full_plan()
+        compiled = _compiled(plan)
+        prefix = _prefix_events(compiled)["observe-post-state"]
+        state, _ = _drive(NeedLock(compiled), prefix)
+        assert isinstance(state, Verifying)
+        instruction = _instruction(
+            state,
+            ObservedEffect(
+                PostStateObserved(_candidate_snapshot(), post_state_valid=False)
+            ),
+        )
+        assert (
+            request_kind(instruction.request) == EffectRequestKind.ATTEMPT_ROLLBACK_ONE
+        )
+        assert isinstance(instruction.next_state, RollingBack)
+
     def test_reobserved_precondition_mismatch_stops_with_input_changed(self) -> None:
         plan, _, _ = _full_plan()
         compiled = _compiled(plan)

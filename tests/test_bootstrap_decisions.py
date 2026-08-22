@@ -24,7 +24,11 @@ from scripts.bootstrap.decisions import (
     decide_project,
 )
 from scripts.bootstrap.errors import (
+    ContractError,
+    ContractErrorKind,
     ObservationErrorKind,
+    TransactionError,
+    TransactionErrorKind,
     TransitionError,
     TransitionErrorKind,
 )
@@ -389,6 +393,17 @@ class StateAndDecisionTests(unittest.TestCase):
             decision = decide_project(Recover(RecoverOptions()), state)
             self.assertIsInstance(decision, (RefuseRecovery, DiscardStalePending))
 
+        state_root_decision = decide_project(
+            Recover(RecoverOptions()),
+            StateRootInvalid(worktree().context, OrphanTransactionState("orphan")),
+        )
+        self.assertIsInstance(state_root_decision, RefuseRecovery)
+        if isinstance(state_root_decision, RefuseRecovery):
+            self.assertEqual(
+                state_root_decision.error,
+                TransactionError(TransactionErrorKind.INVALID_STATE_ROOT),
+            )
+
         # A canonical template source needs no recovery: the design maps it
         # to ``NoRecoveryNeeded`` rather than a refusal.
         self.assertIsInstance(
@@ -455,6 +470,16 @@ class StateAndDecisionTests(unittest.TestCase):
                     Apply(ApplyOptions()), ProjectAvailable(worktree(), observation)
                 ),
                 RefuseMutation,
+            )
+        invalid_manifest_decision = decide_project(
+            Apply(ApplyOptions()),
+            ProjectAvailable(worktree(), InvalidManifest("invalid", ())),
+        )
+        self.assertIsInstance(invalid_manifest_decision, RefuseMutation)
+        if isinstance(invalid_manifest_decision, RefuseMutation):
+            self.assertEqual(
+                invalid_manifest_decision.error,
+                ContractError(ContractErrorKind.INVALID_MANIFEST, "invalid"),
             )
 
         for existing, expected_kind in (
@@ -615,7 +640,7 @@ class StateAndDecisionTests(unittest.TestCase):
         )
 
         self.assertIsInstance(
-            decide_project(Add(AddOptions()), snapshot_same), RefuseMutation
+            decide_project(Add(AddOptions()), snapshot_same), AddCapabilities
         )
         self.assertIsInstance(
             decide_project(Restore(RestoreOptions()), copier_changed), RefuseMutation

@@ -135,16 +135,30 @@ def main() -> int:
         shutil.rmtree(project / "scripts/__pycache__", ignore_errors=True)
         with (source / "NOTICE.md").open("a", encoding="utf-8") as handle:
             _ = handle.write("\nCopier smoke-test marker.\n")
-        source_hook = source / "scripts/validate-project"
-        with source_hook.open("a", encoding="utf-8") as handle:
-            _ = handle.write("\n# template hook update\n")
-        _ = run([*git, "add", "NOTICE.md", "scripts/validate-project"])
+        source_scaffold_hook = (
+            source / "scripts/bootstrap/fragments/scaffolds/validate-project"
+        )
+        with source_scaffold_hook.open("a", encoding="utf-8") as handle:
+            _ = handle.write("\n# template scaffold update\n")
+        _ = run(
+            [
+                *git,
+                "add",
+                "NOTICE.md",
+                "scripts/bootstrap/fragments/scaffolds/validate-project",
+            ]
+        )
         _ = run([*git, "commit", "-m", "template v0.2.0"])
         _ = run([*git, "tag", "v0.2.0"])
         with (project / "README.md").open("a", encoding="utf-8") as handle:
             _ = handle.write("\nLocal project customization.\n")
         with project_hook.open("a", encoding="utf-8") as handle:
             _ = handle.write("\n# local hook customization\n")
+        project_scaffold_hook = (
+            project / "scripts/bootstrap/fragments/scaffolds/validate-project"
+        )
+        with project_scaffold_hook.open("a", encoding="utf-8") as handle:
+            _ = handle.write("\n# local scaffold customization\n")
         _ = run(
             [
                 *project_git,
@@ -152,6 +166,7 @@ def main() -> int:
                 "README.md",
                 "docs/prd.md",
                 "scripts/validate-project",
+                "scripts/bootstrap/fragments/scaffolds/validate-project",
             ]
         )
         _ = run([*project_git, "commit", "-m", "project customization"])
@@ -159,20 +174,21 @@ def main() -> int:
             [*command, "update", "--vcs-ref", "v0.2.0", "--defaults"], cwd=project
         )
         hook_text = project_hook.read_text(encoding="utf-8")
+        scaffold_hook_text = project_scaffold_hook.read_text(encoding="utf-8")
         conflict_evidence = (
             any(project.glob("**/*.rej"))
             or any(project.glob("**/*.conflict"))
             or "<<<<<<<" in hook_text
+            or "<<<<<<<" in scaffold_hook_text
         )
         if result.returncode and not conflict_evidence:
             print(result.stdout + result.stderr, file=sys.stderr)
             return 1
         if (
-            # Until the distinct generated-lifecycle scaffold blobs are
-            # introduced, the seed-once hook rides in the Copier copy;
-            # updates must still deliver template hook changes, with Copier's
-            # conflict markers preserving local edits (never a silent skip).
-            "# template hook update" not in hook_text
+            # Copier owns generated-lifecycle source inputs, while the
+            # adopter-owned root hook remains outside Copier ownership.
+            "# template scaffold update" not in scaffold_hook_text
+            or "# local scaffold customization" not in scaffold_hook_text
             or "# local hook customization" not in hook_text
             or "Copier smoke-test marker."
             not in (project / "NOTICE.md").read_text(encoding="utf-8")

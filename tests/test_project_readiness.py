@@ -47,6 +47,8 @@ Run `python3.14 scripts/validate_repository.py`.
 VALID_HOOK = """#!/usr/bin/env python3
 print('project validation passed')
 """
+VALID_SECURITY = "# Security\n\nReport issues privately.\n"
+VALID_CONTRIBUTING = "# Contributing\n\nContribution guidance.\n"
 
 
 class ReadinessFixtures(unittest.TestCase):
@@ -63,6 +65,8 @@ class ReadinessFixtures(unittest.TestCase):
         _ = shutil.copytree(ROOT / "scripts/bootstrap", self.root / "scripts/bootstrap")
         self.write("docs/prd.md", VALID_PRD)
         self.write("README.md", VALID_README)
+        self.write("SECURITY.md", VALID_SECURITY)
+        self.write("CONTRIBUTING.md", VALID_CONTRIBUTING)
         self.write("scripts/validate-project", VALID_HOOK, executable=True)
 
     @override

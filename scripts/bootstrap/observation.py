@@ -60,10 +60,8 @@ from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.scaffold import (
     COPIER_ANSWERS_PATH,
     MAINTENANCE_INVENTORY_PATH,
-    PROJECT_VALIDATION_PATH,
-    PROJECT_VALIDATION_SCAFFOLD,
+    SCAFFOLD_SOURCE_PATHS,
     SEED_ONCE_PATHS,
-    SEED_ONCE_SLOTS,
     SOURCE_OWNERSHIP_PATH,
     CleanupEntryObservation,
     classify_cleanup,
@@ -155,6 +153,13 @@ _GENERATED_SOURCE_NAMES = frozenset(
 # project contract.  They may contain symlinks, while all captured project
 # paths remain regular, no-follow objects.
 _NON_PROJECT_ROOTS = frozenset({".claude"})
+_TRANSACTION_ARTIFACTS = frozenset(
+    {
+        ".agentic-template/lock",
+        ".agentic-template/journal.json",
+        ".agentic-template/journal.pending",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -684,6 +689,21 @@ def _open_state_root(
             case Err(error):
                 return Err(error)
             case Ok(fd):
+                if fd is None:
+                    return Ok(None)
+                try:
+                    info = os.fstat(fd)
+                except OSError as error:
+                    os.close(fd)
+                    return Err(map_observation_error(error, "state root"))
+                if stat.S_IMODE(info.st_mode) != 0o700:
+                    os.close(fd)
+                    return Err(
+                        ObservationError(
+                            ObservationErrorKind.PERMISSION_DENIED,
+                            "state root permissions",
+                        )
+                    )
                 return Ok(fd)
     finally:
         os.close(root_fd)
@@ -728,6 +748,8 @@ def _capture_tree(
             child_abs = os.path.join(directory, name)
             child_rel = f"{relative}/{name}" if relative else name
             if not relative and name in _NON_PROJECT_ROOTS:
+                continue
+            if _is_transaction_artifact(child_rel):
                 continue
             if child_abs == git_dir or child_abs.startswith(git_dir + os.sep):
                 continue
@@ -826,6 +848,18 @@ def _capture_tree(
     return Ok((tuple(files), tuple(directories)))
 
 
+def _is_transaction_artifact(relative: str) -> bool:
+    """Keep transient transaction objects out of project snapshots."""
+
+    if relative in _TRANSACTION_ARTIFACTS:
+        return True
+    components = tuple(relative.split("/"))
+    return ".agentic-template-stage" in components or components[:2] == (
+        ".agentic-template",
+        "transactions",
+    )
+
+
 def capture_project_pass(
     resolved: ResolvedShellTarget,
     *,
@@ -905,8 +939,8 @@ def _scaffold_bytes(template_root: str) -> dict[RepoPath, bytes]:
     """Load the template package's seed-once scaffold content, bounded."""
 
     scaffold: dict[RepoPath, bytes] = {}
-    for path in SEED_ONCE_SLOTS.values():
-        absolute = os.path.join(template_root, path.value)
+    for path, source_path in SCAFFOLD_SOURCE_PATHS.items():
+        absolute = os.path.join(template_root, source_path.value)
         try:
             with open(absolute, "rb") as handle:
                 content = handle.read()
@@ -914,9 +948,6 @@ def _scaffold_bytes(template_root: str) -> dict[RepoPath, bytes]:
             continue
         if len(content) <= DEFAULT_LIMITS.max_file_bytes:
             scaffold[path] = content
-    # Copier excludes this adopter-owned workflow, so its fixed initial bytes
-    # must remain available from the installed bootstrap compiler.
-    _ = scaffold.setdefault(PROJECT_VALIDATION_PATH, PROJECT_VALIDATION_SCAFFOLD)
     return scaffold
 
 

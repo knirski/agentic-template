@@ -79,6 +79,9 @@ from scripts.bootstrap.journal import (
     persist_journal,
 )
 from scripts.bootstrap.locking import acquire_lock, release_lock
+from scripts.bootstrap.observation import (
+    _open_state_root,  # pyright: ignore[reportPrivateUsage]  deliberate state-root boundary test
+)
 from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.state import (
@@ -128,6 +131,15 @@ def _read(path: str) -> bytes:
 
 
 class FsEffectsTests(unittest.TestCase):
+    def test_observation_rejects_permissive_existing_state_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state_root = os.path.join(tmp, "state-root")
+            os.mkdir(state_root, 0o700)
+            os.chmod(state_root, 0o755)
+            result = _open_state_root(os.fsencode(state_root))
+            error = cast(ObservationError, _err(result))
+            self.assertEqual(error.kind, ObservationErrorKind.PERMISSION_DENIED)
+
     def test_walk_returns_fd_of_final_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             os.makedirs(os.path.join(tmp, "a", "b", "c"))
@@ -352,6 +364,12 @@ class FsEffectsTests(unittest.TestCase):
             fd = _ok(ensure_state_root(_open_dir(tmp), b"state-root"))
             os.close(fd)
 
+    def test_ensure_state_root_rejects_insecure_permissions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            os.mkdir(os.path.join(tmp, "state-root"), 0o755)
+            error = _err(ensure_state_root(_open_dir(tmp), b"state-root"))
+            self.assertEqual(error.kind, TransactionErrorKind.INVALID_STATE_ROOT)
+
     def test_ensure_state_root_rejects_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             os.mkdir(os.path.join(tmp, "real"))
@@ -556,6 +574,16 @@ class LockingTests(unittest.TestCase):
             os.symlink(
                 os.path.join(tmp, "elsewhere"), os.path.join(tmp, "state-root", "lock")
             )
+            error = _err(acquire_lock(state, operation="apply", target_digest="d" * 64))
+            self.assertEqual(error.kind, TransactionErrorKind.INVALID_STATE_ROOT)
+
+    def test_lock_hardlink_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state = self._state_root(tmp)
+            lock_path = os.path.join(tmp, "state-root", "lock")
+            other_path = os.path.join(tmp, "other-lock")
+            _write(lock_path, b"")
+            os.link(lock_path, other_path)
             error = _err(acquire_lock(state, operation="apply", target_digest="d" * 64))
             self.assertEqual(error.kind, TransactionErrorKind.INVALID_STATE_ROOT)
 

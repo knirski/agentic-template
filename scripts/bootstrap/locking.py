@@ -12,6 +12,7 @@ from __future__ import annotations
 import errno
 import fcntl
 import os
+import stat
 from dataclasses import dataclass
 
 from scripts.bootstrap.canonical_json import canonical_json
@@ -108,6 +109,14 @@ def acquire_lock(
             )
         return Err(_primitive_failed(error, "lock"))
     try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            os.close(fd)
+            return Err(
+                TransactionError(
+                    TransactionErrorKind.INVALID_STATE_ROOT, subject="lock"
+                )
+            )
         outcome = _try_acquire(fd, operation=operation, target_digest=target_digest)
     except BaseException:
         os.close(fd)

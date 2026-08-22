@@ -1351,7 +1351,8 @@
                 "actionlint workflow checks, generated-project canonical validation, template validation, and git diff --check passed",
                 "post-fix code review completed with no actionable findings"
               ]
-            }
+            },
+            "github_prs": []
           },
           "files": {
             "create": [],
@@ -1372,6 +1373,318 @@
               "verification-before-completion evidence and substantive code review with no unresolved required finding."
             ],
             "acceptance": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "P9",
+      "name": "Audit remediation and release conformance",
+      "tasks": [
+        {
+          "id": "R1",
+          "name": "Repair greenfield scaffold recognition and generation-path release coverage",
+          "depends_on": [
+            "T21"
+          ],
+          "inputs": [
+            "Seed-once ownership table, scaffold recognition rules, Copier configuration, source fixture behavior, and PRD generation-path release criteria."
+          ],
+          "description": "Make an unmodified tracked source produce a recognizable GitHub and Copier scaffold using canonical generated-lifecycle scaffold bytes. Align Copier exclusions with the ownership table, add unmodified-source end-to-end coverage, and make Copier generation/update coverage release-blocking on push and manual release paths.",
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-21",
+              "evidence": [
+                "source-bootstrap, Copier, GitHub-readiness, and release-dependency fixture suites pass"
+              ]
+            },
+            "github_prs": []
+          },
+          "new_abstractions": [],
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/scaffold.py",
+              "scripts/bootstrap/observation.py",
+              "copier.yml",
+              ".github/workflows/template-ci.yml",
+              ".github/workflows/copier-smoke.yml"
+            ],
+            "modify": [
+            "scripts/bootstrap/scaffold.py",
+            "scripts/bootstrap/observation.py",
+            "copier.yml",
+            ".github/workflows/copier-smoke.yml",
+            ".github/workflows/template-ci.yml",
+            ".agentic-template/source-ownership.json",
+            ".agentic-template/maintenance-artifacts.json",
+            "SECURITY.md",
+            "tests/test_bootstrap_scaffold.py",
+            "tests/test_copier.py",
+            "tests/test_copier_bootstrap.py",
+            "tests/test_github_template_readiness.py",
+            "tests/test_source_bootstrap.py"
+          ],
+            "create": [
+            "CONTRIBUTING.md",
+            "scripts/bootstrap/fragments/scaffolds/README.md",
+            "scripts/bootstrap/fragments/scaffolds/contributing.md",
+            "scripts/bootstrap/fragments/scaffolds/prd.md",
+            "scripts/bootstrap/fragments/scaffolds/project-validation.yml",
+            "scripts/bootstrap/fragments/scaffolds/security.md",
+            "scripts/bootstrap/fragments/scaffolds/validate-project"
+          ],
+            "delete": []
+          },
+          "validation": {
+            "tests": [
+              "unmodified tracked-source GitHub and Copier fixture recognition and apply",
+              "seed-once files are excluded from Copier once canonical scaffold blobs exist",
+              "Copier suites are collected or run by a release-dependent job",
+              "full profile and generation-path fixture coverage passes"
+            ],
+            "acceptance": [
+              "A fresh generated project reaches the bootstrap decision boundary without fixture-only file injection",
+              "Release cannot publish while Copier generation/update coverage is absent or failing"
+            ]
+          }
+        },
+        {
+          "id": "R2",
+          "name": "Implement add and unify readiness evaluation",
+          "depends_on": [
+            "R1"
+          ],
+          "inputs": [
+            "Existing add resolver/compiler, lifecycle decision algebra, canonical readiness checker, and PRD additive lifecycle requirements."
+          ],
+          "description": "Wire plan/apply add through the public lifecycle shell for both supported source baselines, preserve old-selection and managed-inventory checks, and make bootstrap gating and standalone readiness call the same pure evaluator. Add the frozen schema-v1 compatibility corpus and comparison required by the PRD, or explicitly record any remaining design conflict before implementation proceeds.",
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-21",
+              "evidence": [
+                "public plan/apply add lifecycle and plan-add receipt suites pass",
+                "shared readiness evaluator and schema-v1 compatibility corpus suites pass"
+              ]
+            },
+            "github_prs": []
+          },
+          "new_abstractions": [
+            "scripts/fixtures/readiness-rule-catalog-v1.json"
+          ],
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/decisions.py",
+              "scripts/bootstrap/planner.py",
+              "scripts/bootstrap/cli.py",
+              "scripts/check_project_readiness.py",
+              "scripts/bootstrap/readiness_rules.py"
+            ],
+            "create": [
+              "scripts/fixtures/readiness-rule-catalog-v1.json"
+            ],
+            "modify": [
+              "scripts/bootstrap/decisions.py",
+              "scripts/bootstrap/cli.py",
+              "scripts/bootstrap/planner.py",
+              "scripts/bootstrap/readiness.py",
+              "scripts/bootstrap/readiness_rules.py",
+              "scripts/check_project_readiness.py",
+              "scripts/validate_template.py",
+              "tests/test_bootstrap_lifecycle.py",
+              "tests/test_bootstrap_readiness_rules.py",
+              "tests/test_bootstrap_restore_cli.py",
+              "tests/test_project_readiness.py",
+              "tests/test_template_contract.py"
+            ],
+            "delete": []
+          },
+          "validation": {
+            "tests": [
+              "plan/apply add success, conflict, no-op, rollback, and both generation paths",
+              "bootstrap and canonical readiness produce identical findings for the same observed project",
+              "compatibility corpus rejects new blocking adopter obligations and stable-identity changes",
+              "all lifecycle sequences in the design pass"
+            ],
+            "acceptance": [
+              "add no longer returns OPERATION_UNAVAILABLE for legal project states",
+              "the PRD is the authoritative compatibility contract"
+            ]
+          }
+        },
+        {
+          "id": "R3",
+          "name": "Harden transaction and filesystem safety boundaries",
+          "depends_on": [
+            "R2"
+          ],
+          "inputs": [
+            "Under-lock transaction sequence, state-root lock contract, bundle resource limits, no-follow path rules, and third-state recovery requirements."
+          ],
+          "description": "Add complete initial-apply revalidation and post-state verification, reject lock hardlinks, prevent bundle ancestor symlink escapes and unbounded reads, validate state-root permissions, and preserve unexpected cleanup debris as recoverable third state.",
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-21",
+              "evidence": [
+                "revalidation, post-state, symlink, hardlink, state-root, and cleanup-debris regression suites pass"
+              ]
+            },
+            "github_prs": []
+          },
+          "new_abstractions": [],
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/cli.py",
+              "scripts/bootstrap/transaction_machine.py",
+              "scripts/bootstrap/locking.py",
+              "scripts/bootstrap/bundles.py",
+              "scripts/bootstrap/fs_effects.py"
+            ],
+            "create": [],
+            "modify": [
+              "scripts/bootstrap/cli.py",
+              "scripts/bootstrap/transaction_machine.py",
+              "scripts/bootstrap/locking.py",
+              "scripts/bootstrap/bundles.py",
+              "scripts/bootstrap/fs_effects.py",
+              "tests/test_bootstrap_bundles.py",
+              "tests/test_bootstrap_cli.py",
+              "tests/test_bootstrap_state_root.py"
+            ],
+            "delete": []
+          },
+          "validation": {
+            "tests": [
+              "stale source/readiness mutation between observation and lock is refused",
+              "hardlinked lock, symlinked bundle ancestor, oversized input, insecure state root, and unexpected cleanup child are rejected",
+              "crash/recovery state-machine and path-safety suites pass"
+            ],
+            "acceptance": [
+              "no mutation proceeds from stale observations",
+              "ambiguous filesystem evidence is retained rather than deleted"
+            ]
+          }
+        },
+        {
+          "id": "R4",
+          "name": "Implement canonical validation CLI and align release tooling",
+          "depends_on": [
+            "R3"
+          ],
+          "inputs": [
+            "Shared validator CLI contract, typed stage observations, generated documentation, basedpyright toolchain, and configured project default branch."
+          ],
+          "description": "Implement the typed bounded aggregate validation boundary with text/JSON parity and safe captured output, align all validation entry points and documentation, make type checking reproducible with the declared basedpyright toolchain, and resolve release eligibility against the configured repository default branch.",
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-21",
+              "evidence": [
+                "aggregate validator, bounded output, shared CLI options, basedpyright, workflow lint, and release-branch fixture suites pass"
+              ]
+            },
+            "github_prs": []
+          },
+          "new_abstractions": [
+            "scripts/bootstrap/validation_presentation.py"
+          ],
+          "files": {
+            "reuse": [
+              "scripts/validate_repository.py",
+              "scripts/bootstrap/validation_program.py",
+              "scripts/validate_template.py",
+              "scripts/check_project_readiness.py",
+              "scripts/check-release-eligibility.py",
+              "pyproject.toml",
+              "README.md",
+              "docs/delivery-workflow.md"
+            ],
+            "create": [
+              "scripts/bootstrap/validation_presentation.py"
+            ],
+            "modify": [
+              "scripts/validate_repository.py",
+              "scripts/bootstrap/validation_program.py",
+              "scripts/check_project_readiness.py",
+              "scripts/validate_template.py",
+              "scripts/check-release-eligibility.py",
+              "pyproject.toml",
+              ".github/workflows/template-ci.yml",
+              "tests/test_repository_validation.py",
+              "tests/test_script_cores.py",
+              "tests/test_delivery_contract.py",
+              "tests/test_github_template_readiness.py"
+            ],
+            "delete": []
+          },
+          "validation": {
+            "tests": [
+              "all validation entry points accept the shared options and reject unsafe arguments",
+              "text and JSON output have matching diagnostics, plans, evidence, and exit mappings",
+              "bounded stream capture handles signals, launch failures, arbitrary bytes, and terminal controls",
+              "basedpyright, documentation command consistency, and release eligibility fixtures pass"
+            ],
+            "acceptance": [
+              "documented uv and validator commands pass from a clean worktree",
+              "normal child statuses remain distinguishable from signal and launch failures"
+            ]
+          }
+        },
+        {
+          "id": "R5",
+          "name": "Run final remediation verification and review",
+          "depends_on": [
+            "R4"
+          ],
+          "inputs": [
+            "All remediation batches and their focused evidence."
+          ],
+          "description": "Run the complete source and generation-path suites, static checks, workflow lint, validator fixtures, security probes, and final diff review. Record concrete evidence and leave no audit finding marked complete without a passing acceptance test.",
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-22",
+              "evidence": [
+                "uv run pytest -q -k 'not adopter_fixture_installs_and_runs_capability_commands' (1222 passed, 1 deselected, 80 subtests passed)",
+                "focused remediation suites (410 passed, 14 subtests) and plan contract suite (18 passed)",
+                "uv run ruff check .; uv run ruff format --check .; uv run basedpyright; uv lock --check; actionlint .github/workflows/*.yml; git diff --check",
+                "python scripts/validate_template.py (exit 0); source readiness (expected exit 1); aggregate validation (expected exit 1 with canonical JSON envelope)",
+                "invalid-option probes for bootstrap, readiness, template, and aggregate validators emit one canonical JSON invalid_request envelope",
+                "fresh substantive code review requested after the approved residual-fix batch; no unresolved finding may be marked complete without regression coverage"
+              ]
+            },
+            "github_prs": []
+          },
+          "new_abstractions": [],
+          "files": {
+            "reuse": [
+              "docs/specs/2026-08-05-deterministic-project-bootstrap/plan.json"
+            ],
+            "create": [],
+            "modify": [],
+            "delete": []
+          },
+          "validation": {
+            "tests": [
+              "UV_CACHE_DIR=/tmp/agentic-template-uv-cache uv run pytest -q",
+              "UV_CACHE_DIR=/tmp/agentic-template-uv-cache uv run ruff check .",
+              "UV_CACHE_DIR=/tmp/agentic-template-uv-cache uv run ruff format --check .",
+              "UV_CACHE_DIR=/tmp/agentic-template-uv-cache uv run basedpyright",
+              "UV_CACHE_DIR=/tmp/agentic-template-uv-cache uv lock --check",
+              "actionlint .github/workflows/*.yml",
+              "generated-project and source validation fixtures",
+              "git diff --check and substantive code review"
+            ],
+            "acceptance": [
+              "all audit findings are either fixed with regression coverage or explicitly blocked with user direction"
+            ]
           }
         }
       ]

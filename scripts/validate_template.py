@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.dont_write_bytecode = True
@@ -14,12 +15,21 @@ from scripts.bootstrap import template_contract  # noqa: E402
 from scripts.bootstrap.canonical_json import decode_json  # noqa: E402
 from scripts.bootstrap.catalog import catalog_surface  # noqa: E402
 from scripts.bootstrap.contributions import render_source_fixture  # noqa: E402
-from scripts.bootstrap.entrypoint import reject_arguments  # noqa: E402
+from scripts.bootstrap.readiness import Finding, Repository  # noqa: E402
+from scripts.bootstrap.readiness_rules import readiness_rule_surface  # noqa: E402
 from scripts.bootstrap.result import Err, Ok  # noqa: E402
 from scripts.bootstrap.template_contract import SOURCE_WORKFLOW_SELECTIONS  # noqa: E402
+from scripts.bootstrap.validation_presentation import (  # noqa: E402
+    parse_options,
+    render_findings,
+    render_usage_error,
+    requested_json,
+)
 
 CATALOG_SURFACE_FIXTURE = "scripts/fixtures/catalog-surface-v1.json"
 CATALOG_SURFACE_SCHEMA_VERSION = 1
+READINESS_RULE_CORPUS = "scripts/fixtures/readiness-rule-catalog-v1.json"
+READINESS_RULE_SCHEMA_VERSION = 1
 
 # Present only in the template source; generated projects remove it, so the
 # drift check below never mistakes an adopter's compiled CI for source CI.
@@ -87,6 +97,68 @@ def validate_catalog_surface(root: Path) -> tuple[str, ...]:
     )
 
 
+def validate_readiness_rule_catalog(root: Path) -> tuple[str, ...]:
+    """Reject v1 readiness changes that add adopter obligations or rebind IDs."""
+
+    fixture_path = root / READINESS_RULE_CORPUS
+    try:
+        fixture = decode_json(fixture_path.read_bytes())
+    except OSError, ValueError:
+        return ("readiness-rule compatibility corpus is missing or invalid",)
+    if not isinstance(fixture, dict):
+        return ("readiness-rule compatibility corpus is not a JSON object",)
+    if fixture.get("schema_version") != READINESS_RULE_SCHEMA_VERSION:
+        return ("readiness-rule compatibility corpus has an unsupported schema",)
+    raw_rules = fixture.get("rules")
+    if not isinstance(raw_rules, list) or not all(
+        isinstance(rule, dict) for rule in raw_rules
+    ):
+        return ("readiness-rule compatibility corpus carries no rules",)
+    baseline_rules = cast(list[dict[str, object]], raw_rules)
+    live_rules = list(readiness_rule_surface())
+
+    def identity(rule: dict[str, object]) -> tuple[str, str, str]:
+        return (
+            str(rule.get("code")),
+            str(rule.get("subject_kind")),
+            str(rule.get("rule")),
+        )
+
+    baseline_by_identity = {identity(rule): rule for rule in baseline_rules}
+    live_by_identity = {identity(rule): rule for rule in live_rules}
+    removed = sorted(set(baseline_by_identity) - set(live_by_identity))
+    added = sorted(set(live_by_identity) - set(baseline_by_identity))
+    changed = sorted(
+        key
+        for key in set(baseline_by_identity) & set(live_by_identity)
+        if baseline_by_identity[key] != live_by_identity[key]
+    )
+    failures: list[str] = []
+    if removed:
+        failures.append(f"removed stable readiness rules: {removed}")
+    if changed:
+        failures.append(f"changed stable readiness rules: {changed}")
+    adopter_obligations = [
+        key
+        for key in added
+        if live_by_identity[key].get("severity") == "blocking"
+        and live_by_identity[key].get("owned_path_class") == "adopter"
+    ]
+    if adopter_obligations:
+        failures.append(
+            "added blocking adopter readiness rules: " + str(adopter_obligations)
+        )
+    return tuple(
+        [
+            "readiness-rule compatibility corpus drifted ("
+            + "; ".join(failures)
+            + "); next: restore the frozen readiness-rule catalog",
+        ]
+        if failures
+        else []
+    )
+
+
 def validate_source_workflows(root: Path) -> tuple[str, ...]:
     """The source's committed workflows are compiled managed output.
 
@@ -148,24 +220,58 @@ def validate_contract(
     return (
         *failures,
         *validate_catalog_surface(root),
+        *validate_readiness_rule_catalog(root),
         *validate_source_workflows(root),
     )
 
 
 def main(argv: list[str]) -> int:
-    if reject_arguments(argv, "scripts/validate_template.py") is not None:
-        return 2
-    skill_paths = sorted((ROOT / ".agents" / "skills").glob("*/SKILL.md"))
-    skill_texts = tuple(
-        (path, path.read_text(encoding="utf-8")) for path in skill_paths
-    )
-    failures = validate_contract(ROOT, skill_texts)
-    for failure in failures:
-        print(
-            f"TEMPLATE_CONTRACT_ERROR: {failure}; next: restore the template contract",
-            file=sys.stderr,
+    options = parse_options(argv)
+    if options is None:
+        return render_usage_error(
+            "validate_template",
+            (
+                "TEMPLATE_USAGE_ERROR: scripts/validate_template.py: invalid presentation options; "
+                "next: use --format text|json --color auto|always|never --explain --quiet"
+            ),
+            json_output=requested_json(argv),
         )
-    return 1 if failures else 0
+    try:
+        skill_paths = sorted((ROOT / ".agents" / "skills").glob("*/SKILL.md"))
+        skill_texts = tuple(
+            (path, path.read_text(encoding="utf-8")) for path in skill_paths
+        )
+        failures = validate_contract(ROOT, skill_texts)
+    except Exception as exc:  # defensive boundary for a broken source checkout
+        return render_findings(
+            command="validate_template",
+            findings=(),
+            exit_code=2,
+            options=options,
+            diagnostic=(
+                "TEMPLATE_INTERNAL_ERROR: repository: "
+                + str(exc)
+                + "; next: restore the template contract"
+            ),
+        )
+    findings = tuple(
+        Finding(
+            code="TEMPLATE_CONTRACT_ERROR",
+            subject_at=Repository(),
+            subject="repository",
+            rule="template-owned contract must remain valid",
+            severity="blocking",
+            message=failure,
+            next_action="restore the template contract",
+        )
+        for failure in failures
+    )
+    return render_findings(
+        command="validate_template",
+        findings=findings,
+        exit_code=1 if failures else 0,
+        options=options,
+    )
 
 
 if __name__ == "__main__":
