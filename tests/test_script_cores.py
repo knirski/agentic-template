@@ -212,6 +212,35 @@ A language-neutral GitHub repository template for planning.
         self.assertIn("state: check_project_readiness", stderr.getvalue())
         self.assertIn("READINESS_TEST: README.md", stderr.getvalue())
 
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            result = presentation.render_findings(
+                command="validate_template",
+                findings=(),
+                exit_code=2,
+                options=presentation.ValidationOptions(format="json"),
+                diagnostic="internal",
+            )
+        self.assertEqual(result, 2)
+        document = cast(dict[str, object], json.loads(stdout.getvalue()))
+        self.assertEqual(document["outcome_class"], "internal_failure")
+
+    def test_template_internal_failures_use_the_machine_outcome_class(self) -> None:
+        stdout = io.StringIO()
+        with (
+            patch(
+                "scripts.validate_template.validate_contract",
+                side_effect=RuntimeError("broken contract"),
+            ),
+            contextlib.redirect_stdout(stdout),
+        ):
+            result = template.main(["--format", "json"])
+
+        self.assertEqual(result, 2)
+        document = cast(dict[str, object], json.loads(stdout.getvalue()))
+        self.assertEqual(document["outcome_class"], "internal_failure")
+        self.assertIn("TEMPLATE_INTERNAL_ERROR", str(document["diagnostic"]))
+
     def test_repository_stage_documents_and_text_presentation(self) -> None:
         stream = CapturedStream.from_bytes(b"output\x1b\n")
         observations = (

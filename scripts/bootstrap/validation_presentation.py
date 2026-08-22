@@ -170,7 +170,7 @@ def render_findings(
                 if exit_code == 0
                 else "validation_failed"
                 if exit_code == 1
-                else "invalid_request"
+                else "internal_failure"
             ),
             "exit_code": exit_code,
             "findings": [finding_document(finding) for finding in findings],
