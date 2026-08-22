@@ -366,7 +366,9 @@ class FsEffectsTests(unittest.TestCase):
 
     def test_ensure_state_root_rejects_insecure_permissions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            os.mkdir(os.path.join(tmp, "state-root"), 0o755)
+            state_root = os.path.join(tmp, "state-root")
+            os.mkdir(state_root, 0o700)
+            os.chmod(state_root, 0o755)
             error = _err(ensure_state_root(_open_dir(tmp), b"state-root"))
             self.assertEqual(error.kind, TransactionErrorKind.INVALID_STATE_ROOT)
 
