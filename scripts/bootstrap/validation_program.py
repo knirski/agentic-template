@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 from dataclasses import dataclass
+from typing import assert_never
 
 from scripts.bootstrap.errors import ProcessError
 
@@ -111,6 +112,9 @@ def stage_exit_code(observation: StageObservation) -> int:
             return min(255, 128 + max(signal, 0))
         case StageLaunchFailed():
             return 2
+    return assert_never(
+        observation
+    )  # pragma: no cover  # pyright: ignore[reportUnreachable] — exhaustive closed union
 
 
 def stage_failed(observation: StageObservation | int) -> bool:
@@ -121,3 +125,6 @@ def stage_failed(observation: StageObservation | int) -> bool:
             return exit_code != 0
         case StageFailed() | StageSignalled() | StageLaunchFailed():
             return True
+    return assert_never(
+        observation
+    )  # pragma: no cover  # pyright: ignore[reportUnreachable] — exhaustive closed union

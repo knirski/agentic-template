@@ -11,7 +11,7 @@ import threading
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, assert_never
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.dont_write_bytecode = True
@@ -163,6 +163,10 @@ def _stage_document(label: str, observation: StageObservation) -> dict[str, obje
         case StageLaunchFailed(error=error):
             common["kind"] = "launch_failed"
             common["error"] = error.kind.value
+        case _:  # pyright: ignore[reportUnnecessaryComparison] — defensive runtime guard
+            return assert_never(
+                observation
+            )  # pragma: no cover  # pyright: ignore[reportUnreachable] — exhaustive closed union
     common["stdout"] = _stream_document(getattr(observation, "stdout", None))
     common["stderr"] = _stream_document(getattr(observation, "stderr", None))
     return common
