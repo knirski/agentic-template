@@ -28,8 +28,29 @@ jobs:
         run: uv sync --all-groups --locked
       - name: Run Copier smoke tests
         run: |
-          uv run python tests/test_copier.py
-          uv run python tests/test_copier_bootstrap.py
+          # Copier's temp-clone teardown races its git child processes and can
+          # abort a healthy run with "[Errno 39] Directory not empty" under
+          # /tmp/copier.*.new_copy.*. Retry only that known-transient
+          # signature; every other failure is shown and fails fast.
+          retry_smoke() {
+            local log attempt
+            log="$(mktemp)"
+            for attempt in 1 2 3; do
+              if "$@" >"$log" 2>&1; then
+                return 0
+              fi
+              if grep -q "new_copy" "$log" && grep -q "Directory not empty" "$log"; then
+                echo "attempt ${attempt} hit the known copier teardown race; retrying"
+                sleep "$((attempt * 10))"
+              else
+                break
+              fi
+            done
+            cat "$log"
+            return 1
+          }
+          retry_smoke uv run python tests/test_copier.py
+          retry_smoke uv run python tests/test_copier_bootstrap.py
       - name: Stage compiled workflow fixtures for linting
         run: |
           mkdir -p .github/workflows/fixtures

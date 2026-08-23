@@ -158,6 +158,21 @@ def test_release_requires_copier_generation_coverage() -> None:
     )
 
 
+def test_copier_smoke_retries_only_the_transient_teardown_race() -> None:
+    """The smoke step absorbs the copier teardown race, nothing else.
+
+    The upstream race aborts healthy runs during tempdir cleanup with
+    "[Errno 39] Directory not empty" under a ``copier.*.new_copy.*`` path.
+    The retry guard must key on exactly that signature so real smoke-test
+    regressions still fail fast.
+    """
+    copier = (ROOT / ".github/workflows/copier-smoke.yml").read_text(encoding="utf-8")
+    assert 'grep -q "new_copy" "$log"' in copier
+    assert 'grep -q "Directory not empty" "$log"' in copier
+    for invocation in ("tests/test_copier.py", "tests/test_copier_bootstrap.py"):
+        assert f"retry_smoke uv run python {invocation}" in copier
+
+
 # The modules that own workflow rendering; the conformance-free pin below is
 # scoped to them rather than the whole scripts tree, so unrelated prose or
 # future legitimate YAML use elsewhere cannot trip it.
