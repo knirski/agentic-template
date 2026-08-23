@@ -100,13 +100,17 @@ RELEASERC_TEMPLATE: Final[bytes] = b"""\
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "uv version ${nextRelease.version} && uv lock"
+        "prepareCmd": "uv version ${nextRelease.version} && uv lock && uv run python scripts/regenerate_cleanup_inventory.py"
       }
     ],
     [
       "@semantic-release/git",
       {
-        "assets": ["pyproject.toml", "uv.lock"],
+        "assets": [
+          "pyproject.toml",
+          "uv.lock",
+          ".agentic-template/maintenance-artifacts.json"
+        ],
         "message": "chore(release): ${nextRelease.version} [skip ci]\\n\\n${nextRelease.notes}"
       }
     ],
