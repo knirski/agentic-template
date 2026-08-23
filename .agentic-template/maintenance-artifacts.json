@@ -3,7 +3,7 @@
     {
       "kind": "file",
       "path": ".github/workflows/copier-smoke.yml",
-      "sha256": "58f4fb4a7c45fd8aee33f3eca4cc0ffaf51ec8278dacf71d79b0a36d6a84efa6"
+      "sha256": "39de48380a04ff7700da3f669d1ecd582bb1106c846ff3131869fbf7b645a32e"
     },
     {
       "kind": "file",
@@ -68,7 +68,7 @@
     {
       "kind": "directory",
       "path": "tests",
-      "sha256": "a060b0af80a72ae68418f7db69f163dad31989f26e16ae3a514d696836565add"
+      "sha256": "4b92c48944aac967f8dfaf6268964062b1c08b78c3f3f48e8db5454b917699b3"
     },
     {
       "kind": "file",
