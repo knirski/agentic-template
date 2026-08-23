@@ -88,9 +88,10 @@ sections that follow. The decisive changes:
 - **Revision 15** superseded the project-readiness spec; see "Frozen readiness-rule baseline v1".
 - **Revision 16** applies the simplification set: source-CI conformance is replaced by
   source-bootstrap drift detection; `init --interactive` and `EquivalentVerification` are removed;
-  the slot model is pruned to the v1-used subset; the readiness-rule comparison machinery and
-  compatibility corpus are deferred to post-v1; and inspection commands use a single observation
-  pass.
+  the slot model is pruned to the v1-used subset; and inspection commands use a single observation
+  pass. At that revision boundary, the readiness-rule comparison machinery and compatibility corpus
+  were deferred; audit remediation R2 later restored them because REQ-013 requires the frozen
+  schema-v1 compatibility baseline.
 - **Revision 17** reverses the PyYAML part of revision 16: PyYAML returns as a declared runtime
   dependency, used only by the render boundary's YAML scalar encoder (`yaml.safe_dump` with a forced
   double-quoted style). Substitution values are always emitted as double-quoted YAML scalars, so a
@@ -2555,8 +2556,9 @@ Gating and scaffold:
 - `add`, `restore`, and `reconcile` succeed on a project whose PRD is still a placeholder.
 - A mutation that newly breaks readiness gate-fails even when an unrelated placeholder finding existed.
 - A mutation that increases an existing finding's count gate-fails, which a set comparison would miss.
-- The frozen readiness-rule catalog is asserted immutable for manifest schema v1, and no automated
-  baseline-comparison or corpus machinery exists in v1.
+- The frozen readiness-rule catalog is asserted immutable for manifest schema v1, and the automated
+  baseline comparison rejects removed rules, changed definitions, and new blocking adopter-owned
+  obligations against the schema-v1 compatibility corpus.
 - A `file` input containing a reserved marker is rejected; a non-UTF-8 binary hook is accepted and its
   sentinel detected at byte level.
 
