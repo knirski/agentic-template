@@ -27,8 +27,13 @@
           "description": "Add ADOPTED = \"adopted\" to GenerationPath. Add an exhaustive match case returning AdoptedSourceBaseline(kind=\"adopted\", fingerprint, entries, snapshot_commit) that binds the reachable HEAD commit like GitHub snapshots do, enabling targeted repair per US-7. Route recorded ADOPTED projects through the existing snapshot-condition machinery so repair/regeneration rules match snapshots. basedpyright exhaustiveness will flag every remaining non-total match over GenerationPath until handled; resolve all of them. Receipt encode/reconstruct must accept \"adopted\" automatically because the closed set derives from the enum.",
           "execution": {
             "mode": "inline",
-            "status": "in_progress",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "date": "2026-08-23",
+              "commit": "066c76a",
+              "evidence": "4 new tests; full suite 1261 passed/80 subtests; basedpyright 0 errors; ruff check/format clean; validate_template.py clean"
+            },
+            "github_prs": []
           },
           "files": {
             "reuse": [
