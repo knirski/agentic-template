@@ -67,6 +67,11 @@ def test_flatten_json_excludes_removed_content() -> None:
     assert "DB_PASSWORD=''" in flattened
 
 
+def test_flatten_json_handles_float_leaves() -> None:
+    value = decode_json(json.dumps({"tool_input": {"position": 1.5}}).encode("utf-8"))
+    assert scanner.flatten_json(value) == ""
+
+
 def test_main_blocks_on_suspected_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         sys,

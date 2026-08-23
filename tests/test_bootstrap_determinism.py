@@ -31,9 +31,15 @@ class CanonicalJsonTests(unittest.TestCase):
     def test_serializes_only_the_strict_json_value_domain(self) -> None:
         self.assertEqual(canonical_json({"b": 2, "a": True}), b'{"a":true,"b":2}')
         self.assertEqual(canonical_json(None), b"null")
-        for value in (1.5, float("nan"), 2**53 + 1, "\ud800"):
+        # Floats are now part of the strict domain; only non-finite floats,
+        # out-of-range integers, and surrogate strings remain rejected.
+        self.assertEqual(decode_json(b"1.5"), 1.5)
+        self.assertEqual(canonical_json(1.5), b"1.5")
+        for value in (float("nan"), 2**53 + 1, "\ud800"):
             with self.assertRaises(ValueError):
                 _ = canonical_json(value)
+        with self.assertRaises(ValueError):
+            _ = decode_json(b"NaN")
 
     def test_rejects_duplicate_keys_and_non_utf8(self) -> None:
         for payload in (b'{"a":1,"a":2}', b"\xff"):
