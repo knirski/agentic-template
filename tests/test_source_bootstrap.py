@@ -167,6 +167,7 @@ def test_copier_smoke_retries_only_the_transient_teardown_race() -> None:
     regressions still fail fast.
     """
     copier = (ROOT / ".github/workflows/copier-smoke.yml").read_text(encoding="utf-8")
+    assert 'grep -q "Errno 39" <<<"$out"' in copier
     assert 'grep -q "new_copy" <<<"$out"' in copier
     assert 'grep -q "Directory not empty" <<<"$out"' in copier
     for invocation in ("tests/test_copier.py", "tests/test_copier_bootstrap.py"):
