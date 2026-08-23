@@ -219,6 +219,7 @@ def test_cli_entrypoint_allows_benign(monkeypatch: pytest.MonkeyPatch) -> None:
 _HOOK_BYPASS_DENY_RULES = (
     "Bash(git commit --no-verify)",
     "Bash(git commit --no-verify:*)",
+    "Bash(git commit -n)",
     "Bash(git commit -n:*)",
     "Bash(git push --no-verify)",
     "Bash(git push --no-verify:*)",
