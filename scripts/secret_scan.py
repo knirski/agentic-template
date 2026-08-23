@@ -11,17 +11,15 @@ integration's concern and lives in the agent's own settings file.
 
 from __future__ import annotations
 
-import json
 import re
 import sys
 from pathlib import Path
-from typing import cast
 
 # Make the repo root importable so this script reuses the typed JSON domain
 # that the rest of the codebase shares, instead of re-declaring it.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.bootstrap.canonical_json import StrictJsonValue
+from scripts.bootstrap.canonical_json import StrictJsonValue, decode_json
 
 # Conservative, high-signal patterns. Tuned to minimize false positives:
 # only values that resemble real credentials are flagged.
@@ -78,9 +76,9 @@ def main() -> int:
     if not raw.strip():
         return 0
     try:
-        event = cast("StrictJsonValue", json.loads(raw))
-    except json.JSONDecodeError:
-        # Not a recognized hook event; never block on malformed input.
+        event = decode_json(raw.encode("utf-8"))
+    except ValueError:
+        # Not a recognized hook event, or not strict JSON; never block on it.
         return 0
 
     reason = scan_text(flatten_json(event))
