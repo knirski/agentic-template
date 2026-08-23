@@ -16,6 +16,7 @@ from types import MappingProxyType
 from typing import Literal, assert_never, cast
 
 from scripts.bootstrap.canonical_json import (
+    StrictJsonObject,
     StrictJsonValue,
     canonical_json,
     decode_object,
@@ -655,7 +656,7 @@ def decode_manifest(data: bytes) -> Result[CandidateManifest, ManifestError]:
 
 def _expect_mapping(
     value: StrictJsonValue, subject: str
-) -> Result[dict[str, StrictJsonValue], ManifestError]:
+) -> Result[StrictJsonObject, ManifestError]:
     if not isinstance(value, Mapping):
         return Err(_manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, subject))
     return Ok(dict(value))
@@ -663,7 +664,7 @@ def _expect_mapping(
 
 def _expect_closed_mapping(
     value: StrictJsonValue, subject: str, allowed: frozenset[str]
-) -> Result[dict[str, StrictJsonValue], ManifestError]:
+) -> Result[StrictJsonObject, ManifestError]:
     """Require an exact key set so decode accepts only documents the builder emits."""
     match _expect_mapping(value, subject):
         case Err(error):

@@ -16,7 +16,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from scripts.bootstrap.canonical_json import StrictJsonValue, decode_json
+from scripts.bootstrap.canonical_json import (
+    StrictJsonObject,
+    decode_json,
+)
 from scripts.bootstrap.fragments import PROJECT_VALIDATION_WORKFLOW
 from scripts.bootstrap.identity import directory_tree_hash
 from scripts.bootstrap.intents import GenerationPath
@@ -160,7 +163,7 @@ def _decode_document(
     document_path: RepoPath,
     schema_version: int,
     keys: frozenset[str],
-) -> Result[dict[str, StrictJsonValue], CleanupContractMismatch]:
+) -> Result[StrictJsonObject, CleanupContractMismatch]:
     """Decode one strict declaration document: exact keys, exact schema version."""
 
     try:
