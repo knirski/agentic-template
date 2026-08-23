@@ -48,15 +48,32 @@ def scan_text(text: str) -> str | None:
     return None
 
 
-def flatten_json(value: StrictJsonValue) -> str:
-    """Concatenate every string leaf of a JSON value into one scannable string."""
+# Keys whose values hold content being *removed* from a file (e.g. an edit's
+# previous text). Scanning them would block legitimate secret deletion, so they
+# are flattened to nothing. Only prospective content reaches the scanner.
+_SKIP_VALUE_KEYS = frozenset({"old_string"})
+
+
+def flatten_json(
+    value: StrictJsonValue, skip_keys: frozenset[str] = _SKIP_VALUE_KEYS
+) -> str:
+    """Concatenate every string leaf of a JSON value into one scannable string.
+
+    Values under ``skip_keys`` are omitted so removal-only content (such as an
+    edit's ``old_string``) is never scanned; only content that would persist in
+    the resulting file is inspected.
+    """
     match value:
         case str(text):
             return text
         case dict(mapping):
-            return "\n".join(flatten_json(child) for child in mapping.values())
+            return "\n".join(
+                flatten_json(child, skip_keys)
+                for key, child in mapping.items()
+                if key not in skip_keys
+            )
         case list(items):
-            return "\n".join(flatten_json(item) for item in items)
+            return "\n".join(flatten_json(item, skip_keys) for item in items)
         case bool() | int() | None:
             return ""
 

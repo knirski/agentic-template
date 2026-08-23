@@ -35,7 +35,6 @@ def test_flatten_json_concatenates_every_string_leaf() -> None:
             {
                 "tool_input": {
                     "file_path": "a.env",
-                    "old_string": "DB_PASSWORD='x'",
                     "new_string": "DB_PASSWORD='y'",
                     "list": ["one", "two"],
                 },
@@ -47,10 +46,25 @@ def test_flatten_json_concatenates_every_string_leaf() -> None:
         ).encode("utf-8")
     )
     flattened = scanner.flatten_json(value)
-    assert "DB_PASSWORD='x'" in flattened
     assert "DB_PASSWORD='y'" in flattened
     assert "secret=abc" in flattened
     assert "one" in flattened and "two" in flattened
+
+
+def test_flatten_json_excludes_removed_content() -> None:
+    value = decode_json(
+        json.dumps(
+            {
+                "tool_input": {
+                    "old_string": "DB_PASSWORD='supersecretpassword123'",
+                    "new_string": "DB_PASSWORD=''",
+                }
+            }
+        ).encode("utf-8")
+    )
+    flattened = scanner.flatten_json(value)
+    assert "DB_PASSWORD='supersecretpassword123'" not in flattened
+    assert "DB_PASSWORD=''" in flattened
 
 
 def test_main_blocks_on_suspected_secret(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -136,9 +150,9 @@ def test_blocks_secret_in_edit_new_string() -> None:
     assert result.returncode == 2
 
 
-def test_blocks_secret_in_old_string_too() -> None:
-    # Universal scanning flags secrets wherever they appear, including the
-    # string being removed; safe, and independent of any agent's event shape.
+def test_allows_secret_removal_via_old_string() -> None:
+    # Removing a secret (the secret lives only in old_string, the text being
+    # deleted) must not be blocked; only prospective content is scanned.
     event = {
         "tool_name": "Edit",
         "tool_input": {
@@ -148,7 +162,7 @@ def test_blocks_secret_in_old_string_too() -> None:
         },
     }
     result = _run(event)
-    assert result.returncode == 2
+    assert result.returncode == 0, result.stderr
 
 
 def test_cli_entrypoint_blocks_on_secret(monkeypatch: pytest.MonkeyPatch) -> None:
