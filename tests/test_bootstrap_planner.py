@@ -103,6 +103,7 @@ from scripts.bootstrap.scaffold import (
     SEED_ONCE_SLOTS,
 )
 from scripts.bootstrap.source_baseline import (
+    AdoptedSourceBaseline,
     CopierSourceBaseline,
     GitHubSourceBaseline,
     LifecycleSourceEntry,
@@ -1194,6 +1195,38 @@ class TestManifest:
                 return manifest
             case Err(error):
                 raise AssertionError(f"copier manifest build failed: {error}")
+
+    def _adopted_manifest_value(self) -> CandidateManifest:
+        provenance = ProvenanceRecord(
+            generation_path=GenerationPath.ADOPTED,
+            maintenance=MaintenanceRecord(status="clean"),
+            source_baseline=AdoptedSourceBaseline(
+                kind="adopted",
+                fingerprint=template_source_fingerprint(fixture_source_entries()),
+                entries=fixture_source_entries(),
+                snapshot_commit="0" * 40,
+            ),
+        )
+        match build_candidate_manifest(
+            answers=fixture_answers(),
+            additions=ManifestAdditions(),
+            provenance=provenance,
+            managed=(),
+        ):
+            case Ok(manifest):
+                return manifest
+            case Err(error):
+                raise AssertionError(f"adopted manifest build failed: {error}")
+
+    def test_adopted_manifest_round_trip_preserves_the_baseline_kind(self) -> None:
+        manifest = self._adopted_manifest_value()
+        encoded = encode_manifest(manifest)
+        match decode_manifest(encoded):
+            case Ok(decoded):
+                assert decoded == manifest
+                assert encode_manifest(decoded) == encoded
+            case Err(error):
+                raise AssertionError(f"adopted manifest decode failed: {error}")
 
     def test_copier_manifest_round_trip_preserves_the_baseline_kind(self) -> None:
         manifest = self._copier_manifest_value()

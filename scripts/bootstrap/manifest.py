@@ -1074,6 +1074,23 @@ def _decode_provenance(
                 entries=entries,
                 snapshot_commit=snapshot_commit,
             )
+        case "adopted":
+            snapshot_commit = baseline.get("snapshot_commit")
+            if (
+                not isinstance(snapshot_commit, str)
+                or COMMIT_SHA.fullmatch(snapshot_commit) is None
+            ):
+                return Err(
+                    _manifest_error(
+                        ManifestErrorKind.SCHEMA_VIOLATION, "provenance.source_baseline"
+                    )
+                )
+            source_baseline = AdoptedSourceBaseline(
+                kind="adopted",
+                fingerprint=raw_fingerprint,
+                entries=entries,
+                snapshot_commit=snapshot_commit,
+            )
         case "copier":
             if "snapshot_commit" in baseline:
                 return Err(
@@ -1092,7 +1109,7 @@ def _decode_provenance(
             )
     baseline_keys = (
         frozenset({"kind", "fingerprint", "entries", "snapshot_commit"})
-        if baseline.get("kind") == "github"
+        if baseline.get("kind") in ("github", "adopted")
         else frozenset({"kind", "fingerprint", "entries"})
     )
     if set(baseline) != set(baseline_keys):
