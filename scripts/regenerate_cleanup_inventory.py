@@ -16,13 +16,16 @@ skip with a notice instead of failing the release.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
-INVENTORY_PATH = Path(".agentic-template/maintenance-artifacts.json")
-READINESS_MODULE = Path("tests/test_github_template_readiness.py")
+sys.path.insert(0, str(REPO_ROOT))
+
+INVENTORY_PATH = REPO_ROOT / ".agentic-template" / "maintenance-artifacts.json"
+READINESS_MODULE = REPO_ROOT / "tests" / "test_github_template_readiness.py"
 
 
 def main() -> int:
@@ -35,6 +38,10 @@ def main() -> int:
         return 0
     from tests.test_github_template_readiness import expected_cleanup_inventory
 
+    # The fixture of truth hashes the working tree via git relative to the
+    # process working directory, so anchor it to this repository regardless
+    # of where the release hook or a developer invoked the script.
+    os.chdir(REPO_ROOT)
     _ = INVENTORY_PATH.write_text(
         json.dumps(expected_cleanup_inventory(), sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
