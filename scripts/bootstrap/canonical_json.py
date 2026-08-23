@@ -14,8 +14,10 @@ MAX_NESTING_DEPTH = 128
 
 
 type StrictJsonValue = (
-    dict[str, StrictJsonValue] | list[StrictJsonValue] | str | int | float | bool | None
+    StrictJsonObject | list[StrictJsonValue] | str | int | float | bool | None
 )
+
+type StrictJsonObject = dict[str, StrictJsonValue]
 
 
 class _ObjectPairs:
@@ -120,7 +122,7 @@ def decode_object[ErrorT](
     error: Callable[[str], ErrorT],
     max_bytes: int | None = None,
     allowed_keys: frozenset[str] | None = None,
-) -> Result[dict[str, StrictJsonValue], ErrorT]:
+) -> Result[StrictJsonObject, ErrorT]:
     """Strictly decode one bounded document into a mapping of the closed key set.
 
     ``error`` receives exactly one of the reasons ``"size"`` (only with
