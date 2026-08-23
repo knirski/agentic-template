@@ -33,20 +33,19 @@ jobs:
           # /tmp/copier.*.new_copy.*. Retry only that known-transient
           # signature; every other failure is shown and fails fast.
           retry_smoke() {
-            local log attempt
-            log="$(mktemp)"
+            local out attempt
             for attempt in 1 2 3; do
-              if "$@" >"$log" 2>&1; then
+              if out="$("$@" 2>&1)"; then
                 return 0
               fi
-              if grep -q "new_copy" "$log" && grep -q "Directory not empty" "$log"; then
+              if grep -q "new_copy" <<<"$out" && grep -q "Directory not empty" <<<"$out"; then
                 echo "attempt ${attempt} hit the known copier teardown race; retrying"
                 sleep "$((attempt * 10))"
               else
                 break
               fi
             done
-            cat "$log"
+            printf '%s\n' "$out"
             return 1
           }
           retry_smoke uv run python tests/test_copier.py
