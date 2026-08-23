@@ -231,7 +231,7 @@
           "inputs": [
             "structured readiness result; multiset finding identity; gating rules; template-evolution compatibility baseline; existing validator behavior."
           ],
-          "description": "Extract pure readiness and template-contract rules from existing scripts. Implement finding sorting/multiset comparison, mechanical gating, readiness rule definitions, typed `ValidationProgram` stage folding, and deterministic text/JSON presentation parity. Replace existing mixed policy scripts with thin shell adapters while preserving current fixture behavior. Revision 16 removed the stable-ID compatibility surface from the runtime and deferred the readiness-rule comparison machinery and compatibility corpus to post-v1 (alignment PR #41); the multiset readiness gating, `ValidationProgram` core, and presentation parity remain.",
+          "description": "Extract pure readiness and template-contract rules from existing scripts. Implement finding sorting/multiset comparison, mechanical gating, readiness rule definitions, typed `ValidationProgram` stage folding, and deterministic text/JSON presentation parity. Replace existing mixed policy scripts with thin shell adapters while preserving current fixture behavior. Revision 16 initially removed the stable-ID compatibility surface from the runtime and deferred the readiness-rule comparison machinery and compatibility corpus; audit remediation R2 later restored the PRD-required schema-v1 corpus and comparison. The multiset readiness gating, `ValidationProgram` core, and presentation parity remain.",
           "execution": {
             "mode": "inline",
             "status": "completed",
@@ -340,7 +340,7 @@
           "inputs": [
             "bootstrap bundle schema; five profiles; four capabilities and dependency rules; stable-ID compatibility; initial answers and additive settings."
           ],
-          "description": "Decode verified bundles, capability definitions, profiles, normalized settings, slot choices, licensing choices, ownership declarations, source inventories, and cleanup contracts. Resolve profile selection plus explicit additions into a frozen effective closure without executing capability code or accepting secrets. The stable-ID compatibility module created here was removed by the revision-16 alignment (PR #41); the surface returns as a frozen fixture compared by `validate_template.py` (see T15).",
+          "description": "Decode verified bundles, capability definitions, profiles, normalized settings, slot choices, licensing choices, ownership declarations, source inventories, and cleanup contracts. Resolve profile selection plus explicit additions into a frozen effective closure without executing capability code or accepting secrets. The stable-ID compatibility module created here was removed by the revision-16 alignment (PR #41); the compatibility surface returns as a frozen fixture compared by `validate_template.py` (see T15), while the readiness-rule corpus comparison is completed by audit remediation R2.",
           "execution": {
             "mode": "inline",
             "status": "completed",
@@ -376,7 +376,7 @@
           "validation": {
             "tests": [
               "strict schema round-trips",
-              "stable-ID surface (historical; removed by revision 16, comparison deferred to T15)",
+              "stable-ID surface (historical runtime module removed by revision 16; frozen fixture comparison completed in T15)",
               "full profile matrix",
               "dependency closure and incompatibility tests",
               "secret rejection",
@@ -1029,7 +1029,7 @@
           "inputs": [
             "design frozen readiness-rule baseline v1; superseded project-readiness spec US-1 criteria; existing checker rule constants; readiness rule definition schema."
           ],
-          "description": "Implement the declarative `ReadinessRuleDefinition` catalog carrying every readiness v1 rule unchanged: PRD marker/boilerplate and exactly-once ordered level-two headings, REQ-### declaration format, README marker/title/Setup/Validation contract, hook presence/mode/sentinel, and the bootstrap security/contributing slot rules. The old checker's rule constants become derived from this catalog; the four-argument Finding adapter contract remains only until activation. The baseline comparison and compatibility corpus are deferred to post-v1: no comparison machinery is introduced, and catalog immutability for manifest schema v1 is enforced by review.",
+          "description": "Implement the declarative `ReadinessRuleDefinition` catalog carrying every readiness v1 rule unchanged: PRD marker/boilerplate and exactly-once ordered level-two headings, REQ-### declaration format, README marker/title/Setup/Validation contract, hook presence/mode/sentinel, and the bootstrap security/contributing slot rules. The old checker's rule constants become derived from this catalog; the four-argument Finding adapter contract remains only until activation. The catalog definition landed here; audit remediation R2 subsequently added the frozen schema-v1 compatibility corpus and automated comparison required by the PRD.",
           "execution": {
             "mode": "inline",
             "status": "completed",
@@ -1073,7 +1073,7 @@
               "the catalog carries every readiness v1 rule listed in the frozen baseline",
               "satisfier classification covers InitialPlan, ManagedRender, AdopterEdit, and ExternalAction",
               "shared-core findings match the catalog identities",
-              "no baseline-comparison or corpus machinery is introduced",
+              "the catalog definition is complete and its schema-v1 compatibility comparison is covered by audit remediation R2",
               "strict ty, Ruff, and pytest pass."
             ],
             "acceptance": []
