@@ -44,9 +44,7 @@ def scan_text(text: str) -> str | None:
         match = pattern.search(text)
         if match is None:
             continue
-        return (
-            f"possible secret matched {pattern.pattern!r}: {match.group(0)[:12]}\u2026"
-        )
+        return f"possible secret matched {pattern.pattern!r}"
     return None
 
 
