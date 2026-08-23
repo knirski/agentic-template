@@ -11,6 +11,7 @@ from scripts.bootstrap.paths import RepoPath
 class GenerationPath(StrEnum):
     GITHUB = "github"
     COPIER = "copier"
+    ADOPTED = "adopted"
 
 
 @dataclass(frozen=True, slots=True)

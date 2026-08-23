@@ -32,6 +32,7 @@ from scripts.bootstrap.manifest import (
     ManagedInventoryEntry,
     ManifestAdditions,
     ManifestAnswers,
+    ManifestErrorKind,
     ProfileSelection,
     ProjectFacts,
     ProvenanceRecord,
@@ -58,6 +59,7 @@ from scripts.bootstrap.scaffold import (
     SOURCE_OWNERSHIP_PATH,
 )
 from scripts.bootstrap.source_baseline import (
+    AdoptedSourceBaseline,
     CopierSourceBaseline,
     GitHubSourceBaseline,
     LifecycleSourceEntry,
@@ -159,21 +161,50 @@ def _copier_baseline() -> CopierSourceBaseline:
     )
 
 
+def _adopted_baseline(
+    *, entries: tuple[LifecycleSourceEntry, ...] | None = None
+) -> AdoptedSourceBaseline:
+    selected_entries = tuple(
+        sorted(
+            entries if entries is not None else _source_entries(),
+            key=lambda entry: entry.path.value.encode("utf-8"),
+        )
+    )
+    return AdoptedSourceBaseline(
+        kind="adopted",
+        fingerprint=template_source_fingerprint(selected_entries),
+        entries=selected_entries,
+        snapshot_commit="0" * 40,
+    )
+
+
 def _manifest(
     *,
     copier: bool = False,
-    baseline: GitHubSourceBaseline | CopierSourceBaseline | None = None,
+    adopted: bool = False,
+    baseline: (
+        GitHubSourceBaseline | CopierSourceBaseline | AdoptedSourceBaseline | None
+    ) = None,
     managed: tuple[ManagedInventoryEntry, ...] = (),
     answers: ManifestAnswers | None = None,
     additions: ManifestAdditions | None = None,
 ) -> CandidateManifest:
+    generation = (
+        GenerationPath.ADOPTED
+        if adopted
+        else (GenerationPath.COPIER if copier else GenerationPath.GITHUB)
+    )
     provenance = ProvenanceRecord(
-        generation_path=GenerationPath.COPIER if copier else GenerationPath.GITHUB,
+        generation_path=generation,
         maintenance=MaintenanceRecord(status="clean"),
         source_baseline=(
             baseline
             if baseline is not None
-            else (_copier_baseline() if copier else _github_baseline())
+            else (
+                _adopted_baseline()
+                if adopted
+                else (_copier_baseline() if copier else _github_baseline())
+            )
         ),
     )
     match build_candidate_manifest(
@@ -236,6 +267,34 @@ class ProjectClassificationTests(unittest.TestCase):
         if isinstance(result, SnapshotExistingProject):
             self.assertIsInstance(result.condition, SnapshotSourceSame)
             self.assertIsInstance(result.condition.managed, ManagedVerified)
+
+    def test_adopted_matching_observation_classifies_source_same(self) -> None:
+        result = _classify(
+            _manifest(adopted=True),
+            files=_observed_files(),
+            directories=_observed_directories(),
+        )
+        self.assertIsInstance(result, SnapshotExistingProject)
+        if isinstance(result, SnapshotExistingProject):
+            self.assertIsInstance(result.condition, SnapshotSourceSame)
+            self.assertIsInstance(result.condition.managed, ManagedVerified)
+
+    def test_adopted_manifest_rejects_mismatched_baseline_kind(self) -> None:
+        match build_candidate_manifest(
+            answers=_answers(),
+            additions=ManifestAdditions(),
+            provenance=ProvenanceRecord(
+                generation_path=GenerationPath.ADOPTED,
+                maintenance=MaintenanceRecord(status="clean"),
+                source_baseline=_github_baseline(),
+            ),
+            managed=(),
+        ):
+            case Err(error):
+                self.assertEqual(error.kind, ManifestErrorKind.SCHEMA_VIOLATION)
+                self.assertEqual(error.subject, "source_baseline")
+            case Ok(_):
+                self.fail("expected a baseline/generation mismatch failure")
 
     def test_unreachable_snapshot_commit_is_unrecoverable(self) -> None:
         result = _classify(_manifest(), files={}, commit_reachable=False)

@@ -429,7 +429,7 @@ def classify_existing_project(
             pass
     managed = _managed_observation(manifest.managed, files)
     match manifest.provenance.generation_path:
-        case GenerationPath.GITHUB:
+        case GenerationPath.GITHUB | GenerationPath.ADOPTED:
             snapshot_condition = _snapshot_condition(
                 manifest=manifest,
                 managed=managed,

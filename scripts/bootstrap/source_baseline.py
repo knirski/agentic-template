@@ -101,7 +101,17 @@ class CopierSourceBaseline:
     entries: tuple[LifecycleSourceEntry, ...]
 
 
-type SourceBaseline = GitHubSourceBaseline | CopierSourceBaseline
+@dataclass(frozen=True, slots=True)
+class AdoptedSourceBaseline:
+    kind: Literal["adopted"]
+    fingerprint: str
+    entries: tuple[LifecycleSourceEntry, ...]
+    snapshot_commit: str
+
+
+type SourceBaseline = (
+    GitHubSourceBaseline | CopierSourceBaseline | AdoptedSourceBaseline
+)
 
 
 def derive_source_baseline(
@@ -137,6 +147,17 @@ def derive_source_baseline(
                     kind="copier",
                     fingerprint=fingerprint,
                     entries=sorted_entries,
+                )
+            )
+        case GenerationPath.ADOPTED:
+            if snapshot_commit is None or COMMIT_SHA.fullmatch(snapshot_commit) is None:
+                return Err(_source_error("snapshot_commit"))
+            return Ok(
+                AdoptedSourceBaseline(
+                    kind="adopted",
+                    fingerprint=fingerprint,
+                    entries=sorted_entries,
+                    snapshot_commit=snapshot_commit,
                 )
             )
         case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
