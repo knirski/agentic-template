@@ -1109,7 +1109,7 @@ def _decode_provenance(
             )
     baseline_keys = (
         frozenset({"kind", "fingerprint", "entries", "snapshot_commit"})
-        if baseline.get("kind") in ("github", "adopted")
+        if isinstance(source_baseline, GitHubSourceBaseline | AdoptedSourceBaseline)
         else frozenset({"kind", "fingerprint", "entries"})
     )
     if set(baseline) != set(baseline_keys):

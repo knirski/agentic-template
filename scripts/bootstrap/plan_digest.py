@@ -67,6 +67,9 @@ from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
 from scripts.bootstrap.vocabulary import COMMIT_SHA, SHA256, is_sha256
 
 _GENERATION_PATHS = frozenset(path.value for path in GenerationPath)
+_COMMIT_BINDING_KINDS = frozenset(
+    {GenerationPath.GITHUB.value, GenerationPath.ADOPTED.value}
+)
 _READINESS_RULES = frozenset(rule.value for rule in ReadinessRule)
 _OPERATIONS = frozenset(get_args(get_type_hints(GateSpecification)["operation"]))
 _OPERATION_KINDS = frozenset(get_args(get_type_hints(OperationPlan)["operation_kind"]))
@@ -748,18 +751,21 @@ def _reconstruct_source_baseline(
     document = cast(dict[str, object], value)
     kind = document.get("kind")
     fingerprint = document.get("fingerprint")
-    if kind not in ("github", "copier", "adopted") or not is_sha256(fingerprint):
+    if not isinstance(kind, str) or kind not in _GENERATION_PATHS:
+        return Err(_receipt_error("source_baseline"))
+    if not is_sha256(fingerprint):
         return Err(_receipt_error("source_baseline"))
     if kind != generation.value:
         return Err(_receipt_error("source_baseline"))
+    commit_binding = kind in _COMMIT_BINDING_KINDS
     expected_keys = (
         {"kind", "fingerprint", "entries", "snapshot_commit"}
-        if kind in ("github", "adopted")
+        if commit_binding
         else {"kind", "fingerprint", "entries"}
     )
     if set(document) != expected_keys:
         return Err(_receipt_error("source_baseline"))
-    if kind in ("github", "adopted"):
+    if commit_binding:
         snapshot_commit = document.get("snapshot_commit")
         if (
             not isinstance(snapshot_commit, str)

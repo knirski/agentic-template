@@ -481,6 +481,14 @@ def _copier_receipt() -> dict[str, object]:
     return build_receipt(get_plan(result))
 
 
+def _adopted_receipt() -> dict[str, object]:
+    _, result = compile_fixture(
+        generation=GenerationPath.ADOPTED,
+        snapshot_commit="0" * 40,
+    )
+    return build_receipt(get_plan(result))
+
+
 def _set_delete_planned_new(receipt: dict[str, object]) -> None:
     delete = _operation_by_kind(receipt, "delete_file")
     create = _operation_by_kind(receipt, "create_file")
@@ -922,6 +930,15 @@ def _manifest_baseline_missing_snapshot_commit(
     provenance = cast(dict[str, object], document["provenance"])
     baseline = cast(dict[str, object], provenance["source_baseline"])
     return baseline.pop("snapshot_commit")
+
+
+def _manifest_baseline_bad_snapshot_commit(
+    document: dict[str, object],
+) -> object:
+    provenance = cast(dict[str, object], document["provenance"])
+    return cast(dict[str, object], provenance["source_baseline"]).__setitem__(
+        "snapshot_commit", "zzz"
+    )
 
 
 def _manifest_baseline_kind_mismatch(document: dict[str, object]) -> object:
@@ -1993,6 +2010,10 @@ class TestManifest:
             pytest.param(_manifest_maintenance_extra_key, id="maintenance extra key"),
             pytest.param(_manifest_baseline_extra_key, id="baseline extra key"),
             pytest.param(
+                _manifest_baseline_bad_snapshot_commit,
+                id="baseline bad snapshot commit",
+            ),
+            pytest.param(
                 _manifest_managed_entry_extra_key, id="managed entry extra key"
             ),
             pytest.param(_manifest_source_entry_extra_key, id="source entry extra key"),
@@ -2002,10 +2023,16 @@ class TestManifest:
             ),
         ],
     )
+    @pytest.mark.parametrize("adopted", [False, True], ids=["github", "adopted"])
     def test_decode_rejects_malformed_documents(
-        self, mutate: Callable[[dict[str, object]], object]
+        self,
+        mutate: Callable[[dict[str, object]], object],
+        adopted: bool,
     ) -> None:
-        document = manifest_document(self._github_manifest_value())
+        manifest = (
+            self._adopted_manifest_value() if adopted else self._github_manifest_value()
+        )
+        document = manifest_document(manifest)
         _ = mutate(document)
         encoded = canonical_json({**document, "checksum": manifest_checksum(document)})
         match decode_manifest(encoded):
@@ -3895,6 +3922,26 @@ _RECONSTRUCT_REJECTIONS: tuple[Callable[[dict[str, object]], object], ...] = (
     _receipt_remove_empty_expected_old_mode_not_int,
 )
 
+# The adopted fixture plan contains only create operations, so mutators that
+# target delete_file or remove_empty_directory receipts cannot apply to it.
+_ADOPTED_SEED_INCOMPATIBLE_MUTATORS = frozenset(
+    {
+        _receipt_delete_expected_old_identity_kind,
+        _set_delete_planned_new,
+        _receipt_delete_unsafe_path,
+        _set_remove_empty_planned_new,
+        _set_remove_empty_bad_mode,
+    }
+)
+
+
+def _adopted_reconstruct_matrix() -> tuple[Callable[[dict[str, object]], object], ...]:
+    return tuple(
+        mutate
+        for mutate in _RECONSTRUCT_REJECTIONS
+        if mutate not in _ADOPTED_SEED_INCOMPATIBLE_MUTATORS
+    )
+
 
 class TestPlanDigest:
     def test_receipt_round_trip_and_digest_re_derivation(self) -> None:
@@ -3913,6 +3960,15 @@ class TestPlanDigest:
                 assert decoded == receipt
             case Err(error):
                 raise AssertionError(f"copier receipt decode failed: {error}")
+        assert plan_receipt_digest(receipt) == plan_receipt_digest(decoded)
+
+    def test_adopted_receipt_round_trip(self) -> None:
+        receipt = _adopted_receipt()
+        match decode_receipt(encode_receipt(receipt)):
+            case Ok(decoded):
+                assert decoded == receipt
+            case Err(error):
+                raise AssertionError(f"adopted receipt decode failed: {error}")
         assert plan_receipt_digest(receipt) == plan_receipt_digest(decoded)
 
     def test_receipt_contains_no_adopter_legal_or_generated_bytes(self) -> None:
@@ -4418,6 +4474,22 @@ class TestPlanDigest:
                 assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION
             case Ok(_):
                 raise AssertionError("malformed receipt reconstructed")
+
+    _ADOPTED_RECONSTRUCT_REJECTIONS: tuple[
+        Callable[[dict[str, object]], object], ...
+    ] = _adopted_reconstruct_matrix()
+
+    @pytest.mark.parametrize("mutate", _ADOPTED_RECONSTRUCT_REJECTIONS)
+    def test_reconstruct_rejects_malformed_adopted_receipts(
+        self, mutate: Callable[[dict[str, object]], object]
+    ) -> None:
+        receipt = _adopted_receipt()
+        _ = mutate(receipt)
+        match reconstruct_plan(receipt, target=TARGET):
+            case Err(error):
+                assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION
+            case Ok(_):
+                raise AssertionError("malformed adopted receipt reconstructed")
 
 
 class TestExpectedTarget:

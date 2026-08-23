@@ -1,8 +1,9 @@
 """Pure generated-lifecycle source baseline derivation.
 
 The source baseline records the path-level identity of every generated-lifecycle source entry
-plus one aggregate fingerprint. GitHub snapshots additionally bind the reachable baseline commit
-used for targeted repair; Copier projects record no commit because Copier supplies their lineage.
+plus one aggregate fingerprint. GitHub snapshots and adopted projects additionally bind the
+reachable baseline commit used for targeted repair; Copier projects record no commit because
+Copier supplies their lineage.
 """
 
 from __future__ import annotations

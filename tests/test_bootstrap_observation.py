@@ -369,6 +369,23 @@ class ProjectClassificationTests(unittest.TestCase):
                     (RepoPath("src/lib.py"),),
                 )
 
+    def test_adopted_changed_file_repairs_from_the_recorded_commit(self) -> None:
+        result = _classify(
+            _manifest(adopted=True),
+            files={},
+            directories=_observed_directories(),
+            at_commit=b"present\n",
+        )
+        self.assertIsInstance(result, SnapshotExistingProject)
+        if isinstance(result, SnapshotExistingProject):
+            self.assertIsInstance(result.condition, SnapshotSourceChanged)
+            if isinstance(result.condition, SnapshotSourceChanged):
+                self.assertEqual(result.condition.repair.commit, "0" * 40)
+                self.assertEqual(
+                    result.condition.repair.paths,
+                    (RepoPath("src/lib.py"),),
+                )
+
     def test_new_declared_source_file_is_source_drift(self) -> None:
         ownership = CapturedFile(
             SOURCE_OWNERSHIP_PATH,

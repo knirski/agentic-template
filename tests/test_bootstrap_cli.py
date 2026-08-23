@@ -30,6 +30,7 @@ from scripts.bootstrap.cli import (
     _decode_existing_manifest,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper type contract
     _init_failure,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     _manifest_identity,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper type contract
+    _project_changes,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
     _recorded_render,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper type contract
     execute_command,
     main,
@@ -1174,6 +1175,38 @@ def _target_identity(root: Path) -> TargetIdentity:
     return target_identity(
         os.fsencode(str(root)), device=info.st_dev, inode=info.st_ino
     )
+
+
+class ProjectChangesTests(unittest.TestCase):
+    def test_snapshot_status_reports_the_recorded_generation(self) -> None:
+        from scripts.bootstrap.intents import GenerationPath
+        from scripts.bootstrap.state import (
+            ExistingProject,
+            ManagedVerified,
+            RecordedProjectState,
+            SnapshotExistingProject,
+            SnapshotSourceSame,
+            TargetSnapshot,
+        )
+
+        for generation in (GenerationPath.GITHUB, GenerationPath.ADOPTED):
+            with self.subTest(generation=generation.value):
+                observation = ExistingProject(
+                    state=SnapshotExistingProject(
+                        recorded=RecordedProjectState(
+                            generation=generation,
+                            source_fingerprint="a" * 64,
+                        ),
+                        condition=SnapshotSourceSame(managed=ManagedVerified()),
+                        snapshot=TargetSnapshot(()),
+                    )
+                )
+                changes = _project_changes(observation)
+                generation_change = next(
+                    change for change in changes if change.kind == "generation"
+                )
+                self.assertEqual(generation_change.subject, generation.value)
+                self.assertEqual(generation_change.detail, "a" * 16)
 
 
 if __name__ == "__main__":
