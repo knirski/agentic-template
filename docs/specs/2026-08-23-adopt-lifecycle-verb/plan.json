@@ -33,7 +33,9 @@
               "commit": "066c76a",
               "evidence": "4 new tests; full suite 1261 passed/80 subtests; basedpyright 0 errors; ruff check/format clean; validate_template.py clean"
             },
-            "github_prs": []
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/94"
+            ]
           },
           "files": {
             "reuse": [
