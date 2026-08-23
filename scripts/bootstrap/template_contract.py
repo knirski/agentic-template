@@ -6,6 +6,7 @@ import re
 
 REQUIRED_FILES: tuple[str, ...] = (
     "AGENTS.md",
+    "CLAUDE.md",
     ".agents/AGENTS.md",
     ".agentic-template/source-ownership.json",
     "README.md",
