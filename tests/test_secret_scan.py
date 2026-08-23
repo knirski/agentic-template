@@ -10,14 +10,26 @@ import sys
 from collections.abc import Mapping
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 import scripts.secret_scan as scanner
-from scripts.bootstrap.canonical_json import decode_json
+from scripts.bootstrap.canonical_json import StrictJsonValue, decode_json
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCANNER = REPO_ROOT / "scripts" / "secret_scan.py"
+SETTINGS = REPO_ROOT / ".claude" / "settings.json"
+
+
+def _settings() -> dict[str, StrictJsonValue]:
+    return cast(dict[str, StrictJsonValue], decode_json(SETTINGS.read_bytes()))
+
+
+def _settings_deny_rules() -> frozenset[str]:
+    permissions = cast(dict[str, StrictJsonValue], _settings()["permissions"])
+    return frozenset(cast(list[str], permissions["deny"]))
+
 
 # Import the module in-process so coverage is captured for the universal core
 # and `main`; the subprocess tests below exercise the real CLI entrypoint.
@@ -202,3 +214,53 @@ def test_cli_entrypoint_allows_benign(monkeypatch: pytest.MonkeyPatch) -> None:
         check=False,
     )
     assert result.returncode == 0
+
+
+_HOOK_BYPASS_DENY_RULES = (
+    "Bash(git commit --no-verify)",
+    "Bash(git commit --no-verify:*)",
+    "Bash(git commit -n)",
+    "Bash(git commit -n:*)",
+    "Bash(git push --no-verify)",
+    "Bash(git push --no-verify:*)",
+    "Bash(git push --force)",
+    "Bash(git push --force:*)",
+    "Bash(git push -f)",
+    "Bash(git push -f:*)",
+    "Bash(git config core.hooksPath:*)",
+)
+
+_MACHINERY_DENY_RULES = (
+    "Write(.claude/settings.json)",
+    "Edit(.claude/settings.json)",
+    "Write(.claude/settings.local.json)",
+    "Edit(.claude/settings.local.json)",
+    "Write(scripts/secret_scan.py)",
+    "Edit(scripts/secret_scan.py)",
+)
+
+
+def test_settings_deny_rules_block_hook_bypasses() -> None:
+    """Every hook-bypass spelling the matchers can express stays denied.
+
+    The Bash matcher anchors prefixes, so each realistic invocation form needs
+    its own rule: exact matches alone miss trailing arguments such as
+    ``git commit --no-verify -m "..."``.
+    """
+    deny = _settings_deny_rules()
+    missing = [rule for rule in _HOOK_BYPASS_DENY_RULES if rule not in deny]
+    assert missing == []
+
+
+def test_settings_protects_the_enforcement_machinery() -> None:
+    """Agents cannot rewrite or unwire the Safety enforcement itself."""
+    deny = _settings_deny_rules()
+    missing = [rule for rule in _MACHINERY_DENY_RULES if rule not in deny]
+    assert missing == []
+    hooks = cast(dict[str, StrictJsonValue], _settings()["hooks"])
+    pre_tool_use = cast(list[dict[str, StrictJsonValue]], hooks["PreToolUse"])
+    assert len(pre_tool_use) == 1
+    assert pre_tool_use[0]["matcher"] == "Write|Edit|MultiEdit|NotebookEdit"
+    assert pre_tool_use[0]["hooks"] == [
+        {"type": "command", "command": "python3 scripts/secret_scan.py"}
+    ]

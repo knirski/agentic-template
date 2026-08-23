@@ -2,8 +2,22 @@
   "permissions": {
     "deny": [
       "Bash(git commit --no-verify)",
+      "Bash(git commit --no-verify:*)",
+      "Bash(git commit -n)",
+      "Bash(git commit -n:*)",
       "Bash(git push --no-verify)",
-      "Bash(git push --force)"
+      "Bash(git push --no-verify:*)",
+      "Bash(git push --force)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f)",
+      "Bash(git push -f:*)",
+      "Bash(git config core.hooksPath:*)",
+      "Write(.claude/settings.json)",
+      "Edit(.claude/settings.json)",
+      "Write(.claude/settings.local.json)",
+      "Edit(.claude/settings.local.json)",
+      "Write(scripts/secret_scan.py)",
+      "Edit(scripts/secret_scan.py)"
     ]
   },
   "hooks": {
