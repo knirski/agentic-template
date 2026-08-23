@@ -29,6 +29,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from scripts.bootstrap.scaffold import SEED_ONCE_PATHS  # noqa: E402
 from tests.fixtures import (  # noqa: E402
     CLEANUP_PATHS,
     PRD,
@@ -131,6 +132,12 @@ class GitHubSnapshot(unittest.TestCase):
         self.assertIn("READINESS_README_BOILERPLATE", untouched.stderr)
         _ = (self.project / "docs/prd.md").write_text(PRD, encoding="utf-8")
         _ = (self.project / "README.md").write_text(README, encoding="utf-8")
+        _ = (self.project / "SECURITY.md").write_text(
+            "# Security\n\nReport privately.\n", encoding="utf-8"
+        )
+        _ = (self.project / "CONTRIBUTING.md").write_text(
+            "# Contributing\n\nWelcome.\n", encoding="utf-8"
+        )
         hook = self.project / "scripts/validate-project"
         _ = hook.write_text(f"#!{sys.executable}\nprint('ok')\n", encoding="utf-8")
         hook.chmod(hook.stat().st_mode | 0o100)
@@ -180,6 +187,9 @@ class GitHubBootstrapTests(unittest.TestCase):
         hook = project / "scripts/validate-project"
         _ = hook.write_text(scaffold_hook(record), encoding="utf-8")
         hook.chmod(0o755)
+        _ = (
+            project / "scripts/bootstrap/fragments/scaffolds/validate-project"
+        ).write_text(scaffold_hook(record), encoding="utf-8")
         _ = (project / "CONTRIBUTING.md").write_text(
             SCAFFOLD_CONTRIBUTING, encoding="utf-8"
         )
@@ -385,6 +395,12 @@ BOOTSTRAP_MANAGED_DOCUMENTS = frozenset(
     }
 )
 ADOPTER_OWNED_OUTPUTS = frozenset({".github/workflows/project-validation.yml"})
+COPIER_SEED_ONCE_EXCLUSIONS = frozenset(
+    "/" + path.value
+    if path.value in {"README.md", "SECURITY.md", "CONTRIBUTING.md"}
+    else path.value
+    for path in SEED_ONCE_PATHS
+)
 
 
 class SourceContractTests(unittest.TestCase):
@@ -408,6 +424,7 @@ class SourceContractTests(unittest.TestCase):
             maintenance
             | BOOTSTRAP_MANAGED_DOCUMENTS
             | ADOPTER_OWNED_OUTPUTS
+            | COPIER_SEED_ONCE_EXCLUSIONS
             | COPIER_SAFETY_EXCLUSIONS,
             "_exclude must cover maintenance, managed-document, and safety sets",
         )

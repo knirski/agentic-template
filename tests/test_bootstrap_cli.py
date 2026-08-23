@@ -9,7 +9,9 @@ post-lock revalidation.
 
 from __future__ import annotations
 
+import contextlib
 import errno
+import io
 import json
 import os
 import shutil
@@ -51,6 +53,7 @@ from scripts.bootstrap.journal import (
     new_transaction_id,
 )
 from scripts.bootstrap.manifest import CandidateManifest
+from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.plan_digest import PlanReceipt, reconstruct_plan
 from scripts.bootstrap.planner import CreateFileOperation, ReplaceFileOperation
 from scripts.bootstrap.presentation import (
@@ -59,7 +62,10 @@ from scripts.bootstrap.presentation import (
     render_text,
 )
 from scripts.bootstrap.result import Err, Ok, Result
-from scripts.bootstrap.scaffold import PROJECT_VALIDATION_SCAFFOLD
+from scripts.bootstrap.scaffold import (
+    PROJECT_VALIDATION_SCAFFOLD,
+    SCAFFOLD_SOURCE_PATHS,
+)
 from scripts.bootstrap.transaction import derive_preparation_specs, derive_preparations
 from scripts.bootstrap.values import JournalPhase
 
@@ -142,6 +148,10 @@ class TemplatePackage:
         project_validation.parent.mkdir(parents=True, exist_ok=True)
         _ = project_validation.write_bytes(PROJECT_VALIDATION_SCAFFOLD)
         project_validation.chmod(0o644)
+        for installed, source in SCAFFOLD_SOURCE_PATHS.items():
+            source_path = self.root / source.value
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = shutil.copy2(self.root / installed.value, source_path)
         ownership = self.root / ".agentic-template/source-ownership.json"
         ownership.parent.mkdir(parents=True, exist_ok=True)
         _ = ownership.write_text(
@@ -169,6 +179,11 @@ class TemplatePackage:
             encoding="utf-8",
         )
         hook.chmod(0o755)
+        source = (
+            self.root
+            / SCAFFOLD_SOURCE_PATHS[RepoPath("scripts/validate-project")].value
+        )
+        _ = shutil.copy2(hook, source)
 
 
 class ScaffoldFixture:
@@ -433,7 +448,7 @@ class CliFamilyTests(unittest.TestCase):
 
     def test_status_invalid_journal_exits_two(self) -> None:
         state_root = self.fixture.root / ".git/agentic-template"
-        state_root.mkdir()
+        state_root.mkdir(mode=0o700)
         _ = (state_root / "journal.json").write_text("not json", encoding="utf-8")
         result = self.run_cli(["status", "--target", self.target_arg()])
         self.assertEqual(_exit_code(result), 2)
@@ -728,6 +743,59 @@ class CliFamilyTests(unittest.TestCase):
         )
         self.assertEqual(self.fixture.run_count(), 1)
 
+    def test_apply_revalidates_initial_candidate_before_writing(self) -> None:
+        from scripts.bootstrap.observation import (
+            ResolvedShellTarget,
+            SystemObservation,
+        )
+        from scripts.bootstrap.observation import (
+            observe_system as real_observe,
+        )
+        from scripts.bootstrap.values import ResourceLimits
+
+        calls = 0
+
+        def observe_then_change(
+            resolved: ResolvedShellTarget,
+            *,
+            coherent: bool,
+            template_root: str,
+            limits: ResourceLimits,
+        ) -> Result[SystemObservation, CommandError]:
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                _ = (self.fixture.root / "README.md").write_text(
+                    "changed while acquiring the lock\n", encoding="utf-8"
+                )
+            return real_observe(
+                resolved,
+                coherent=coherent,
+                template_root=template_root,
+                limits=limits,
+            )
+
+        with patch(
+            "scripts.bootstrap.cli.observe_system", side_effect=observe_then_change
+        ):
+            result = self.run_cli(
+                [
+                    "apply",
+                    "--bundle",
+                    str(self.bundle.root),
+                    "--target",
+                    self.target_arg(),
+                ]
+            )
+
+        self.assertEqual(calls, 2)
+        self.assertEqual(_exit_code(result), 2)
+        self.assertIn("PRECONDITION_CHANGED", render_text(result))
+        self.assertFalse(
+            (self.fixture.root / ".agentic-template/project.json").exists()
+        )
+        self.assertEqual(self.fixture.run_count(), 0)
+
     def test_restore_retains_existing_readiness_findings(self) -> None:
         applied = self.run_cli(
             ["apply", "--bundle", str(self.bundle.root), "--target", self.target_arg()]
@@ -874,7 +942,7 @@ class CliFamilyTests(unittest.TestCase):
 
     def test_recover_stale_pending_discards(self) -> None:
         state_root = self.fixture.root / ".git/agentic-template"
-        state_root.mkdir()
+        state_root.mkdir(mode=0o700)
         _ = (state_root / "journal.pending").write_text("stale", encoding="utf-8")
         result = self.run_cli(["recover", "--target", self.target_arg()])
         self.assertEqual(_exit_code(result), 0)
@@ -882,7 +950,7 @@ class CliFamilyTests(unittest.TestCase):
 
     def test_recover_invalid_journal_exits_two(self) -> None:
         state_root = self.fixture.root / ".git/agentic-template"
-        state_root.mkdir()
+        state_root.mkdir(mode=0o700)
         _ = (state_root / "journal.json").write_text("not json", encoding="utf-8")
         result = self.run_cli(["recover", "--target", self.target_arg()])
         self.assertEqual(_exit_code(result), 2)
@@ -892,7 +960,7 @@ class CliFamilyTests(unittest.TestCase):
         from scripts.bootstrap.identity import target_identity
 
         state_root = self.fixture.root / ".git/agentic-template"
-        state_root.mkdir()
+        state_root.mkdir(mode=0o700)
         other = target_identity(b"/somewhere-else", device=1, inode=2)
         envelope = JournalEnvelope(
             operation="initial",
@@ -908,7 +976,7 @@ class CliFamilyTests(unittest.TestCase):
 
     def test_planned_recovery_cleans_preparations(self) -> None:
         state_root = self.fixture.root / ".git/agentic-template"
-        state_root.mkdir()
+        state_root.mkdir(mode=0o700)
         planned = self.run_cli(
             [
                 "plan",
@@ -949,7 +1017,7 @@ class CliFamilyTests(unittest.TestCase):
         # using the journaled identities (original ownership-token hashes),
         # never freshly minted tokens.
         state_root = self.fixture.root / ".git/agentic-template"
-        state_root.mkdir()
+        state_root.mkdir(mode=0o700)
         planned = self.run_cli(
             [
                 "plan",
@@ -1053,6 +1121,19 @@ class CliFamilyTests(unittest.TestCase):
     def test_main_json_emits_single_envelope(self) -> None:
         code = main(["--format", "json", "status", "--target", self.target_arg()])
         self.assertEqual(code, 0)
+
+    def test_main_json_usage_error_emits_single_envelope(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = main(["--format", "json", "status", "--unexpected"])
+
+        self.assertEqual(code, 2)
+        self.assertEqual(stderr.getvalue(), "")
+        document = cast(dict[str, object], json.loads(stdout.getvalue()))
+        self.assertEqual(document["command"], "bootstrap")
+        self.assertEqual(document["outcome_class"], "invalid_request")
+        self.assertEqual(document["exit_code"], 2)
 
 
 class EntryPointTests(unittest.TestCase):

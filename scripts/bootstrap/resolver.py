@@ -272,9 +272,13 @@ def resolve_additions(
 ) -> Result[ResolvedBundle, ResolutionFailure]:
     """Resolve an append-only capability addition against an existing frozen selection."""
 
-    requested = current.requested + additions.add_capabilities
-    if len(set(requested)) != len(requested):
-        return Err(ResolutionFailure(ResolutionErrorKind.DUPLICATE_ADDITION))
+    current_effective = set(current.effective)
+    new_requested = tuple(
+        capability_id
+        for capability_id in additions.add_capabilities
+        if capability_id not in current_effective
+    )
+    requested = current.requested + new_requested
     match _closure(requested, CATALOG):
         case Err(failure):
             return Err(failure)
@@ -294,15 +298,25 @@ def resolve_additions(
             key: value.strip() if isinstance(value, str) else value
             for key, value in values.items()
         }
-        if (
-            capability_id in current.settings
-            and dict(current.settings[capability_id]) != normalized_values
-        ):
-            return Err(
-                ResolutionFailure(
-                    ResolutionErrorKind.RECONFIGURE_SETTINGS, capability_id
+        if capability_id in current_effective:
+            candidate = {
+                **dict(current.settings[capability_id]),
+                **normalized_values,
+            }
+            match _resolve_settings((capability_id,), {capability_id: candidate}):
+                case Err(failure):
+                    return Err(failure)
+                case Ok(resolved_existing):
+                    pass
+            if dict(resolved_existing[capability_id]) != dict(
+                current.settings[capability_id]
+            ):
+                return Err(
+                    ResolutionFailure(
+                        ResolutionErrorKind.RECONFIGURE_SETTINGS, capability_id
+                    )
                 )
-            )
+            continue
         supplied[capability_id] = normalized_values
     match _resolve_settings(effective, supplied):
         case Err(failure):

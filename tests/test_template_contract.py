@@ -83,12 +83,17 @@ class TemplateContractTests(unittest.TestCase):
                 "scripts.validate_template.validate_catalog_surface",
                 return_value=(),
             ) as surface,
+            patch(
+                "scripts.validate_template.validate_readiness_rule_catalog",
+                return_value=(),
+            ) as readiness_surface,
         ):
             failures = validate_template.validate_contract(Path("."), ())
 
         self.assertEqual(failures, ("delegated failure",))
         policy.assert_called_once()
         surface.assert_called_once()
+        readiness_surface.assert_called_once()
 
     def test_missing_shared_bootstrap_module_fails_template_contract(self) -> None:
         missing = "scripts/bootstrap/presentation.py"

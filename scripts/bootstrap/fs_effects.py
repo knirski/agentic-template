@@ -224,7 +224,16 @@ def ensure_state_root(parent_fd: int, name: bytes) -> Result[int, TransactionErr
     """
 
     try:
-        return Ok(os.open(name, _O_DIRECTORY, dir_fd=parent_fd))
+        fd = os.open(name, _O_DIRECTORY, dir_fd=parent_fd)
+        info = os.fstat(fd)
+        if stat.S_IMODE(info.st_mode) != 0o700:
+            os.close(fd)
+            return Err(
+                TransactionError(
+                    TransactionErrorKind.INVALID_STATE_ROOT, subject=os.fsdecode(name)
+                )
+            )
+        return Ok(fd)
     except FileNotFoundError:
         pass
     except OSError as error:
@@ -250,7 +259,16 @@ def ensure_state_root(parent_fd: int, name: bytes) -> Result[int, TransactionErr
             )
         )
     try:
-        return Ok(os.open(name, _O_DIRECTORY, dir_fd=parent_fd))
+        fd = os.open(name, _O_DIRECTORY, dir_fd=parent_fd)
+        info = os.fstat(fd)
+        if stat.S_IMODE(info.st_mode) != 0o700:
+            os.close(fd)
+            return Err(
+                TransactionError(
+                    TransactionErrorKind.INVALID_STATE_ROOT, subject=os.fsdecode(name)
+                )
+            )
+        return Ok(fd)
     except OSError as error:
         return Err(
             _transaction_error(

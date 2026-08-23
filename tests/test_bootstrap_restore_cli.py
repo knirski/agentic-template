@@ -112,6 +112,8 @@ def test_restore_leaves_unrelated_drift() -> None:
         _ = readme.write_text("unrelated drift\n", encoding="utf-8")
 
         executed = run([*CLI, "restore", "--target", str(project)])
-        assert executed.returncode == 0, executed.stdout + executed.stderr
+        # Restore repairs only the certified managed file; the unrelated
+        # README drift remains and is reported by the shared readiness gate.
+        assert executed.returncode == 1, executed.stdout + executed.stderr
         assert managed.read_bytes() == compiled
         assert readme.read_text(encoding="utf-8") == "unrelated drift\n"

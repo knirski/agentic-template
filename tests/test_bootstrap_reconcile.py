@@ -57,6 +57,7 @@ from scripts.bootstrap.render import (
 from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.source_baseline import (
     CopierSourceBaseline,
+    template_source_fingerprint,
 )
 from scripts.bootstrap.state import (
     CopierCondition,
@@ -214,16 +215,22 @@ class TestCompileReconcilePlan:
         assert plan.operation_kind == RECONCILE_OPERATION_KIND
         # The source baseline is advanced by a reconcile.
         assert plan.source_before is not None
-        assert plan.source_before.fingerprint == sha256_hex(b"old")
-        assert plan.source_after.fingerprint == sha256_hex(b"new")
+        assert plan.source_before.fingerprint == template_source_fingerprint(
+            plan.source_before.entries
+        )
+        assert plan.source_after.fingerprint == template_source_fingerprint(
+            plan.source_after.entries
+        )
         # The manifest is rewritten to carry the new source baseline.
         assert plan.manifest_before is not None
         assert plan.manifest_before.digest == sha256_hex(b"old")
         assert plan.manifest_after.digest != plan.manifest_before.digest
         match decode_manifest(plan.manifest_after.payload):
             case Ok(decoded):
-                assert decoded.provenance.source_baseline.fingerprint == sha256_hex(
-                    b"new"
+                assert decoded.provenance.source_baseline.fingerprint == (
+                    template_source_fingerprint(
+                        decoded.provenance.source_baseline.entries
+                    )
                 )
             case Err(error):
                 raise AssertionError(f"manifest decode failed: {error}")
@@ -277,8 +284,12 @@ class TestCompileReconcilePlan:
         )
         assert isinstance(result, Ok)
         assert result.value.source_before is not None
-        assert result.value.source_before.fingerprint == sha256_hex(b"old")
-        assert result.value.source_after.fingerprint == sha256_hex(b"new")
+        assert result.value.source_before.fingerprint == template_source_fingerprint(
+            result.value.source_before.entries
+        )
+        assert result.value.source_after.fingerprint == template_source_fingerprint(
+            result.value.source_after.entries
+        )
 
     def test_reconcile_rebuilds_deleted_parent_hierarchy(self) -> None:
         managed, _blobs = _render_for(())

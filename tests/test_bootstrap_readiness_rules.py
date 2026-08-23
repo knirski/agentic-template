@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import subprocess
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts.bootstrap.readiness import Finding, SubjectPath, finding_matches_catalog
 from scripts.bootstrap.readiness_rules import (
@@ -253,45 +254,91 @@ class SharedCoreFindingsMatchCatalog(unittest.TestCase):
             )
 
 
-class NoComparisonMachinery(unittest.TestCase):
-    """No baseline-comparison or corpus machinery is introduced."""
+class CompatibilityCorpus(unittest.TestCase):
+    """The schema-v1 readiness surface is frozen by a checked-in corpus."""
 
-    def test_no_corpus_fixture_exists(self) -> None:
+    def test_corpus_fixture_exists(self) -> None:
         corpus_path = ROOT / "scripts" / "fixtures" / "readiness-rule-catalog-v1.json"
-        self.assertFalse(
-            corpus_path.exists(),
-            "readiness-rule corpus fixture must not exist in v1",
-        )
+        self.assertTrue(corpus_path.is_file())
 
-    def test_no_compatibility_corpus_in_readiness_rules(self) -> None:
-        result = subprocess.run(
-            [
-                "grep",
-                "-r",
-                "compatibility_corpus",
-                "scripts/bootstrap/readiness_rules.py",
-            ],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.assertEqual(result.returncode, 1)
+    def test_template_validator_accepts_the_live_corpus(self) -> None:
+        from scripts.validate_template import validate_readiness_rule_catalog
 
-    def test_no_baseline_comparison_in_readiness_rules(self) -> None:
-        result = subprocess.run(
-            [
-                "grep",
-                "-r",
-                "baseline_comparison",
-                "scripts/bootstrap/readiness_rules.py",
-            ],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
+        self.assertEqual(validate_readiness_rule_catalog(ROOT), ())
+
+    def test_template_validator_rejects_malformed_corpus_shapes(self) -> None:
+        from scripts import validate_template
+
+        documents = (
+            b"[]",
+            b'{"schema_version": 2}',
+            b'{"schema_version": 1, "rules": [1]}',
         )
-        self.assertEqual(result.returncode, 1)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            corpus = root / "scripts/fixtures/readiness-rule-catalog-v1.json"
+            corpus.parent.mkdir(parents=True)
+            for document in documents:
+                _ = corpus.write_bytes(document)
+                self.assertEqual(
+                    len(validate_template.validate_readiness_rule_catalog(root)), 1
+                )
+
+    def test_new_blocking_adopter_rule_is_rejected(self) -> None:
+        from scripts import validate_template
+        from scripts.bootstrap.readiness_rules import readiness_rule_surface
+
+        added = {
+            "code": "READINESS_NEW",
+            "subject_kind": "path",
+            "rule": "READINESS_NEW",
+            "severity": "blocking",
+            "owned_path_class": "adopter",
+            "satisfier": "adopter-edit",
+            "predicate": "file-exists",
+            "parameters": {"path": "NEW.md"},
+        }
+        with patch.object(
+            validate_template,
+            "readiness_rule_surface",
+            return_value=(*readiness_rule_surface(), added),
+            create=True,
+        ):
+            failures = validate_template.validate_readiness_rule_catalog(ROOT)
+        self.assertIn("added blocking adopter readiness rules", failures[0])
+
+    def test_stable_identity_change_is_rejected(self) -> None:
+        from scripts import validate_template
+        from scripts.bootstrap.readiness_rules import readiness_rule_surface
+
+        changed = {
+            **readiness_rule_surface()[0],
+            "rule": "READINESS_REBOUND",
+        }
+        with patch.object(
+            validate_template,
+            "readiness_rule_surface",
+            return_value=(changed, *readiness_rule_surface()[1:]),
+            create=True,
+        ):
+            failures = validate_template.validate_readiness_rule_catalog(ROOT)
+        self.assertIn("removed stable readiness rules", failures[0])
+        self.assertIn("added blocking adopter readiness rules", failures[0])
+
+    def test_stable_rule_change_is_rejected(self) -> None:
+        from scripts import validate_template
+        from scripts.bootstrap.readiness_rules import readiness_rule_surface
+
+        live = readiness_rule_surface()
+        changed = {**live[0], "severity": "advisory"}
+        with patch.object(
+            validate_template,
+            "readiness_rule_surface",
+            return_value=(changed, *live[1:]),
+            create=True,
+        ):
+            failures = validate_template.validate_readiness_rule_catalog(ROOT)
+        self.assertIn("changed stable readiness rules", failures[0])
 
 
 class CatalogTypeSafety(unittest.TestCase):

@@ -2,6 +2,7 @@ name: Copier Smoke Test
 
 on:
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read

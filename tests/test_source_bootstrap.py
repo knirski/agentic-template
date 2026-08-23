@@ -143,6 +143,21 @@ def test_source_workflows_match_the_frozen_security_fixtures() -> None:
     ).read_bytes()
 
 
+def test_release_requires_copier_generation_coverage() -> None:
+    """The release job must depend on the complete Copier generation gate."""
+    maintainer = (ROOT / ".github/workflows/template-ci.yml").read_text(
+        encoding="utf-8"
+    )
+    copier = (ROOT / ".github/workflows/copier-smoke.yml").read_text(encoding="utf-8")
+    assert "  workflow_call:" in copier
+    assert "  copier-smoke:\n" in maintainer
+    assert "uses: ./.github/workflows/copier-smoke.yml" in maintainer
+    assert (
+        "needs: [python-source, source-fixtures, workflow-lint, copier-smoke]"
+        in maintainer
+    )
+
+
 # The modules that own workflow rendering; the conformance-free pin below is
 # scoped to them rather than the whole scripts tree, so unrelated prose or
 # future legitimate YAML use elsewhere cannot trip it.
@@ -229,6 +244,9 @@ def _activate_source(
     hook = project / "scripts/validate-project"
     _ = hook.write_text(scaffold_hook(record), encoding="utf-8")
     hook.chmod(0o755)
+    _ = (project / "scripts/bootstrap/fragments/scaffolds/validate-project").write_text(
+        scaffold_hook(record), encoding="utf-8"
+    )
     _ = (project / "CONTRIBUTING.md").write_text(
         SCAFFOLD_CONTRIBUTING, encoding="utf-8"
     )

@@ -4,14 +4,15 @@ Carries every readiness v1 rule unchanged from the frozen baseline
 (design.md § Frozen readiness-rule baseline v1).  The checker derives its
 stable paths, markers, and headings from this catalog.
 
-Catalog immutability for manifest schema v1 is enforced by source review.
-No baseline comparison or compatibility corpus machinery is introduced.
+The public surface is compared with the checked-in schema-v1 compatibility
+corpus by the template validator.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 type Severity = Literal["blocking", "informational"]
 type SubjectKind = Literal["path", "repository"]
@@ -94,8 +95,8 @@ def _rule(
 # Frozen readiness-rule baseline v1
 # ---------------------------------------------------------------------------
 # Every rule is unchanged from the released v1.3.0 checker and the
-# bootstrap marker table.  Catalog immutability is enforced by source
-# review; no comparison or corpus machinery is introduced.
+# bootstrap marker table.  The checked-in compatibility corpus freezes this
+# surface for released schema-v1 projects.
 # ---------------------------------------------------------------------------
 
 _REQUIRED_PRD_HEADINGS: tuple[str, ...] = (
@@ -284,6 +285,34 @@ _RULES_BY_CODE: dict[str, ReadinessRuleDefinition] = {
     rule.code: rule for rule in FROZEN_CATALOG_V1
 }
 FINDING_CODES: frozenset[str] = frozenset(_RULES_BY_CODE)
+
+
+def _json_compatible(value: object) -> object:
+    if isinstance(value, tuple):
+        items = cast(tuple[object, ...], value)
+        return [_json_compatible(item) for item in items]
+    if isinstance(value, dict):
+        mapping = cast(Mapping[str, object], value)
+        return {key: _json_compatible(item) for key, item in mapping.items()}
+    return value
+
+
+def readiness_rule_surface() -> tuple[dict[str, object], ...]:
+    """Return the JSON-compatible stable surface of the readiness catalog."""
+
+    return tuple(
+        {
+            "code": rule.code,
+            "subject_kind": rule.subject_kind,
+            "rule": rule.rule,
+            "severity": rule.severity,
+            "owned_path_class": rule.owned_path_class,
+            "satisfier": rule.satisfier,
+            "predicate": rule.predicate,
+            "parameters": _json_compatible(rule.parameters),
+        }
+        for rule in FROZEN_CATALOG_V1
+    )
 
 
 def rules_by_code() -> dict[str, ReadinessRuleDefinition]:

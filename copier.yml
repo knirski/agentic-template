@@ -22,9 +22,9 @@ _exclude:
   # The finite template-maintenance artifact set declared by
   # .agentic-template/source-ownership.json and the cleanup-control inventory
   # itself; generated projects keep every other generated-lifecycle source
-  # path.  Seed-once files ship in the copied project so bootstrap can
-  # recognize the scaffold and install the adopter-owned content; Copier's
-  # merge and conflict handling preserves adopter edits during updates.
+  # path.  Seed-once output is materialized by bootstrap from the canonical
+  # scaffold blobs that remain in the copied project; Copier's merge and
+  # conflict handling therefore never claims the adopter-owned root paths.
   - .agentic-template/maintenance-artifacts.json
   - .github/workflows/copier-smoke.yml
   - .github/workflows/mutation.yml
@@ -38,6 +38,13 @@ _exclude:
   # The reusable validation boundary is adopter-owned and seeded by bootstrap;
   # Copier must not claim it during source updates.
   - .github/workflows/project-validation.yml
+  # Seed-once adopter output is supplied by bootstrap from the canonical
+  # generated-lifecycle scaffold blobs; Copier must not own root paths.
+  - /README.md
+  - docs/prd.md
+  - /SECURITY.md
+  - /CONTRIBUTING.md
+  - scripts/validate-project
   - docs/specs
   # Bootstrap-managed documentation is rendered transactionally after Copier
   # updates; Copier must not claim ownership of these derived outputs.

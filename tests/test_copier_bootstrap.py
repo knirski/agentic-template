@@ -81,13 +81,14 @@ def main() -> int:
         )
         record = workspace / "hook-runs"
         _ = record.write_text("", encoding="utf-8")
-        # Replace the source hook with a recording scaffold for this fixture;
-        # the source now carries the canonical extensionless path.  The source
-        # still does not ship CONTRIBUTING.md, and its real SECURITY.md is not
-        # marker-bearing placeholder content.
+        # Replace the source hook and its canonical scaffold blob with a
+        # recording scaffold for this fixture.
         hook = source / "scripts/validate-project"
         _ = hook.write_text(scaffold_hook(record), encoding="utf-8")
         hook.chmod(0o755)
+        _ = (
+            source / "scripts/bootstrap/fragments/scaffolds/validate-project"
+        ).write_text(scaffold_hook(record), encoding="utf-8")
         _ = (source / "CONTRIBUTING.md").write_text(
             SCAFFOLD_CONTRIBUTING, encoding="utf-8"
         )

@@ -5,7 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import assert_never
 
-from scripts.bootstrap.errors import CommandError, TransitionError, TransitionErrorKind
+from scripts.bootstrap.errors import (
+    CommandError,
+    ContractError,
+    ContractErrorKind,
+    TransactionError,
+    TransactionErrorKind,
+    TransitionError,
+    TransitionErrorKind,
+)
 from scripts.bootstrap.intents import (
     Add,
     Apply,
@@ -234,8 +242,15 @@ def _recovery(_intent: Recover, state: SystemState) -> RecoveryDecision:
             return RefuseRecovery(
                 _transition(TransitionErrorKind.RECOVERY_TARGET_MISMATCH)
             )
-        case TargetUnavailable() | StateRootInvalid():
+        case TargetUnavailable():
             return RefuseRecovery(_transition(TransitionErrorKind.UNSUPPORTED_TARGET))
+        case StateRootInvalid():
+            return RefuseRecovery(
+                TransactionError(
+                    TransactionErrorKind.INVALID_STATE_ROOT,
+                    subject="state root evidence",
+                )
+            )
         case ProtectedTargetAvailable():
             # A canonical template source needs no recovery: the design maps
             # it to ``NoRecoveryNeeded`` rather than a refusal.
@@ -266,12 +281,17 @@ def _recovery_for_journal(journal: ValidatedJournal) -> RecoveryDecision:
             )
 
 
-def _blocked(state: BlockedState) -> TransitionError:
+def _blocked(state: BlockedState) -> CommandError:
     match state:
         case TargetUnavailable():
             return _transition(TransitionErrorKind.UNSUPPORTED_TARGET)
-        case StalePendingWrite() | JournalPending() | StateRootInvalid():
+        case StalePendingWrite() | JournalPending():
             return _transition(TransitionErrorKind.RECOVERY_REQUIRED)
+        case StateRootInvalid():
+            return TransactionError(
+                TransactionErrorKind.INVALID_STATE_ROOT,
+                subject="state root evidence",
+            )
         case JournalAtDifferentTarget():
             return _transition(TransitionErrorKind.RECOVERY_TARGET_MISMATCH)
     return assert_never(
@@ -368,8 +388,12 @@ def _apply_decision(
             return _apply_cleanup_mismatch(intent)
         case RecognizedScaffold():
             return InitialInstall(intent)
-        case UnsupportedManifestFree() | InvalidManifest():
+        case UnsupportedManifestFree():
             return RefuseMutation(_transition(TransitionErrorKind.UNSUPPORTED_TARGET))
+        case InvalidManifest(reason=reason):
+            return RefuseMutation(
+                ContractError(ContractErrorKind.INVALID_MANIFEST, reason)
+            )
         case ExistingProject(state=existing):
             return _apply_existing_decision(intent, existing)
     return assert_never(
@@ -416,8 +440,10 @@ def _plan_apply_decision(intent: PlanApply, state: ProjectAvailable) -> CommandD
 
 
 def _add_decision(intent: Add | PlanAdd, state: ProjectAvailable) -> CommandDecision:
-    """Add accepts only a verified same-source Copier project without managed drift."""
+    """Add accepts either verified same-source project without managed drift."""
     match state.observation:
+        case ExistingProject(state=SnapshotExistingProject(condition=condition)):
+            return _add_for_condition(intent, condition)
         case ExistingProject(state=CopierExistingProject(condition=condition)):
             return _add_for_condition(intent, condition)
         case _:
@@ -427,19 +453,28 @@ def _add_decision(intent: Add | PlanAdd, state: ProjectAvailable) -> CommandDeci
 
 
 def _add_for_condition(
-    intent: Add | PlanAdd, condition: CopierCondition
+    intent: Add | PlanAdd, condition: SnapshotCondition | CopierCondition
 ) -> CommandDecision:
     match condition:
-        case CopierSourceSame(managed=ManagedDrift()):
-            return _refuse_for(
-                intent, _transition(TransitionErrorKind.OPERATION_UNAVAILABLE)
-            )
-        case CopierSourceSame():
+        case (
+            SnapshotSourceSame(managed=ManagedDrift())
+            | CopierSourceSame(managed=ManagedDrift())
+        ):
+            return _refuse_for(intent, _transition(TransitionErrorKind.MANAGED_DRIFT))
+        case SnapshotSourceSame() | CopierSourceSame():
             return _accept_add(intent)
-        case CopierConflicted() | CopierSourceChanged():
+        case (
+            SnapshotSourceChanged()
+            | SnapshotSourceUnrecoverable()
+            | CopierConflicted()
+            | CopierSourceChanged()
+        ):
             return _refuse_for(
                 intent, _transition(TransitionErrorKind.OPERATION_UNAVAILABLE)
             )
+    return assert_never(
+        condition
+    )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
 
 
 def _accept_add(intent: Add | PlanAdd) -> CommandDecision:

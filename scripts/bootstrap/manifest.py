@@ -29,6 +29,7 @@ from scripts.bootstrap.source_baseline import (
     GitHubSourceBaseline,
     LifecycleSourceEntry,
     SourceBaseline,
+    template_source_fingerprint,
 )
 from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
 from scripts.bootstrap.vocabulary import (
@@ -400,6 +401,21 @@ def _validate_provenance(
                     ManifestErrorKind.SCHEMA_VIOLATION, "source_baseline.entries"
                 )
             )
+    if (
+        tuple(
+            sorted(baseline.entries, key=lambda entry: entry.path.value.encode("utf-8"))
+        )
+        != baseline.entries
+    ):
+        return Err(
+            _manifest_error(
+                ManifestErrorKind.SCHEMA_VIOLATION, "source_baseline.entries"
+            )
+        )
+    if template_source_fingerprint(baseline.entries) != baseline.fingerprint:
+        return Err(
+            _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "source_baseline")
+        )
     return Ok(provenance)
 
 
