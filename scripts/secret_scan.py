@@ -74,6 +74,8 @@ def flatten_json(
             )
         case list(items):
             return "\n".join(flatten_json(item, skip_keys) for item in items)
+        case float():
+            return ""
         case bool() | int() | None:
             return ""
 

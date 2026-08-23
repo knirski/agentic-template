@@ -64,6 +64,12 @@ class CanonicalJsonTests(unittest.TestCase):
                 st.none(),
                 st.booleans(),
                 st.integers(min_value=-(2**53 - 1), max_value=2**53 - 1),
+                st.floats(
+                    allow_nan=False,
+                    allow_infinity=False,
+                    min_value=-(2**53 - 1),
+                    max_value=2**53 - 1,
+                ),
                 st.text(max_size=16, alphabet="abcdefghijklmnopqrstuvwxyz0123456789 "),
             ),
             lambda children: st.one_of(

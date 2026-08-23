@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable, Mapping
 from typing import cast
 
@@ -13,7 +14,7 @@ MAX_NESTING_DEPTH = 128
 
 
 type StrictJsonValue = (
-    dict[str, StrictJsonValue] | list[StrictJsonValue] | str | int | bool | None
+    dict[str, StrictJsonValue] | list[StrictJsonValue] | str | int | float | bool | None
 )
 
 
@@ -53,7 +54,11 @@ def _validate(value: object, depth: int = 0) -> None:
             raise ValueError("integer outside safe JSON range")
         return
     if isinstance(value, float):
-        raise ValueError("floats are not part of the bootstrap JSON domain")
+        if not math.isfinite(value):
+            raise ValueError(
+                "non-finite floats are not part of the bootstrap JSON domain"
+            )
+        return
     if isinstance(value, (list, tuple)):
         items = cast(list[object] | tuple[object, ...], value)
         for item in items:
