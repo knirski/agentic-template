@@ -39,8 +39,12 @@ jobs:
                 return 0
               fi
               if grep -q "Errno 39" <<<"$out" && grep -q "new_copy" <<<"$out" && grep -q "Directory not empty" <<<"$out"; then
-                echo "attempt ${attempt} hit the known copier teardown race; retrying"
-                sleep "$((attempt * 10))"
+                if [ "${attempt}" -lt 3 ]; then
+                  echo "attempt ${attempt} hit the known copier teardown race; retrying"
+                  sleep "$((attempt * 10))"
+                else
+                  break
+                fi
               else
                 break
               fi

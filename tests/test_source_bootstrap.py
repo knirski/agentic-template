@@ -170,6 +170,7 @@ def test_copier_smoke_retries_only_the_transient_teardown_race() -> None:
     assert 'grep -q "Errno 39" <<<"$out"' in copier
     assert 'grep -q "new_copy" <<<"$out"' in copier
     assert 'grep -q "Directory not empty" <<<"$out"' in copier
+    assert '[ "${attempt}" -lt 3 ]' in copier
     for invocation in ("tests/test_copier.py", "tests/test_copier_bootstrap.py"):
         assert f"retry_smoke uv run python {invocation}" in copier
 
