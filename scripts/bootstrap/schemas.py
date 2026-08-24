@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Annotated, ClassVar, Literal
+from typing import Annotated, ClassVar, Literal, cast
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
+    RootModel,
+    SerializerFunctionWrapHandler,
     StrictInt,
     StringConstraints,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
@@ -63,6 +67,20 @@ BranchName = Annotated[
 ]
 RepoPathString = Annotated[str, StringConstraints(min_length=1, strict=True)]
 type SettingValue = str | bool
+
+
+def _validate_collision_path(value: str) -> str:
+    match parse_path(value):
+        case Ok(_):
+            return value
+        case Err(_):
+            raise ValueError(
+                f"{value}: collision paths must be safe repository-relative paths"
+            )
+
+
+CollisionPath = Annotated[str, AfterValidator(_validate_collision_path)]
+CollisionAction = Literal["keep-existing", "replace"]
 
 
 class StrictModel(BaseModel):
@@ -165,6 +183,14 @@ class ProfileInput(StrictModel):
         return self
 
 
+class CollisionsInput(RootModel[dict[CollisionPath, CollisionAction]]):
+    model_config: ClassVar[ConfigDict] = ConfigDict(
+        frozen=True,
+        strict=True,
+        validate_assignment=True,
+    )
+
+
 class BootstrapBundle(StrictModel):
     schema_version: StrictInt
     project: ProjectInput
@@ -174,6 +200,7 @@ class BootstrapBundle(StrictModel):
     capability_settings: dict[Identifier, dict[SettingName, SettingValue]] = Field(
         default_factory=dict
     )
+    collisions: CollisionsInput | None = None
 
     @field_validator("schema_version")
     @classmethod
@@ -194,6 +221,15 @@ class BootstrapBundle(StrictModel):
         ):
             raise ValueError("secret settings are not accepted")
         return value
+
+    @model_serializer(mode="wrap")
+    def _serialize_model(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        document = cast(dict[str, object], handler(self))
+        if self.collisions is None or not self.collisions.root:
+            _ = document.pop("collisions", None)
+        return document
 
 
 class AdditionsInput(StrictModel):
