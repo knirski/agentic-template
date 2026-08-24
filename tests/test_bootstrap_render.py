@@ -70,6 +70,13 @@ LICENSING = LicensingInfo(mode="retain-apache-2.0", content_sha256=None)
 PROFILE = ProfileInfo(id="portable", frozen=())
 MAINTENANCE = MaintenanceInfo(status="clean", retained_paths=())
 SLOTS: Mapping[str, SlotContent] = MappingProxyType({})
+INVALID_SNAPSHOT_COMMITS: tuple[str | None, ...] = (
+    None,
+    "",
+    "   ",
+    "not-a-commit",
+    "ABC" * 20,
+)
 
 
 def intern_all(
@@ -1355,13 +1362,14 @@ def test_github_baseline_requires_snapshot_commit() -> None:
         case Ok(GitHubSourceBaseline() as baseline):
             assert baseline.snapshot_commit == commit
             assert baseline.entries == entries
+            assert baseline.fingerprint == template_source_fingerprint(entries)
         case Ok(CopierSourceBaseline()):
             raise AssertionError("expected a GitHub source baseline")
         case Err(error):
             raise AssertionError(f"unexpected source baseline failure: {error}")
         case Ok(_):
             raise AssertionError("unexpected source baseline variant")
-    for invalid in (None, "", "   ", "not-a-commit", "ABC" * 20):
+    for invalid in INVALID_SNAPSHOT_COMMITS:
         match derive_source_baseline(
             GenerationPath.GITHUB, entries, snapshot_commit=invalid
         ):
@@ -1389,7 +1397,7 @@ def test_adopted_baseline_requires_snapshot_commit() -> None:
             raise AssertionError("expected an adopted source baseline")
         case Err(error):
             raise AssertionError(f"unexpected source baseline failure: {error}")
-    for invalid in (None, "", "   ", "not-a-commit", "ABC" * 20):
+    for invalid in INVALID_SNAPSHOT_COMMITS:
         match derive_source_baseline(
             GenerationPath.ADOPTED, entries, snapshot_commit=invalid
         ):
