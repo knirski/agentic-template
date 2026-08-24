@@ -95,8 +95,16 @@
           "description": "Add CollisionsInput(StrictModel) mapping syntactically validated repository paths to Literal[\"keep-existing\", \"replace\"], attached as an optional field on BootstrapBundle. Decode validates syntax and the closed value set only; semantic validation stays in the compiler (T3). Collisions join normalized answers so bundle digests remain deterministic functions of inputs.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "date": "2026-08-24",
+              "commit": "ed95604",
+              "evidence": "14 new schema tests covering malformed paths, closed value set, absent-field identity, and digest iff-declarations-change via decode_bundle_input; full suite 1405 passed/82 subtests; basedpyright 0 errors repo-wide; ruff check/format clean; validate_template.py clean"
+            },
+            "deviations": [
+              "CollisionsInput is a frozen/strict pydantic RootModel[dict[path, action]] instead of a StrictModel subclass: pydantic forbids RootModel models from carrying StrictModel's extra=\"forbid\" config; applicable StrictModel semantics (frozen, strict, validate_assignment) are replicated verbatim.",
+              ".agentic-template/maintenance-artifacts.json was regenerated in this task's commit although T9 lists it: tracked test sources changed, the cleanup-inventory gate fails until regeneration, and T1 set the precedent of shipping it with edited test sources."
+            ]
           },
           "files": {
             "reuse": [
