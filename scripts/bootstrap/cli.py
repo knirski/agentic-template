@@ -1331,7 +1331,11 @@ def _project_changes(project: ProjectObservation) -> tuple[Change, ...]:
             match state:
                 case SnapshotExistingProject(recorded=recorded, condition=condition):
                     changes.append(
-                        Change("generation", "github", recorded.source_fingerprint[:16])
+                        Change(
+                            "generation",
+                            recorded.generation.value,
+                            recorded.source_fingerprint[:16],
+                        )
                     )
                     changes.extend(_condition_changes(condition))
                 case CopierExistingProject(recorded=recorded, condition=condition):

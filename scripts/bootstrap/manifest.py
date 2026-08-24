@@ -26,6 +26,7 @@ from scripts.bootstrap.intents import GenerationPath
 from scripts.bootstrap.paths import RepoPath, parse_path, path_byte_key, sorted_paths
 from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.source_baseline import (
+    AdoptedSourceBaseline,
     CopierSourceBaseline,
     GitHubSourceBaseline,
     LifecycleSourceEntry,
@@ -321,7 +322,11 @@ def _validate_answers(
 def _validate_provenance(
     provenance: ProvenanceRecord,
 ) -> Result[ProvenanceRecord, ManifestError]:
-    if provenance.generation_path not in (GenerationPath.GITHUB, GenerationPath.COPIER):
+    if provenance.generation_path not in (
+        GenerationPath.GITHUB,
+        GenerationPath.COPIER,
+        GenerationPath.ADOPTED,
+    ):
         return Err(
             _manifest_error(ManifestErrorKind.SCHEMA_VIOLATION, "generation_path")
         )
@@ -360,6 +365,16 @@ def _validate_provenance(
                 )
         case CopierSourceBaseline():
             if provenance.generation_path is not GenerationPath.COPIER:
+                return Err(
+                    _manifest_error(
+                        ManifestErrorKind.SCHEMA_VIOLATION, "source_baseline"
+                    )
+                )
+        case AdoptedSourceBaseline():
+            if (
+                provenance.generation_path is not GenerationPath.ADOPTED
+                or COMMIT_SHA.fullmatch(baseline.snapshot_commit) is None
+            ):
                 return Err(
                     _manifest_error(
                         ManifestErrorKind.SCHEMA_VIOLATION, "source_baseline"
@@ -496,6 +511,13 @@ def baseline_document(baseline: SourceBaseline) -> dict[str, object]:
                 "kind": "copier",
                 "fingerprint": baseline.fingerprint,
                 "entries": entries,
+            }
+        case AdoptedSourceBaseline():
+            return {
+                "kind": "adopted",
+                "fingerprint": baseline.fingerprint,
+                "entries": entries,
+                "snapshot_commit": baseline.snapshot_commit,
             }
         case _:  # pragma: no cover  # pyright: ignore[reportUnnecessaryComparison] — the remainder is Never under recommended mode; kept for runtime defense
             return assert_never(
@@ -1052,6 +1074,23 @@ def _decode_provenance(
                 entries=entries,
                 snapshot_commit=snapshot_commit,
             )
+        case "adopted":
+            snapshot_commit = baseline.get("snapshot_commit")
+            if (
+                not isinstance(snapshot_commit, str)
+                or COMMIT_SHA.fullmatch(snapshot_commit) is None
+            ):
+                return Err(
+                    _manifest_error(
+                        ManifestErrorKind.SCHEMA_VIOLATION, "provenance.source_baseline"
+                    )
+                )
+            source_baseline = AdoptedSourceBaseline(
+                kind="adopted",
+                fingerprint=raw_fingerprint,
+                entries=entries,
+                snapshot_commit=snapshot_commit,
+            )
         case "copier":
             if "snapshot_commit" in baseline:
                 return Err(
@@ -1070,7 +1109,7 @@ def _decode_provenance(
             )
     baseline_keys = (
         frozenset({"kind", "fingerprint", "entries", "snapshot_commit"})
-        if baseline.get("kind") == "github"
+        if isinstance(source_baseline, GitHubSourceBaseline | AdoptedSourceBaseline)
         else frozenset({"kind", "fingerprint", "entries"})
     )
     if set(baseline) != set(baseline_keys):

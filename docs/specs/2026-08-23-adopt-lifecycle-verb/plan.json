@@ -1,0 +1,493 @@
+{
+  "feature": "adopt-lifecycle-verb",
+  "spec": "docs/specs/2026-08-23-adopt-lifecycle-verb/design.md",
+  "goal": "Add plan adopt/adopt so any manifest-free, non-bare Git working tree can be installed into from an adoption bundle, recording ADOPTED provenance with snapshot-like posture.",
+  "preserved_behavior": [
+    "Every existing verb's outcomes are byte-identical, especially UNSUPPORTED_TARGET refusals for non-adopt intents over unmanaged trees",
+    "Canonical JSON envelopes, exit-code taxonomy, and REQ-014 text/JSON presentation parity",
+    "Manifest schema v1 decodes all existing projects unchanged; frozen readiness-rule corpus untouched",
+    "Journal/recovery semantics inherited unchanged from the transaction machine"
+  ],
+  "phases": [
+    {
+      "id": "P1",
+      "name": "Provenance foundation",
+      "tasks": [
+        {
+          "id": "T1",
+          "name": "Make ADOPTED a legal generation path",
+          "depends_on": [],
+          "inputs": [
+            "design.md settled decision: adopted projects behave snapshot-like (restore yes, reconcile never)",
+            "GenerationPath enum in scripts/bootstrap/intents.py",
+            "derive_source_baseline exhaustive match in scripts/bootstrap/source_baseline.py",
+            "Recorded-generation classification switch at scripts/bootstrap/observation.py:431",
+            "_GENERATION_PATHS derivation in scripts/bootstrap/plan_digest.py"
+          ],
+          "description": "Add ADOPTED = \"adopted\" to GenerationPath. Add an exhaustive match case returning AdoptedSourceBaseline(kind=\"adopted\", fingerprint, entries, snapshot_commit) that binds the reachable HEAD commit like GitHub snapshots do, enabling targeted repair per US-7. Route recorded ADOPTED projects through the existing snapshot-condition machinery so repair/regeneration rules match snapshots. basedpyright exhaustiveness will flag every remaining non-total match over GenerationPath until handled; resolve all of them. Receipt encode/reconstruct must accept \"adopted\" automatically because the closed set derives from the enum.",
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "date": "2026-08-23",
+              "commit": "066c76a",
+              "evidence": "4 new tests; full suite 1261 passed/80 subtests; basedpyright 0 errors; ruff check/format clean; validate_template.py clean"
+            },
+            "github_prs": [
+              "https://github.com/knirski/agentic-template/pull/94"
+            ]
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/identity.py::tagged_digest",
+              "scripts/bootstrap/state.py snapshot condition types"
+            ],
+            "create": [],
+            "modify": [
+              "scripts/bootstrap/intents.py",
+              "scripts/bootstrap/source_baseline.py",
+              "scripts/bootstrap/observation.py",
+              "tests/test_plan_contract.py",
+              "tests/test_bootstrap_foundations.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "AdoptedSourceBaseline",
+              "requirement": "US-7: adopted projects need a source baseline whose repair/regeneration rules match snapshot projects",
+              "consumers": [
+                "derive_source_baseline",
+                "receipt reconstruction in plan_digest.py"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "derive_source_baseline returns an adopted-tagged baseline over valid entries with a well-formed HEAD commit",
+              "derive_source_baseline refuses adopted baselines without a commit",
+              "receipt encode/reconstruct round-trips a plan carrying generation_path=adopted",
+              "existing github/copier baseline derivations are unchanged"
+            ],
+            "acceptance": [
+              "uv run basedpyright reports zero non-exhaustive matches over GenerationPath",
+              "all modified test files pass under uv run pytest"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P2",
+      "name": "Adoption declaration",
+      "tasks": [
+        {
+          "id": "T2",
+          "name": "Collision map in the answer document",
+          "depends_on": [
+            "T1"
+          ],
+          "inputs": [
+            "design.md Data Model section: collisions map path -> keep-existing | replace",
+            "BootstrapBundle schema at scripts/bootstrap/schemas.py:168",
+            "StrictModel base and existing input validators in scripts/bootstrap/schemas.py"
+          ],
+          "description": "Add CollisionsInput(StrictModel) mapping syntactically validated repository paths to Literal[\"keep-existing\", \"replace\"], attached as an optional field on BootstrapBundle. Decode validates syntax and the closed value set only; semantic validation stays in the compiler (T3). Collisions join normalized answers so bundle digests remain deterministic functions of inputs.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/schemas.py::StrictModel",
+              "scripts/bootstrap/paths.py path validation"
+            ],
+            "create": [],
+            "modify": [
+              "scripts/bootstrap/schemas.py",
+              "tests/test_bootstrap_schemas.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "CollisionsInput",
+              "requirement": "US-3/US-5: per-path explicit conflict declarations inside the answer document",
+              "consumers": [
+                "BootstrapBundle decode",
+                "compile_adoption_install"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "malformed collision paths are rejected with subject naming the offending entry",
+              "collision values outside the closed set are rejected",
+              "absent collisions field decodes identically to today",
+              "bundle digest changes if and only if declarations change"
+            ],
+            "acceptance": [
+              "schema tests pass and normalized answers carry declarations deterministically"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "name": "Conflict-aware compilation",
+      "tasks": [
+        {
+          "id": "T3",
+          "name": "compile_adoption_install partitions planned output against observed content",
+          "depends_on": [
+            "T2"
+          ],
+          "inputs": [
+            "design.md Architecture section partition rules",
+            "compile_initial_install shape at scripts/bootstrap/bundles.py:396",
+            "OperationPlan operation types in scripts/bootstrap/planner.py",
+            "TargetSnapshot of observed entries supplied by observation"
+          ],
+          "description": "Create compile_adoption_install mirroring compile_initial_install's inputs but partitioning planned managed outputs against observed entries: absent paths create files; declared keep-existing paths are excluded from both the plan operations and the managed inventory; declared replace paths become ReplaceFileOperation capturing prior FileState in the receipt; undeclared collisions raise CompileErrorKind.UNDECLARED_COLLISION listing every offending path; a declaration naming a path that does not collide raises a typed unmatched-declaration error; replace targeting the seed-once legal/provenance class raises ILLEGAL_REPLACE_TARGET (US-8 structural rejection). Reuse seed-once input handling, manifest answer normalization, VerifiedBlobStore, gate specifications, and provenance assembly with generation=ADOPTED.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/bundles.py::_seed_once_inputs",
+              "scripts/bootstrap/bundles.py::_manifest_answers",
+              "scripts/bootstrap/planner.py operation types",
+              "scripts/bootstrap/identity.py::FileState"
+            ],
+            "create": [],
+            "modify": [
+              "scripts/bootstrap/bundles.py",
+              "scripts/bootstrap/planner.py",
+              "tests/test_bootstrap_planner.py",
+              "tests/test_bootstrap_bundles.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "compile_adoption_install",
+              "requirement": "US-1/US-4/US-5/US-8: one deterministic conflict-aware plan for installing into brownfield trees",
+              "consumers": [
+                "adopt/plan-adopt executor in scripts/bootstrap/cli.py"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "absent planned outputs compile to create operations identical to apply's for the same bundle",
+              "keep-existing paths appear in neither operations nor managed inventory",
+              "replace paths compile to replace operations carrying prior FileState",
+              "undeclared collision lists every offending path in the error subject",
+              "declaration naming a non-colliding path errors as unmatched declaration",
+              "replace on a seed-once path errors as illegal replace target"
+            ],
+            "acceptance": [
+              "compilation is a pure function of decoded bundle plus observation; repeat calls yield identical plans"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "name": "Decision core",
+      "tasks": [
+        {
+          "id": "T4",
+          "name": "PlanAdopt/Adopt intents and _adopt_decision",
+          "depends_on": [
+            "T1"
+          ],
+          "inputs": [
+            "design.md Architecture section decision rules",
+            "closed intent unions at scripts/bootstrap/intents.py:114",
+            "decision dispatch in scripts/bootstrap/decisions.py decide_project and _project_action",
+            "InitialInstall/CompileCandidate reuse decision from design.md",
+            "TransitionErrorKind members at scripts/bootstrap/errors.py:57"
+          ],
+          "description": "Add AdoptOptions(bundle_digest) mirroring ApplyOptions plus PlanAdopt/Adopt intent dataclasses joined into the ProjectIntent union. Add _adopt_decision accepting only ProjectAvailable whose observation is UnsupportedManifestFree (either empty or populated shape); recognized scaffolds refuse naming apply as next action; existing projects refuse naming status. Reuse InitialInstall and CompileCandidate decision types - no new machine-level decision type. Every other verb keeps refusing over UnsupportedManifestFree exactly as today.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/decisions.py::_refuse_for",
+              "scripts/bootstrap/errors.py::TransitionErrorKind"
+            ],
+            "create": [],
+            "modify": [
+              "scripts/bootstrap/intents.py",
+              "scripts/bootstrap/decisions.py",
+              "tests/test_bootstrap_decisions.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "PlanAdopt/Adopt intents",
+              "requirement": "REQ-010 lifecycle gains the adoption verb pair with typed outcomes",
+              "consumers": [
+                "decide_project",
+                "CLI parsing in scripts/bootstrap/cli.py"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "adopt accepts unsupported-manifest-free states of both shapes",
+              "adopt over a recognized scaffold refuses pointing at apply",
+              "adopt over any existing project state refuses pointing at status",
+              "apply/add/restore/reconcile/recover decisions over unsupported-manifest-free are unchanged from current behavior"
+            ],
+            "acceptance": [
+              "decision matrix tests prove intent x state totality with assert_never exhaustiveness"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "name": "CLI shell",
+      "tasks": [
+        {
+          "id": "T5",
+          "name": "Subparsers, executors, and status framing",
+          "depends_on": [
+            "T3",
+            "T4"
+          ],
+          "inputs": [
+            "apply subparser wiring at scripts/bootstrap/cli.py:361 and executor pattern at cli.py:2039-2066",
+            "UnsupportedManifestFree status case at scripts/bootstrap/cli.py:1315",
+            "canonical envelope emission helpers used by the apply executor"
+          ],
+          "description": "Add adopt and plan adopt subparsers mirroring apply's --bundle/--target/--out interface. Implement the executor by following the apply pattern matching CompileCandidate() | InitialInstall(), reusing envelope shapes verbatim; envelopes carry intent strings adopt and plan-adopt. Extend status presentation for UnsupportedManifestFree with adoptability framing naming init plus plan adopt as next actions while remaining exit-0 inspection. Text and JSON presentations agree on diagnostics and next actions per REQ-014.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/cli.py apply executor structure",
+              "envelope/presentation helpers in scripts/bootstrap/presentation.py"
+            ],
+            "create": [],
+            "modify": [
+              "scripts/bootstrap/cli.py",
+              "tests/test_bootstrap_cli.py",
+              "tests/test_bootstrap_presentation.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "plan adopt writes a canonical receipt without mutating the target",
+              "adopt exits 0 on hook success and 1 on installed-but-unready hook failure",
+              "refusals exit 1 with named next actions; usage/input/contract failures exit 2",
+              "--format json emits exactly one canonical envelope on stdout for every adopt outcome",
+              "status on unmanaged trees names init and plan adopt without executing anything"
+            ],
+            "acceptance": [
+              "text and JSON presentations carry identical diagnostics for every adopt outcome"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P6",
+      "name": "End-to-end guarantees",
+      "tasks": [
+        {
+          "id": "T6",
+          "name": "Journaled adoption end-to-end and recovery",
+          "depends_on": [
+            "T5"
+          ],
+          "inputs": [
+            "transaction harness patterns in tests/test_bootstrap_transaction.py and tests/test_bootstrap_stateful.py",
+            "crash-sequence recovery patterns in tests/test_bootstrap_recovery.py"
+          ],
+          "description": "Exercise adoption through the real transaction machine: dirty-tree and empty-tree adoptions install completely; adopter-hook failure installs but exits 1 retaining evidence without rollback; interrupted runs restore the exact pre-state or finish forward via recover, surviving git clean -fdx. Keep-existing paths remain untouched byte-for-byte across recovery sequences.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "journal machine in scripts/bootstrap/transaction_machine.py",
+              "fixture scaffolding in tests/bootstrap_fixtures.py and tests/fixtures.py"
+            ],
+            "create": [],
+            "modify": [
+              "tests/test_bootstrap_transaction.py",
+              "tests/test_bootstrap_stateful.py",
+              "tests/test_bootstrap_recovery.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "dirty-tree adoption installs and leaves undeclared adopter files untouched",
+              "empty-tree adoption installs the complete profile closure",
+              "hook failure yields installed-but-unready with exit 1 and no rollback",
+              "each injected crash sequence either restores exact pre-state or completes forward under recover",
+              "keep-existing paths survive every crash sequence unchanged"
+            ],
+            "acceptance": [
+              "recovery remains idempotent and preserves unrecognized third states"
+            ]
+          }
+        },
+        {
+          "id": "T7",
+          "name": "Generation-path parity and determinism",
+          "depends_on": [
+            "T5"
+          ],
+          "inputs": [
+            "generation-path fixture suites tests/test_copier_bootstrap.py and tests/test_github_template_readiness.py patterns",
+            "profile/capability matrix in tests/test_capability_matrix.py",
+            "determinism suite tests/test_bootstrap_determinism.py"
+          ],
+          "description": "Prove adopt composes with the rest of the contract: GitHub and Copier fixture scaffolds refuse adopt pointing at apply; the complete profile/capability matrix installs identically through adopt; repeated adoptions produce byte-identical plans and receipts across runs and entry shapes; restore works against adopted baselines while reconcile permanently refuses with OPERATION_UNAVAILABLE.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "fixture generation helpers in tests/fixtures.py"
+            ],
+            "create": [],
+            "modify": [
+              "tests/test_copier_bootstrap.py",
+              "tests/test_capability_matrix.py",
+              "tests/test_bootstrap_determinism.py",
+              "tests/test_bootstrap_lifecycle.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "both fixture scaffolds refuse adopt with next action apply",
+              "full profile/capability matrix passes through adopt",
+              "repeat adoptions yield byte-identical receipts",
+              "restore succeeds on adopted projects; reconcile refuses permanently"
+            ],
+            "acceptance": [
+              "no capability-specific branches were added to resolver, renderer, transaction shell, or CLI (REQ-015)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P7",
+      "name": "Contract and documentation",
+      "tasks": [
+        {
+          "id": "T8",
+          "name": "PRD, CONTEXT.md, and adopter documentation amendments",
+          "depends_on": [
+            "T7"
+          ],
+          "inputs": [
+            "design.md Contract amendments section (authoritative wording scope)",
+            "docs/prd.md REQ-007 and REQ-010",
+            "CONTEXT.md terms Unrecognized manifest-free target, Bootstrap answer document",
+            "generated documentation fragments in scripts/bootstrap/capability_fragments.py core_document_fragments"
+          ],
+          "description": "Amend REQ-007 to admit adoption of any verified non-bare manifest-free Git working tree alongside the two recognized scaffolds; amend REQ-010 to add plan adopt/adopt to the public lifecycle with snapshot-like posture and permanent reconcile refusal. Narrow the Unrecognized manifest-free target term to non-Git, bare, and manifest-bearing states; add Adopted project and Adoption declaration terms; extend the Bootstrap answer document definition to allow the declaration. Update README, docs/project-readiness.md, and generated durable documents mentioning lifecycle availability - through fragment definitions, never per-capability branches.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "fragment definition layer in scripts/bootstrap/capability_fragments.py"
+            ],
+            "create": [],
+            "modify": [
+              "docs/prd.md",
+              "CONTEXT.md",
+              "README.md",
+              "docs/project-readiness.md",
+              "scripts/bootstrap/capability_fragments.py",
+              "tests/test_delivery_contract.py",
+              "tests/test_bootstrap_documentation.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "delivery-contract tests pass against amended REQ wording",
+              "documentation tests pass including generated fragments mentioning adopt",
+              "CONTEXT.md Avoid lists stay consistent with new terms"
+            ],
+            "acceptance": [
+              "readiness-rule corpus and catalog fixtures are untouched (frozen per REQ-013)"
+            ]
+          }
+        },
+        {
+          "id": "T9",
+          "name": "Release-readiness sweep",
+          "depends_on": [
+            "T8"
+          ],
+          "inputs": [
+            "README procedure: Regenerating the source cleanup inventory",
+            "repository source checks listed in README Validation section"
+          ],
+          "description": "Run every repository gate: uv sync --all-groups --locked, uv run python scripts/validate_template.py, uv run ruff check, uv run ruff format --check, uv run basedpyright, and the complete pytest suite. Regenerate .agentic-template/maintenance-artifacts.json using the documented procedure because tracked source changed, then git add the rewritten inventory; test_cleanup_inventory_matches_the_tracked_source fails otherwise. Conventional-commit discipline applies when committing.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [],
+            "create": [],
+            "modify": [
+              ".agentic-template/maintenance-artifacts.json"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "validate_template.py reports zero diagnostics",
+              "ruff check and ruff format --check are clean",
+              "basedpyright reports zero errors",
+              "complete pytest suite passes including test_cleanup_inventory_matches_the_tracked_source"
+            ],
+            "acceptance": [
+              "every release-critical command is green locally before any PR is opened"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

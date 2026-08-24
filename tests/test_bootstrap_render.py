@@ -21,8 +21,12 @@ from scripts.bootstrap.contributions import (
 from scripts.bootstrap.errors import ContractError, ContractErrorKind
 from scripts.bootstrap.identity import PosixMode, sha256_hex
 from scripts.bootstrap.intents import GenerationPath
-from scripts.bootstrap.manifest import SlotContent
+from scripts.bootstrap.manifest import SlotContent, baseline_document
 from scripts.bootstrap.paths import RepoPath
+from scripts.bootstrap.plan_digest import (
+    ReceiptErrorKind,
+    _reconstruct_source_baseline,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
+)
 from scripts.bootstrap.render import (
     ArtifactDefinition,
     CapabilityDefinition,
@@ -53,6 +57,7 @@ from scripts.bootstrap.render import (
 )
 from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.source_baseline import (
+    AdoptedSourceBaseline,
     CopierSourceBaseline,
     GitHubSourceBaseline,
     LifecycleSourceEntry,
@@ -65,6 +70,13 @@ LICENSING = LicensingInfo(mode="retain-apache-2.0", content_sha256=None)
 PROFILE = ProfileInfo(id="portable", frozen=())
 MAINTENANCE = MaintenanceInfo(status="clean", retained_paths=())
 SLOTS: Mapping[str, SlotContent] = MappingProxyType({})
+INVALID_SNAPSHOT_COMMITS: tuple[str | None, ...] = (
+    None,
+    "",
+    "   ",
+    "not-a-commit",
+    "ABC" * 20,
+)
 
 
 def intern_all(
@@ -1350,13 +1362,14 @@ def test_github_baseline_requires_snapshot_commit() -> None:
         case Ok(GitHubSourceBaseline() as baseline):
             assert baseline.snapshot_commit == commit
             assert baseline.entries == entries
+            assert baseline.fingerprint == template_source_fingerprint(entries)
         case Ok(CopierSourceBaseline()):
             raise AssertionError("expected a GitHub source baseline")
         case Err(error):
             raise AssertionError(f"unexpected source baseline failure: {error}")
         case Ok(_):
             raise AssertionError("unexpected source baseline variant")
-    for invalid in (None, "", "   ", "not-a-commit", "ABC" * 20):
+    for invalid in INVALID_SNAPSHOT_COMMITS:
         match derive_source_baseline(
             GenerationPath.GITHUB, entries, snapshot_commit=invalid
         ):
@@ -1364,6 +1377,64 @@ def test_github_baseline_requires_snapshot_commit() -> None:
                 assert error.kind is ContractErrorKind.SOURCE_CONTRACT_INVALID
             case Ok(_):
                 raise AssertionError("expected a snapshot-commit failure")
+
+
+def test_adopted_baseline_requires_snapshot_commit() -> None:
+    entries = (
+        LifecycleSourceEntry(
+            path=RepoPath("a.txt"), kind="file", mode=PosixMode.FILE, sha256="a" * 64
+        ),
+    )
+    commit = "a" * 40
+    match derive_source_baseline(
+        GenerationPath.ADOPTED, entries, snapshot_commit=commit
+    ):
+        case Ok(AdoptedSourceBaseline() as baseline):
+            assert baseline.snapshot_commit == commit
+            assert baseline.entries == entries
+            assert baseline.fingerprint == template_source_fingerprint(entries)
+        case Ok(_):
+            raise AssertionError("expected an adopted source baseline")
+        case Err(error):
+            raise AssertionError(f"unexpected source baseline failure: {error}")
+    for invalid in INVALID_SNAPSHOT_COMMITS:
+        match derive_source_baseline(
+            GenerationPath.ADOPTED, entries, snapshot_commit=invalid
+        ):
+            case Err(error):
+                assert error.kind is ContractErrorKind.SOURCE_CONTRACT_INVALID
+            case Ok(_):
+                raise AssertionError("expected a snapshot-commit failure")
+
+
+def test_adopted_baseline_receipt_document_round_trips() -> None:
+    entries = (
+        LifecycleSourceEntry(
+            path=RepoPath("a.txt"), kind="file", mode=PosixMode.FILE, sha256="a" * 64
+        ),
+    )
+    match derive_source_baseline(
+        GenerationPath.ADOPTED, entries, snapshot_commit="a" * 40
+    ):
+        case Ok(AdoptedSourceBaseline() as baseline):
+            pass
+        case Ok(_):
+            raise AssertionError("expected an adopted source baseline")
+        case Err(error):
+            raise AssertionError(f"unexpected source baseline failure: {error}")
+    document = baseline_document(baseline)
+    match _reconstruct_source_baseline(document, GenerationPath.ADOPTED):
+        case Ok(AdoptedSourceBaseline() as restored):
+            assert restored == baseline
+        case Ok(_):
+            raise AssertionError("expected an adopted source baseline")
+        case Err(error):
+            raise AssertionError(f"unexpected reconstruction failure: {error}")
+    match _reconstruct_source_baseline(document, GenerationPath.COPIER):
+        case Err(error):
+            assert error.kind is ReceiptErrorKind.SCHEMA_VIOLATION
+        case Ok(_):
+            raise AssertionError("expected a generation mismatch failure")
 
 
 def test_copier_baseline_rejects_snapshot_commit() -> None:

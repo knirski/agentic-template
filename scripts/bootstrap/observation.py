@@ -71,6 +71,7 @@ from scripts.bootstrap.scaffold import (
     recognize_generation,
 )
 from scripts.bootstrap.source_baseline import (
+    AdoptedSourceBaseline,
     GitHubSourceBaseline,
     LifecycleSourceEntry,
 )
@@ -429,7 +430,7 @@ def classify_existing_project(
             pass
     managed = _managed_observation(manifest.managed, files)
     match manifest.provenance.generation_path:
-        case GenerationPath.GITHUB:
+        case GenerationPath.GITHUB | GenerationPath.ADOPTED:
             snapshot_condition = _snapshot_condition(
                 manifest=manifest,
                 managed=managed,
@@ -601,9 +602,12 @@ def _snapshot_condition(
                 delta, f"recorded content differs at commit: {path.value}", managed
             )
     baseline = manifest.provenance.source_baseline
-    if not isinstance(baseline, GitHubSourceBaseline):  # pragma: no cover
+    if not isinstance(  # pragma: no cover — classify routes only commit-binding generations; kept as a runtime guard
+        baseline,
+        GitHubSourceBaseline | AdoptedSourceBaseline,
+    ):
         return SnapshotSourceUnrecoverable(  # pragma: no cover
-            delta, "snapshot repair requires a GitHub source baseline", managed
+            delta, "snapshot repair requires a commit-binding source baseline", managed
         )
     return SnapshotSourceChanged(
         delta, SnapshotRepair(baseline.snapshot_commit, delta.paths), managed
@@ -1489,7 +1493,9 @@ def observe_system(
             match manifest_decoded:
                 case Ok(manifest):
                     baseline = manifest.provenance.source_baseline
-                    if isinstance(baseline, GitHubSourceBaseline):
+                    if isinstance(
+                        baseline, GitHubSourceBaseline | AdoptedSourceBaseline
+                    ):
                         snapshot_commit = baseline.snapshot_commit
                 case Err(_):
                     pass
