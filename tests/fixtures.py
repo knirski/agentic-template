@@ -178,9 +178,9 @@ def assert_err[ErrorT, ValueT](
     match result:
         case Err(error):
             return error
-        case Ok(_):
+        case Ok(value):
             context = f"{message}: " if message else ""
-            raise AssertionError(f"{context}expected a failure")
+            raise AssertionError(f"{context}expected a failure, got {value}")
 
 
 def tracked_files(root: Path) -> list[str]:
