@@ -93,7 +93,9 @@ flaky red) and CI (wall time, flaky reruns).
 
 - **US-5 (should): Fast, faithful materialization.** Per-fixture projects come
   from stdlib `shutil.copytree` off a session pristine snapshot, preserving
-  bytes and modes.
+  bytes and modes. The fidelity test pins the full selection contract: the
+  enumerated file set (tracked plus non-ignored untracked, dangling-symlink
+  entries omitted) and byte/mode equality against today's construction.
   - Accept: focused fidelity test compares byte digests and permission bits
     against today's construction output on this machine.
 
@@ -181,10 +183,17 @@ conftest-declared fixtures with `tmp_path_factory` lifetime management.
 Test-infrastructure-local terms used consistently below (not product-domain
 terms; CONTEXT.md unaffected):
 
-- **Pristine snapshot**: one per-worker copy of the tracked source tree (no
-  git metadata), materialized once and only ever read.
+- **Pristine snapshot**: one per-worker copy of the source file set enumerated
+  by `tests/fixtures.py::tracked_files()` — `git ls-files -co
+  --exclude-standard`, i.e. tracked **plus non-ignored untracked** files, with
+  entries whose paths fail `is_file()` (today the committed `.claude/skills/*`
+  symlinks) omitted exactly as the current helper does. Built by copying each
+  enumerated file individually (preserving bytes and modes); never a
+  `copytree` over the repository root. No git metadata is copied, and the
+  snapshot is materialized once and only ever read.
 - **Materialization**: producing a per-test writable tree by copying the
-  pristine snapshot.
+  pristine snapshot (a tree of plain regular files) with stdlib
+  `shutil.copytree`.
 - **Seed commit**: the single `git init/add/commit` sequence giving a fixture a
   recognized worktree.
 - **Snapshot project**: a materialized tree + scaffold overlay + seed commit +
