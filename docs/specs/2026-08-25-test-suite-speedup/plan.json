@@ -130,7 +130,7 @@
             "Inline git init/add sites in test_bootstrap_observation.py (~978, 1051), test_bootstrap_recovery.py (~985), test_bootstrap_state_root.py",
             "Bundle writers: tests/fixtures.py::write_bundle and tests/test_bootstrap_cli.py::BundleDir (all_scaffold/supplied variants, record_path wiring, bootstrap.json schema_version 1 document)"
           ],
-          "description": "Add to tests/factory.py: seed_repo(parent, files: Mapping[str, str | bytes], *, name='repo') -> Path writing the given files and producing one committed repo via git(); write_answer_bundle(parent, *, supplied, record, name='bundle', capabilities=None, capability_settings=None) merging write_bundle and BundleDir behavior including the exact bootstrap.json field order/content and executable hook bits.",
+          "description": "Add to tests/factory.py: seed_repo(parent, files: Mapping[str, str | bytes], *, name='repo') -> Path writing the given files and producing one committed repo via git(); the repo initializes with --initial-branch=main and commits with local identity (-c user.name -c user.email) because the session env fixture nulls global/system git config — clean runners must not depend on ambient configuration. Also write_answer_bundle(parent, *, supplied, record, name='bundle', capabilities=None, capability_settings=None) merging write_bundle and BundleDir behavior including the exact bootstrap.json field order/content and executable hook bits.",
           "execution": {"mode": "inline", "status": "pending", "completion": null},
           "files": {"reuse": ["tests/fixtures.py::write_bundle", "tests/test_bootstrap_cli.py::BundleDir"], "create": [], "modify": ["tests/factory.py"], "delete": []},
           "new_abstractions": [

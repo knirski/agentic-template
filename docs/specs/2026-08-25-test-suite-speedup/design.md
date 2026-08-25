@@ -205,7 +205,7 @@ terms; CONTEXT.md unaffected):
 
 Three layers, strict dependency direction:
 
-```
+```text
 suites (plain pytest modules, post-stage-7)
     │ requests fixtures / calls builders
 conftest.py                   ← pytest coupling only: scopes, tmp_path
@@ -299,6 +299,12 @@ Decisions:
   `CANONICAL_IGNORE` centralizes four bespoke ignore lists; `seed_repo`
   replaces every inline git site.
 - Error style: fail loud with captured stderr (today's `_snapshot` behavior).
+- Deterministic repo identity: because the session environment nulls global and
+  system git config, every seeded repository is initialized with
+  `--initial-branch=main` and commits with local identity
+  (`-c user.name=... -c user.email=...`), exactly matching existing fixture
+  practice. `seed_repo` and `build_snapshot_project` both do this; clean
+  runners never depend on ambient git configuration.
 
 ## Data Model
 
