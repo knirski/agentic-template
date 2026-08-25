@@ -120,7 +120,22 @@
             "tests/fixtures.py::tracked_files enumerates tracked files via git ls-files"
           ],
           "description": "Create tests/factory.py (pytest-free) with: type TemplateSource = Literal['live', 'synthetic']; frozen dataclasses SnapshotConfig (template, maintenance=False, copier_marker=False) and SnapshotProject (root, hook_runs, template_root, run_count()); REPO_ROOT constant; build_pristine_snapshot(root, parent) building the snapshot by enumerating the source set with fixtures.tracked_files() (git ls-files -co --exclude-standard: tracked plus non-ignored untracked; entries failing is_file(), today the committed .claude/skills/* symlinks, are omitted exactly as the current helper does) and copying each enumerated file individually preserving bytes+modes — never a copytree over the repository root; pristine_snapshot() as lru_cache(1) accessor delegating to build_pristine_snapshot (the one sanctioned cache): on first call it creates its root via tempfile.mkdtemp(prefix='agentic-template-pristine.') and registers atexit cleanup (shutil.rmtree with ignore_errors=True) so the tree outlives every consumer in the process and never leaks beyond exit — under xdist each worker owns one such copy (~15ms, accepted); copy_tree(source, target, ignore=CANONICAL_IGNORE) centralizing the canonical ignore frozenset replacing four bespoke shutil.ignore_patterns lists (.git, .direnv, __pycache__, result, .venv, .hypothesis, .pytest_cache, .ruff_cache, .mypy_cache, .coverage); git(*args, cwd) helper running subprocess git and raising with captured stderr on failure. Preserve today's symlink-follows-to-file copying semantics.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-25",
+              "commits": ["96cc828"],
+              "evidence": [
+                "tests/factory.py imports successfully without pytest imports or side effects",
+                "uv run ruff check . passed with All checks passed",
+                "uv run ruff format --check . passed with 103 files already formatted",
+                "uv run basedpyright passed with 0 errors, 0 warnings, 0 notes",
+                "uv run pytest -q passed: 1405 tests, 82 subtests",
+                "Regenerated .rygor/maintenance-artifacts.json because the new factory and plan execution record change fingerprinted source digests"
+              ]
+            }
+          },
           "files": {"reuse": ["tests/fixtures.py"], "create": ["tests/factory.py"], "modify": [], "delete": []},
           "new_abstractions": [
             {"name": "SnapshotConfig/SnapshotProject", "requirement": "Typed, immutable configuration and single-value result for fixture project construction", "consumers": "build_snapshot_project (T4), conftest scaffolded_project (T12), converting suites (P4, P6-P7)"},
