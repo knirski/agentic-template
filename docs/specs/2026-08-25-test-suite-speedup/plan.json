@@ -125,7 +125,7 @@
             "status": "completed",
             "completion": {
               "completed_at": "2026-08-25",
-              "commits": [],
+              "commits": ["96cc828"],
               "evidence": [
                 "tests/factory.py imports successfully without pytest imports or side effects",
                 "uv run ruff check . passed with All checks passed",
