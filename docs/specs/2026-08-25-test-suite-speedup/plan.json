@@ -28,7 +28,7 @@
             "status": "completed",
             "completion": {
               "completed_at": "2026-08-25",
-              "commits": [],
+              "commits": ["177dd30"],
               "evidence": [
                 "40 consecutive parity-test runs passed; each run reported 1 passed and 3 subtests",
                 "10 consecutive tests/test_bootstrap_cli.py runs passed; each run reported 40 passed and 16 subtests",
