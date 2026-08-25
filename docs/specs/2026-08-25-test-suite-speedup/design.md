@@ -299,6 +299,12 @@ Decisions:
   and `case _: assert_never(...)` — exhaustiveness checked by basedpyright.
 - `pristine_snapshot()` is the single sanctioned cache (`lru_cache(1)`); the
   session fixture delegates to it. Deliberate dual ownership, documented.
+  Lifetime and ownership are explicit: on first call the cached root is
+  created under `tempfile.mkdtemp(prefix="agentic-template-pristine.")` and
+  registered with `atexit.register(shutil.rmtree, ..., ignore_errors=True)`,
+  so it outlives every consumer in the process and never leaks beyond it.
+  Under xdist each worker builds its own copy (~15ms, accepted — see
+  Framework facts); the cache is a pure accessor to an immutable tree.
 - `write_answer_bundle` merges `fixtures.write_bundle` and CLI `BundleDir`;
   `CANONICAL_IGNORE` centralizes four bespoke ignore lists; `seed_repo`
   replaces every inline git site.
