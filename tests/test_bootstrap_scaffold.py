@@ -18,7 +18,6 @@ from scripts.bootstrap.observation import (
     _scaffold_bytes,  # pyright: ignore[reportPrivateUsage]  intentional scaffold fixture access
 )
 from scripts.bootstrap.paths import RepoPath
-from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.scaffold import (
     CLEANUP_SCHEMA_VERSION,
     MAINTENANCE_INVENTORY_PATH,
@@ -35,6 +34,7 @@ from scripts.bootstrap.state import (
     CleanupContractValid,
     NoSnapshotCleanup,
 )
+from tests.fixtures import assert_err, assert_ok
 
 DIGEST = "0" * 64
 
@@ -146,50 +146,43 @@ class ScaffoldRecognitionTests(unittest.TestCase):
 
 class CleanupInventoryTests(unittest.TestCase):
     def test_invalid_json_is_rejected(self) -> None:
-        match decode_cleanup_inventory(b"{not json"):
-            case Err(error):
-                self.assertIsInstance(error, CleanupContractMismatch)
-            case Ok(_):
-                self.fail("invalid JSON inventory decoded")
+        error = assert_err(
+            decode_cleanup_inventory(b"{not json"), "invalid JSON inventory decoded"
+        )
+        self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_deeply_nested_inventory_is_rejected(self) -> None:
         payload = b"[" * 10000 + b"0" + b"]" * 10000
-        match decode_cleanup_inventory(payload):
-            case Err(error):
-                self.assertIsInstance(error, CleanupContractMismatch)
-            case Ok(_):
-                self.fail("deeply nested inventory decoded")
+        error = assert_err(
+            decode_cleanup_inventory(payload), "deeply nested inventory decoded"
+        )
+        self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_wrong_document_shape_is_rejected(self) -> None:
-        match decode_cleanup_inventory(canonical_json({"schema_version": 1})):
-            case Err(error):
-                self.assertIsInstance(error, CleanupContractMismatch)
-            case Ok(_):
-                self.fail("wrong-shape inventory decoded")
+        error = assert_err(
+            decode_cleanup_inventory(canonical_json({"schema_version": 1})),
+            "wrong-shape inventory decoded",
+        )
+        self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_wrong_schema_version_is_rejected(self) -> None:
         payload = canonical_json({"schema_version": 2, "entries": []})
-        match decode_cleanup_inventory(payload):
-            case Err(error):
-                self.assertIsInstance(error, CleanupContractMismatch)
-            case Ok(_):
-                self.fail("future schema version decoded")
+        error = assert_err(
+            decode_cleanup_inventory(payload), "future schema version decoded"
+        )
+        self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_entries_not_a_list_is_rejected(self) -> None:
         payload = canonical_json({"schema_version": 1, "entries": {}})
-        match decode_cleanup_inventory(payload):
-            case Err(error):
-                self.assertIsInstance(error, CleanupContractMismatch)
-            case Ok(_):
-                self.fail("non-list entries decoded")
+        error = assert_err(
+            decode_cleanup_inventory(payload), "non-list entries decoded"
+        )
+        self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_entry_with_extra_keys_is_rejected(self) -> None:
         payload = _inventory([_entry(extra=1)])
-        match decode_cleanup_inventory(payload):
-            case Err(error):
-                self.assertIsInstance(error, CleanupContractMismatch)
-            case Ok(_):
-                self.fail("extra-key entry decoded")
+        error = assert_err(decode_cleanup_inventory(payload), "extra-key entry decoded")
+        self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_entry_field_violations_are_rejected(self) -> None:
         bad_path_entry: dict[str, object] = {
@@ -203,46 +196,42 @@ class CleanupInventoryTests(unittest.TestCase):
             bad_path_entry,
         ):
             with self.subTest(entry=entry):
-                match decode_cleanup_inventory(_inventory([entry])):
-                    case Err(error):
-                        self.assertIsInstance(error, CleanupContractMismatch)
-                    case Ok(_):
-                        self.fail(f"invalid entry decoded: {entry}")
+                error = assert_err(
+                    decode_cleanup_inventory(_inventory([entry])),
+                    f"invalid entry decoded: {entry}",
+                )
+                self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_unsafe_entry_path_is_rejected(self) -> None:
-        match decode_cleanup_inventory(_inventory([_entry(path="..")])):
-            case Err(error):
-                self.assertIsInstance(error, CleanupContractMismatch)
-            case Ok(_):
-                self.fail("unsafe entry path decoded")
+        error = assert_err(
+            decode_cleanup_inventory(_inventory([_entry(path="..")])),
+            "unsafe entry path decoded",
+        )
+        self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_duplicate_entry_paths_are_rejected(self) -> None:
         payload = _inventory([_entry(), _entry()])
-        match decode_cleanup_inventory(payload):
-            case Err(error):
-                self.assertIsInstance(error, CleanupContractMismatch)
-            case Ok(_):
-                self.fail("duplicate entry paths decoded")
+        error = assert_err(
+            decode_cleanup_inventory(payload), "duplicate entry paths decoded"
+        )
+        self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_administrative_paths_are_rejected(self) -> None:
         for path in (MANIFEST_PATH.value, MAINTENANCE_INVENTORY_PATH.value):
             with self.subTest(path=path):
-                match decode_cleanup_inventory(_inventory([_entry(path=path)])):
-                    case Err(error):
-                        self.assertIsInstance(error, CleanupContractMismatch)
-                    case Ok(_):
-                        self.fail(f"administrative path decoded: {path}")
+                error = assert_err(
+                    decode_cleanup_inventory(_inventory([_entry(path=path)])),
+                    f"administrative path decoded: {path}",
+                )
+                self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_valid_inventory_decodes_sorted(self) -> None:
         payload = _inventory([_entry(path="z.txt"), _entry(path="a.txt")])
-        match decode_cleanup_inventory(payload):
-            case Ok(inventory):
-                self.assertEqual(
-                    tuple(entry[0].value for entry in inventory.entries),
-                    ("a.txt", "z.txt"),
-                )
-            case Err(error):
-                self.fail(f"valid inventory rejected: {error}")
+        inventory = assert_ok(decode_cleanup_inventory(payload))
+        self.assertEqual(
+            tuple(entry[0].value for entry in inventory.entries),
+            ("a.txt", "z.txt"),
+        )
 
 
 class SourceOwnershipTests(unittest.TestCase):
@@ -266,11 +255,11 @@ class SourceOwnershipTests(unittest.TestCase):
         )
 
     def test_wrong_document_shape_is_rejected(self) -> None:
-        match decode_source_ownership(canonical_json({"schema_version": 1})):
-            case Err(error):
-                self.assertIsInstance(error, CleanupContractMismatch)
-            case Ok(_):
-                self.fail("wrong-shape ownership decoded")
+        error = assert_err(
+            decode_source_ownership(canonical_json({"schema_version": 1})),
+            "wrong-shape ownership decoded",
+        )
+        self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_wrong_schema_version_is_rejected(self) -> None:
         payload = canonical_json(
@@ -280,31 +269,27 @@ class SourceOwnershipTests(unittest.TestCase):
                 "snapshot_cleanup_paths": [],
             }
         )
-        match decode_source_ownership(payload):
-            case Err(error):
-                self.assertIsInstance(error, CleanupContractMismatch)
-            case Ok(_):
-                self.fail("future schema version decoded")
+        error = assert_err(
+            decode_source_ownership(payload), "future schema version decoded"
+        )
+        self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_non_list_paths_are_rejected(self) -> None:
         payload = self._payload(  # type: ignore[arg-type]
             lifecycle_paths="tests"
         )
-        match decode_source_ownership(payload):
-            case Err(error):
-                self.assertIsInstance(error, CleanupContractMismatch)
-            case Ok(_):
-                self.fail("non-list paths decoded")
+        error = assert_err(decode_source_ownership(payload), "non-list paths decoded")
+        self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_invalid_path_entries_are_rejected(self) -> None:
         for paths in (["tests", 5], [".."], ["tests", "tests"]):
             with self.subTest(paths=paths):
                 payload = self._payload(lifecycle_paths=paths)  # type: ignore[arg-type]
-                match decode_source_ownership(payload):
-                    case Err(error):
-                        self.assertIsInstance(error, CleanupContractMismatch)
-                    case Ok(_):
-                        self.fail(f"invalid paths decoded: {paths}")
+                error = assert_err(
+                    decode_source_ownership(payload),
+                    f"invalid paths decoded: {paths}",
+                )
+                self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_administrative_paths_are_rejected(self) -> None:
         for path in (
@@ -315,50 +300,42 @@ class SourceOwnershipTests(unittest.TestCase):
         ):
             with self.subTest(path=path):
                 payload = self._payload(lifecycle_paths=[path])
-                match decode_source_ownership(payload):
-                    case Err(error):
-                        self.assertIsInstance(error, CleanupContractMismatch)
-                    case Ok(_):
-                        self.fail(f"administrative path decoded: {path}")
+                error = assert_err(
+                    decode_source_ownership(payload),
+                    f"administrative path decoded: {path}",
+                )
+                self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_valid_ownership_decodes_sorted(self) -> None:
         payload = self._payload(lifecycle_paths=["z.txt", "a.txt"])
-        match decode_source_ownership(payload):
-            case Ok(ownership):
-                self.assertEqual(
-                    tuple(path.value for path in ownership.lifecycle_paths),
-                    ("a.txt", "z.txt"),
-                )
-            case Err(error):
-                self.fail(f"valid ownership rejected: {error}")
+        ownership = assert_ok(decode_source_ownership(payload))
+        self.assertEqual(
+            tuple(path.value for path in ownership.lifecycle_paths),
+            ("a.txt", "z.txt"),
+        )
 
     def test_overlapping_ownership_sets_are_rejected(self) -> None:
         payload = self._payload(
             lifecycle_paths=["docs/api"], snapshot_cleanup_paths=["docs/api"]
         )
-        match decode_source_ownership(payload):
-            case Err(error):
-                self.assertIsInstance(error, CleanupContractMismatch)
-            case Ok(_):
-                self.fail("overlapping ownership decoded")
+        error = assert_err(
+            decode_source_ownership(payload), "overlapping ownership decoded"
+        )
+        self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_nested_ownership_sets_are_rejected(self) -> None:
         payload = self._payload(
             lifecycle_paths=["docs"], snapshot_cleanup_paths=["docs/api"]
         )
-        match decode_source_ownership(payload):
-            case Err(error):
-                self.assertIsInstance(error, CleanupContractMismatch)
-            case Ok(_):
-                self.fail("nested ownership decoded")
+        error = assert_err(decode_source_ownership(payload), "nested ownership decoded")
+        self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_case_colliding_paths_are_rejected(self) -> None:
         payload = self._payload(lifecycle_paths=["Docs/API", "docs/api"])
-        match decode_source_ownership(payload):
-            case Err(error):
-                self.assertIsInstance(error, CleanupContractMismatch)
-            case Ok(_):
-                self.fail("case-colliding ownership decoded")
+        error = assert_err(
+            decode_source_ownership(payload), "case-colliding ownership decoded"
+        )
+        self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_seed_and_legal_paths_are_rejected(self) -> None:
         for path in (
@@ -369,21 +346,20 @@ class SourceOwnershipTests(unittest.TestCase):
         ):
             with self.subTest(path=path):
                 payload = self._payload(lifecycle_paths=[path.value])
-                match decode_source_ownership(payload):
-                    case Err(error):
-                        self.assertIsInstance(error, CleanupContractMismatch)
-                    case Ok(_):
-                        self.fail(f"seed or legal path decoded: {path.value}")
+                error = assert_err(
+                    decode_source_ownership(payload),
+                    f"seed or legal path decoded: {path.value}",
+                )
+                self.assertIsInstance(error, CleanupContractMismatch)
 
     def test_case_variant_nested_paths_are_rejected_across_namespaces(self) -> None:
         payload = self._payload(
             lifecycle_paths=["Docs"], snapshot_cleanup_paths=["docs/api"]
         )
-        match decode_source_ownership(payload):
-            case Err(error):
-                self.assertIsInstance(error, CleanupContractMismatch)
-            case Ok(_):
-                self.fail("case-variant nested ownership decoded")
+        error = assert_err(
+            decode_source_ownership(payload), "case-variant nested ownership decoded"
+        )
+        self.assertIsInstance(error, CleanupContractMismatch)
 
 
 class CleanupClassificationTests(unittest.TestCase):

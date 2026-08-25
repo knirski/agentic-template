@@ -52,7 +52,6 @@ from scripts.bootstrap.observation import (
     collect_template_source_entries,
 )
 from scripts.bootstrap.paths import RepoPath
-from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.scaffold import (
     MAINTENANCE_INVENTORY_PATH,
     SEED_ONCE_PATHS,
@@ -91,6 +90,7 @@ from scripts.bootstrap.state import (
     WorktreeContext,
 )
 from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
+from tests.fixtures import assert_err, assert_ok
 
 TARGET = target_identity(b"/work/example", device=1, inode=2)
 
@@ -207,16 +207,15 @@ def _manifest(
             )
         ),
     )
-    match build_candidate_manifest(
-        answers=answers if answers is not None else _answers(),
-        additions=additions if additions is not None else ManifestAdditions(),
-        provenance=provenance,
-        managed=managed,
-    ):
-        case Ok(manifest):
-            return manifest
-        case Err(error):
-            raise AssertionError(f"manifest build failed: {error}")
+    return assert_ok(
+        build_candidate_manifest(
+            answers=answers if answers is not None else _answers(),
+            additions=additions if additions is not None else ManifestAdditions(),
+            provenance=provenance,
+            managed=managed,
+        ),
+        "manifest build",
+    )
 
 
 def _observed_files() -> dict[RepoPath, CapturedFile]:
@@ -280,21 +279,21 @@ class ProjectClassificationTests(unittest.TestCase):
             self.assertIsInstance(result.condition.managed, ManagedVerified)
 
     def test_adopted_manifest_rejects_mismatched_baseline_kind(self) -> None:
-        match build_candidate_manifest(
-            answers=_answers(),
-            additions=ManifestAdditions(),
-            provenance=ProvenanceRecord(
-                generation_path=GenerationPath.ADOPTED,
-                maintenance=MaintenanceRecord(status="clean"),
-                source_baseline=_github_baseline(),
+        error = assert_err(
+            build_candidate_manifest(
+                answers=_answers(),
+                additions=ManifestAdditions(),
+                provenance=ProvenanceRecord(
+                    generation_path=GenerationPath.ADOPTED,
+                    maintenance=MaintenanceRecord(status="clean"),
+                    source_baseline=_github_baseline(),
+                ),
+                managed=(),
             ),
-            managed=(),
-        ):
-            case Err(error):
-                self.assertEqual(error.kind, ManifestErrorKind.SCHEMA_VIOLATION)
-                self.assertEqual(error.subject, "source_baseline")
-            case Ok(_):
-                self.fail("expected a baseline/generation mismatch failure")
+            "expected a baseline/generation mismatch failure",
+        )
+        self.assertEqual(error.kind, ManifestErrorKind.SCHEMA_VIOLATION)
+        self.assertEqual(error.subject, "source_baseline")
 
     def test_unreachable_snapshot_commit_is_unrecoverable(self) -> None:
         result = _classify(_manifest(), files={}, commit_reachable=False)
@@ -799,17 +798,14 @@ class ObservationShellContractTests(unittest.TestCase):
             os.fsencode(os.path.join(root, ".git")),
             DEFAULT_LIMITS,
         )
-        match result:
-            case Ok((files, directories)):
-                self.assertEqual(
-                    tuple(entry.path for entry in files),
-                    (RepoPath("keep.txt"),),
-                )
-                self.assertNotIn(
-                    RepoPath(".claude"), tuple(entry.path for entry in directories)
-                )
-            case Err(error):
-                self.fail(f"non-project aliases should be ignored: {error}")
+        files, directories = assert_ok(result, "non-project aliases should be ignored")
+        self.assertEqual(
+            tuple(entry.path for entry in files),
+            (RepoPath("keep.txt"),),
+        )
+        self.assertNotIn(
+            RepoPath(".claude"), tuple(entry.path for entry in directories)
+        )
 
     def test_cleanup_observation_rejects_invalid_inventories(self) -> None:
         inventory = CapturedFile(
@@ -902,11 +898,11 @@ class ObservationShellContractTests(unittest.TestCase):
         self.assertIsInstance(observed, CleanupContractMismatch)
 
     def test_retained_cleanup_contract_requires_an_inventory(self) -> None:
-        match _retained_cleanup_contract(self._pass()):
-            case Err(error):
-                self.assertEqual(error.kind.value, "cleanup_contract_invalid")
-            case Ok(_):
-                self.fail("expected CLEANUP_CONTRACT_INVALID")
+        error = assert_err(
+            _retained_cleanup_contract(self._pass()),
+            "expected CLEANUP_CONTRACT_INVALID",
+        )
+        self.assertEqual(error.kind.value, "cleanup_contract_invalid")
 
     def test_retained_cleanup_contract_falls_back_to_inventory_when_ownership_is_corrupt(
         self,
@@ -921,14 +917,11 @@ class ObservationShellContractTests(unittest.TestCase):
                 CapturedFile(SOURCE_OWNERSHIP_PATH, b"not json", PosixMode.FILE),
             )
         )
-        match _retained_cleanup_contract(pass_):
-            case Ok(contract):
-                self.assertEqual(
-                    contract.cleanup_paths,
-                    (MAINTENANCE_INVENTORY_PATH, RepoPath("tests")),
-                )
-            case Err(error):
-                self.fail(f"expected retention, got {error}")
+        contract = assert_ok(_retained_cleanup_contract(pass_), "expected retention")
+        self.assertEqual(
+            contract.cleanup_paths,
+            (MAINTENANCE_INVENTORY_PATH, RepoPath("tests")),
+        )
 
     def test_retained_cleanup_contract_prefers_the_source_ownership(self) -> None:
         pass_ = self._pass(
@@ -945,14 +938,11 @@ class ObservationShellContractTests(unittest.TestCase):
                 ),
             )
         )
-        match _retained_cleanup_contract(pass_):
-            case Ok(contract):
-                self.assertEqual(
-                    contract.cleanup_paths,
-                    (MAINTENANCE_INVENTORY_PATH, RepoPath("a.txt")),
-                )
-            case Err(error):
-                self.fail(f"expected retention, got {error}")
+        contract = assert_ok(_retained_cleanup_contract(pass_), "expected retention")
+        self.assertEqual(
+            contract.cleanup_paths,
+            (MAINTENANCE_INVENTORY_PATH, RepoPath("a.txt")),
+        )
 
     def test_retained_cleanup_contract_honors_a_valid_empty_declaration(self) -> None:
         pass_ = self._pass(
@@ -969,21 +959,15 @@ class ObservationShellContractTests(unittest.TestCase):
                 ),
             )
         )
-        match _retained_cleanup_contract(pass_):
-            case Ok(contract):
-                self.assertEqual(contract.cleanup_paths, (MAINTENANCE_INVENTORY_PATH,))
-            case Err(error):
-                self.fail(f"expected retention, got {error}")
+        contract = assert_ok(_retained_cleanup_contract(pass_), "expected retention")
+        self.assertEqual(contract.cleanup_paths, (MAINTENANCE_INVENTORY_PATH,))
 
     def test_retained_cleanup_contract_tolerates_invalid_inventories(self) -> None:
         pass_ = self._pass(
             (CapturedFile(MAINTENANCE_INVENTORY_PATH, b"not json", PosixMode.FILE),)
         )
-        match _retained_cleanup_contract(pass_):
-            case Ok(contract):
-                self.assertEqual(contract.cleanup_paths, (MAINTENANCE_INVENTORY_PATH,))
-            case Err(error):
-                self.fail(f"expected retention, got {error}")
+        contract = assert_ok(_retained_cleanup_contract(pass_), "expected retention")
+        self.assertEqual(contract.cleanup_paths, (MAINTENANCE_INVENTORY_PATH,))
 
     @staticmethod
     def _git_worktree(parent: str) -> ResolvedGitWorktree:
@@ -1124,15 +1108,15 @@ class TemplateSourceWalkerTests(unittest.TestCase):
     def _walk(
         self, root: str, managed_paths: tuple[str, ...] = ()
     ) -> list[LifecycleSourceEntry]:
-        match collect_template_source_entries(
-            root,
-            managed_paths={RepoPath(value) for value in managed_paths},
-            limits=DEFAULT_LIMITS,
-        ):
-            case Ok(entries):
-                return list(entries)
-            case Err(error):
-                self.fail(f"walk failed: {error}")
+        entries = assert_ok(
+            collect_template_source_entries(
+                root,
+                managed_paths={RepoPath(value) for value in managed_paths},
+                limits=DEFAULT_LIMITS,
+            ),
+            "walk",
+        )
+        return list(entries)
 
     def test_tracked_source_records_files_and_directories(self) -> None:
         root, _ = self._repo(
@@ -1233,14 +1217,14 @@ class TemplateSourceWalkerTests(unittest.TestCase):
         self._write_ownership(root, ("lib.py", "alias.py"))
         _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
         _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
-        match collect_template_source_entries(
-            root, managed_paths=set(), limits=DEFAULT_LIMITS
-        ):
-            case Err(error):
-                self.assertEqual(error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
-                self.assertEqual(error.subject, "alias.py")
-            case Ok(_):
-                self.fail("declared symlink should be refused")
+        error = assert_err(
+            collect_template_source_entries(
+                root, managed_paths=set(), limits=DEFAULT_LIMITS
+            ),
+            "declared symlink should be refused",
+        )
+        self.assertEqual(error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
+        self.assertEqual(error.subject, "alias.py")
 
     def test_unlisted_symlinks_are_not_hashed(self) -> None:
         root = os.path.join(tempfile.mkdtemp(), "template")
@@ -1270,31 +1254,31 @@ class TemplateSourceWalkerTests(unittest.TestCase):
     def test_oversized_file_is_a_source_contract_violation(self) -> None:
         root, _ = self._repo([("big.bin", "x" * 512)])
         limits = ResourceLimits(max_file_bytes=256)
-        match collect_template_source_entries(root, managed_paths=set(), limits=limits):
-            case Err(error):
-                self.assertEqual(error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
-                self.assertEqual(error.subject, "big.bin")
-            case Ok(_):
-                self.fail("oversized file should be refused")
+        error = assert_err(
+            collect_template_source_entries(root, managed_paths=set(), limits=limits),
+            "oversized file should be refused",
+        )
+        self.assertEqual(error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
+        self.assertEqual(error.subject, "big.bin")
 
     def test_path_and_unique_bytes_bounds_are_enforced(self) -> None:
         root, _ = self._repo([("a.txt", "a\n"), ("b.txt", "b\n"), ("c.txt", "c\n")])
-        match collect_template_source_entries(
-            root, managed_paths=set(), limits=ResourceLimits(max_paths=2)
-        ):
-            case Err(error):
-                self.assertEqual(error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
-                self.assertEqual(error.subject, "paths")
-            case Ok(_):
-                self.fail("path bound should be enforced")
-        match collect_template_source_entries(
-            root, managed_paths=set(), limits=ResourceLimits(max_unique_bytes=4)
-        ):
-            case Err(error):
-                self.assertEqual(error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
-                self.assertEqual(error.subject, "unique_bytes")
-            case Ok(_):
-                self.fail("unique-byte bound should be enforced")
+        path_error = assert_err(
+            collect_template_source_entries(
+                root, managed_paths=set(), limits=ResourceLimits(max_paths=2)
+            ),
+            "path bound should be enforced",
+        )
+        self.assertEqual(path_error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
+        self.assertEqual(path_error.subject, "paths")
+        byte_error = assert_err(
+            collect_template_source_entries(
+                root, managed_paths=set(), limits=ResourceLimits(max_unique_bytes=4)
+            ),
+            "unique-byte bound should be enforced",
+        )
+        self.assertEqual(byte_error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
+        self.assertEqual(byte_error.subject, "unique_bytes")
 
 
 if __name__ == "__main__":
