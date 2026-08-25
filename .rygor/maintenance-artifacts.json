@@ -8,7 +8,7 @@
     {
       "kind": "file",
       "path": ".github/workflows/mutation.yml",
-      "sha256": "a7d751509805c533224ab2f8861934d5c6135eab3d98eba5aee29ac6ffb65929"
+      "sha256": "8233d5443359530f104af585c3337f2b64adc5a2efdc2aa115ae225acbe61fed"
     },
     {
       "kind": "file",
@@ -28,7 +28,7 @@
     {
       "kind": "file",
       "path": ".github/workflows/template-ci.yml",
-      "sha256": "cbb2cc3930fbbbda3fb48f298c682bbcb2f05aa0bdbf53ccf50ecb737e085104"
+      "sha256": "aa6fb590230f6285ad4d635ece99141a508108513ff4dc4f63ea595a82c18212"
     },
     {
       "kind": "file",
@@ -43,12 +43,12 @@
     {
       "kind": "file",
       "path": ".releaserc",
-      "sha256": "72f314b8dc83f168c881bf5d57709a80f4c17ed0e3e3eea747af22690b2fdd52"
+      "sha256": "fe89ff25a050a1634ee08389073c24682461cf8799a454e51f1493512bcedfc9"
     },
     {
       "kind": "directory",
       "path": "docs/specs",
-      "sha256": "4457c33f5bd5fff9b4479abb4c3c675a8cee0f04354ebf64ba6e6bef887dbaf4"
+      "sha256": "fc5258126a8ee34e0770ff49c2d3a3250da5fbc17d6c571fa6dfdb88f87f27c5"
     },
     {
       "kind": "file",
@@ -58,22 +58,22 @@
     {
       "kind": "file",
       "path": "flake.nix",
-      "sha256": "30b0c8880e448f8f83c8899ac6beac48cc2eafd647764efe66574bcee2c0a5cb"
+      "sha256": "7476f9a4345f804b24487c8b9645a7909d1da74e65b4648833c008e8158cba45"
     },
     {
       "kind": "file",
       "path": "pyproject.toml",
-      "sha256": "d7eb28cda3ae9ef67f4fedddb9a3d5fe3f9115cd5c85aca138c11b95ca488d31"
+      "sha256": "d3a983ab8496e7d534ccfd4ad1565f33198a42d01ac4efc27dc3dcb7289f2b8f"
     },
     {
       "kind": "directory",
       "path": "tests",
-      "sha256": "1ec7a17551673613ee52ac0391a36c4a507b348255bc84449bfb12e6b72ee82d"
+      "sha256": "0581d6f0ec3606a8857c81046fea4e0e3b2d08a14733681ded5fa8ceff6abd68"
     },
     {
       "kind": "file",
       "path": "uv.lock",
-      "sha256": "52dec8f1c87a9924c57fd34e2ce2cf206a5d3526c3f11fead5590336cb748414"
+      "sha256": "53a6298b5f83d9435e50089aa2a04256c6f77f420d7ffbe92cb1a5db35dec55e"
     }
   ],
   "schema_version": 1

@@ -1003,7 +1003,7 @@ class TestFakeShellRollback(unittest.TestCase):
                 check=True,
                 capture_output=True,
             )
-            state_root = repo / ".git" / "agentic-template"
+            state_root = repo / ".git" / "rygor"
             backup = state_root / "transactions" / TRANSACTION_ID / "backups" / "1"
             backup.parent.mkdir(parents=True)
             _ = backup.write_bytes(b"backup-bytes")

@@ -8,7 +8,7 @@ REQUIRED_FILES: tuple[str, ...] = (
     "AGENTS.md",
     "CLAUDE.md",
     ".agents/AGENTS.md",
-    ".agentic-template/source-ownership.json",
+    ".rygor/source-ownership.json",
     "README.md",
     "copier.yml",
     "docs/prd.md",

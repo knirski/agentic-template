@@ -117,7 +117,7 @@ FROZEN_CATALOG_V1: tuple[ReadinessRuleDefinition, ...] = (
         "text-absent",
         {
             "path": "docs/prd.md",
-            "patterns": ("<!-- agentic-template:placeholder:prd -->",),
+            "patterns": ("<!-- rygor:placeholder:prd -->",),
             "match": "text",
         },
     ),
@@ -126,9 +126,7 @@ FROZEN_CATALOG_V1: tuple[ReadinessRuleDefinition, ...] = (
         "text-absent",
         {
             "path": "docs/prd.md",
-            "patterns": (
-                "This file is authoritative for the Agentic Delivery Template",
-            ),
+            "patterns": ("This file is authoritative for the Rygor",),
             "match": "text",
         },
     ),
@@ -186,7 +184,7 @@ FROZEN_CATALOG_V1: tuple[ReadinessRuleDefinition, ...] = (
         "text-absent",
         {
             "path": "README.md",
-            "patterns": ("<!-- agentic-template:placeholder:readme -->",),
+            "patterns": ("<!-- rygor:placeholder:readme -->",),
             "match": "text",
         },
     ),
@@ -196,7 +194,7 @@ FROZEN_CATALOG_V1: tuple[ReadinessRuleDefinition, ...] = (
         {
             "path": "README.md",
             "patterns": (
-                "# Agentic Delivery Template",
+                "# Rygor",
                 "A language-neutral GitHub repository template for planning",
             ),
             "match": "text",
@@ -249,7 +247,7 @@ FROZEN_CATALOG_V1: tuple[ReadinessRuleDefinition, ...] = (
         "text-absent",
         {
             "path": "scripts/validate-project",
-            "patterns": ("agentic-template:unconfigured:validate-project",),
+            "patterns": ("rygor:unconfigured:validate-project",),
             "match": "text",
         },
     ),
@@ -259,7 +257,7 @@ FROZEN_CATALOG_V1: tuple[ReadinessRuleDefinition, ...] = (
         "text-absent",
         {
             "path": "SECURITY.md",
-            "patterns": ("<!-- agentic-template:placeholder:security -->",),
+            "patterns": ("<!-- rygor:placeholder:security -->",),
             "match": "text",
             "slot": "security_policy",
         },
@@ -269,7 +267,7 @@ FROZEN_CATALOG_V1: tuple[ReadinessRuleDefinition, ...] = (
         "text-absent",
         {
             "path": "CONTRIBUTING.md",
-            "patterns": ("<!-- agentic-template:placeholder:contributing -->",),
+            "patterns": ("<!-- rygor:placeholder:contributing -->",),
             "match": "text",
             "slot": "contributing",
         },

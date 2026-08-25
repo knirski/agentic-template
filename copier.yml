@@ -20,12 +20,12 @@ _exclude:
   - copier.yaml
   - result
   # The finite template-maintenance artifact set declared by
-  # .agentic-template/source-ownership.json and the cleanup-control inventory
+  # .rygor/source-ownership.json and the cleanup-control inventory
   # itself; generated projects keep every other generated-lifecycle source
   # path.  Seed-once output is materialized by bootstrap from the canonical
   # scaffold blobs that remain in the copied project; Copier's merge and
   # conflict handling therefore never claims the adopter-owned root paths.
-  - .agentic-template/maintenance-artifacts.json
+  - .rygor/maintenance-artifacts.json
   - .github/workflows/copier-smoke.yml
   - .github/workflows/mutation.yml
   - .github/workflows/pr-agent-commands.yml
@@ -59,7 +59,7 @@ _exclude:
   - uv.lock
 
 _message_after_copy: |
-  Project created from the Agentic Delivery Template.
+  Project created from the Rygor.
 
   Install Copier to receive future template updates:
 

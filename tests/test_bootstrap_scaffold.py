@@ -295,7 +295,7 @@ class SourceOwnershipTests(unittest.TestCase):
         for path in (
             MANIFEST_PATH.value,
             MAINTENANCE_INVENTORY_PATH.value,
-            ".agentic-template/state.json",
+            ".rygor/state.json",
             ".git/config",
         ):
             with self.subTest(path=path):

@@ -15,7 +15,7 @@
         "assets": [
           "pyproject.toml",
           "uv.lock",
-          ".agentic-template/maintenance-artifacts.json"
+          ".rygor/maintenance-artifacts.json"
         ],
         "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
       }

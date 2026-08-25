@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 
-SENTINEL = "agentic-template:unconfigured:validate-project"
+SENTINEL = "rygor:unconfigured:validate-project"
 
 
 def has_unexpected_arguments(argv: list[str]) -> bool:

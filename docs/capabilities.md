@@ -1,6 +1,6 @@
 # Capabilities
 
-This document is managed by the Agentic Delivery Template. Put product-specific
+This document is managed by the Rygor. Put product-specific
 architecture and operating guidance in `README.md`, and put contribution
 process in `CONTRIBUTING.md`.
 

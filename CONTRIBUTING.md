@@ -1,3 +1,3 @@
 # Contributing
 
-<!-- agentic-template:placeholder:contributing -->
+<!-- rygor:placeholder:contributing -->

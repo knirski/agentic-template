@@ -707,7 +707,7 @@ class SystemStateAssemblyTests(unittest.TestCase):
     def test_no_journal_requires_project_facts(self) -> None:
         context = WorktreeContext(
             target=TARGET,
-            state_root=RepoPath(".git/agentic-template"),
+            state_root=RepoPath(".git/rygor"),
             protection=OrdinaryProject(),
         )
         with self.assertRaises(TypeError):
@@ -715,7 +715,7 @@ class SystemStateAssemblyTests(unittest.TestCase):
                 environment=SupportedWorktree(context),
                 journal=NoJournal(),
                 project=None,
-                state_root=RepoPath(".git/agentic-template"),
+                state_root=RepoPath(".git/rygor"),
             )
 
     def test_observation_pass_requires_sorted_files(self) -> None:
@@ -995,7 +995,7 @@ class ObservationShellContractTests(unittest.TestCase):
         return ResolvedGitWorktree(
             root_abs=os.fsencode(root),
             git_dir_abs=os.fsencode(os.path.join(root, ".git")),
-            state_root_abs=os.fsencode(os.path.join(root, "agentic-template")),
+            state_root_abs=os.fsencode(os.path.join(root, "rygor")),
             target=TARGET,
         )
 
@@ -1052,7 +1052,7 @@ class ObservationShellContractTests(unittest.TestCase):
         worktree = ResolvedGitWorktree(
             root_abs=os.fsencode(root),
             git_dir_abs=os.fsencode(os.path.join(root, ".git")),
-            state_root_abs=os.fsencode(os.path.join(root, "agentic-template")),
+            state_root_abs=os.fsencode(os.path.join(root, "rygor")),
             target=TARGET,
         )
         reachable, path_bytes = _snapshot_evidence(worktree)
@@ -1065,7 +1065,7 @@ class TemplateSourceWalkerTests(unittest.TestCase):
 
     @staticmethod
     def _write_ownership(root: str, lifecycle_paths: tuple[str, ...]) -> None:
-        state_dir = os.path.join(root, ".agentic-template")
+        state_dir = os.path.join(root, ".rygor")
         os.makedirs(state_dir, exist_ok=True)
         with open(
             os.path.join(state_dir, "source-ownership.json"), "w", encoding="utf-8"
@@ -1133,7 +1133,7 @@ class TemplateSourceWalkerTests(unittest.TestCase):
         self.assertEqual(
             paths,
             [
-                ".agentic-template/source-ownership.json",
+                ".rygor/source-ownership.json",
                 "src",
                 "src/lib.py",
                 "src/tools",
@@ -1166,7 +1166,7 @@ class TemplateSourceWalkerTests(unittest.TestCase):
         entries = self._walk(root)
         self.assertEqual(
             [entry.path.value for entry in entries],
-            [".agentic-template/source-ownership.json", "src", "src/lib.py"],
+            [".rygor/source-ownership.json", "src", "src/lib.py"],
         )
 
     def test_generated_state_below_declared_root_is_skipped(self) -> None:
@@ -1178,12 +1178,12 @@ class TemplateSourceWalkerTests(unittest.TestCase):
         entries = self._walk(root)
         self.assertEqual(
             [entry.path.value for entry in entries],
-            [".agentic-template/source-ownership.json", "src", "src/lib.py"],
+            [".rygor/source-ownership.json", "src", "src/lib.py"],
         )
 
     def test_state_subtree_and_seed_once_and_managed_paths_are_excluded(self) -> None:
         root, _ = self._repo([("src/lib.py", "present\n")])
-        state_dir = os.path.join(root, ".agentic-template")
+        state_dir = os.path.join(root, ".rygor")
         os.makedirs(state_dir, exist_ok=True)
         with open(
             os.path.join(state_dir, "state.json"), "w", encoding="utf-8"
@@ -1201,10 +1201,8 @@ class TemplateSourceWalkerTests(unittest.TestCase):
             _ = handle.write("managed\n")
         entries = self._walk(root, managed_paths=(".claude/settings.json",))
         paths = [entry.path.value for entry in entries]
-        self.assertEqual(
-            paths, [".agentic-template/source-ownership.json", "src", "src/lib.py"]
-        )
-        self.assertNotIn(".agentic-template", paths)
+        self.assertEqual(paths, [".rygor/source-ownership.json", "src", "src/lib.py"])
+        self.assertNotIn(".rygor", paths)
         for seed_once in SEED_ONCE_PATHS:
             self.assertNotIn(seed_once.value, paths)
 
@@ -1249,7 +1247,7 @@ class TemplateSourceWalkerTests(unittest.TestCase):
         entries = self._walk(root)
         paths = [entry.path.value for entry in entries]
         self.assertNotIn("adopter.py", paths)
-        self.assertIn(".agentic-template/source-ownership.json", paths)
+        self.assertIn(".rygor/source-ownership.json", paths)
 
     def test_oversized_file_is_a_source_contract_violation(self) -> None:
         root, _ = self._repo([("big.bin", "x" * 512)])

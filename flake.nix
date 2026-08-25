@@ -1,5 +1,5 @@
 {
-  description = "Agentic Delivery Template development environment";
+  description = "Rygor development environment";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -17,7 +17,7 @@
     {
       devShells = forAllSystems (system: {
         default = nixpkgs.legacyPackages.${system}.mkShell {
-          name = "agentic-template";
+          name = "rygor";
 
           packages = with nixpkgs.legacyPackages.${system}; [
             actionlint
@@ -31,7 +31,7 @@
           ];
 
           shellHook = ''
-            echo "agentic-template dev shell"
+            echo "rygor dev shell"
             echo "  nix flake check     run Nix and repository checks"
             echo "  nix fmt             format Nix files"
             echo "  cachix push ...     publish a built closure (CACHIX_AUTH_TOKEN required)"
@@ -62,7 +62,7 @@
         in
         {
           formatting =
-            pkgs.runCommand "agentic-template-formatting"
+            pkgs.runCommand "rygor-formatting"
               {
                 nativeBuildInputs = [ pkgs.nixfmt ];
               }
@@ -72,7 +72,7 @@
               '';
 
           workflow-lint =
-            pkgs.runCommand "agentic-template-workflow-lint"
+            pkgs.runCommand "rygor-workflow-lint"
               {
                 nativeBuildInputs = [ pkgs.actionlint ];
               }
@@ -82,7 +82,7 @@
               '';
 
           nix-lint =
-            pkgs.runCommand "agentic-template-nix-lint"
+            pkgs.runCommand "rygor-nix-lint"
               {
                 nativeBuildInputs = [
                   pkgs.deadnix
@@ -96,7 +96,7 @@
               '';
 
           repository-validation =
-            pkgs.runCommand "agentic-template-repository-validation" { nativeBuildInputs = [ pkgs.python314 ]; }
+            pkgs.runCommand "rygor-repository-validation" { nativeBuildInputs = [ pkgs.python314 ]; }
               ''
                 cd ${source}
                 # The portable bare-python lane: template-contract tests need

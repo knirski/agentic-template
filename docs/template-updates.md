@@ -1,6 +1,6 @@
 # Template updates
 
-This document is managed by the Agentic Delivery Template. Put product-specific
+This document is managed by the Rygor. Put product-specific
 project information in `README.md`, and put contribution policy in
 `CONTRIBUTING.md`.
 

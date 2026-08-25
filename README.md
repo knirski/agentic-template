@@ -1,6 +1,6 @@
-# Agentic Delivery Template
+# Rygor
 
-<!-- agentic-template:placeholder:readme -->
+<!-- rygor:placeholder:readme -->
 
 A language-neutral GitHub repository template for planning, implementing, validating, and reviewing
 software changes with coding agents.
@@ -18,7 +18,7 @@ The template is maintained with [Copier](https://copier.readthedocs.io/):
 
 ```console
 uv tool install copier
-copier copy https://github.com/knirski/agentic-template.git ./my-project
+copier copy https://github.com/knirski/rygor.git ./my-project
 cd ./my-project
 copier update
 ```
@@ -97,14 +97,14 @@ linting, builds, security checks, and required-check configuration.
 ### Regenerating the source cleanup inventory
 
 The template source carries a fingerprinted cleanup inventory
-(`.agentic-template/maintenance-artifacts.json`) that authorizes GitHub-snapshot cleanup of
+(`.rygor/maintenance-artifacts.json`) that authorizes GitHub-snapshot cleanup of
 source-only paths. When tracked files under those paths change, regenerate it from the tracked
 source before committing:
 
 ```console
 git add -A
-uv run python -c "import json, sys; sys.path.insert(0, '.'); from tests.test_github_template_readiness import expected_cleanup_inventory; open('.agentic-template/maintenance-artifacts.json', 'w', encoding='utf-8').write(json.dumps(expected_cleanup_inventory(), sort_keys=True, indent=2) + chr(10))"
-git add .agentic-template/maintenance-artifacts.json
+uv run python -c "import json, sys; sys.path.insert(0, '.'); from tests.test_github_template_readiness import expected_cleanup_inventory; open('.rygor/maintenance-artifacts.json', 'w', encoding='utf-8').write(json.dumps(expected_cleanup_inventory(), sort_keys=True, indent=2) + chr(10))"
+git add .rygor/maintenance-artifacts.json
 ```
 
 The final ``git add`` re-stages the rewritten inventory; without it the commit

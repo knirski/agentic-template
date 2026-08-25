@@ -652,7 +652,7 @@ class GitStateTests(unittest.TestCase):
             git_dir = self._git(
                 "rev-parse", "--absolute-git-dir", cwd=repo
             ).stdout.strip()
-            expected = posixpath.join(git_dir, b"agentic-template")
+            expected = posixpath.join(git_dir, b"rygor")
             self.assertEqual(resolved.state_root_abs, expected)
             st = os.stat(repo, follow_symlinks=False)
             self.assertEqual(resolved.target.root_os_bytes, root)
@@ -885,7 +885,7 @@ class GitStateTests(unittest.TestCase):
                     "rev-parse",
                     "--path-format=absolute",
                     "--git-path",
-                    "agentic-template",
+                    "rygor",
                 ):
                     return Ok(
                         GitCommandResult(128, b"", b"fatal: not a git repository\n")
@@ -913,14 +913,14 @@ class GitStateTests(unittest.TestCase):
                     "rev-parse",
                     "--path-format=absolute",
                     "--git-path",
-                    "agentic-template",
+                    "rygor",
                 ):
                     return Ok(
                         GitCommandResult(
                             129, b"", b"error: unknown option `path-format'\n"
                         )
                     )
-                if args == ("rev-parse", "--git-path", "agentic-template"):
+                if args == ("rev-parse", "--git-path", "rygor"):
                     return Ok(GitCommandResult(128, b"", b"fatal\n"))
                 raise AssertionError(f"unexpected git call: {args}")
 
@@ -945,9 +945,9 @@ class GitStateTests(unittest.TestCase):
                     "rev-parse",
                     "--path-format=absolute",
                     "--git-path",
-                    "agentic-template",
+                    "rygor",
                 ):
-                    return Ok(GitCommandResult(0, b"/x/agentic-template\n", b""))
+                    return Ok(GitCommandResult(0, b"/x/rygor\n", b""))
                 if args == ("rev-parse", "--absolute-git-dir"):
                     return Ok(GitCommandResult(128, b"", b"fatal\n"))
                 raise AssertionError(f"unexpected git call: {args}")
@@ -974,13 +974,12 @@ class GitStateTests(unittest.TestCase):
                     "rev-parse",
                     "--path-format=absolute",
                     "--git-path",
-                    "agentic-template",
+                    "rygor",
                 ):
                     return Ok(
                         GitCommandResult(
                             0,
-                            os.path.join(tmp, "afile", "agentic-template").encode()
-                            + b"\n",
+                            os.path.join(tmp, "afile", "rygor").encode() + b"\n",
                             b"",
                         )
                     )
@@ -1013,7 +1012,7 @@ class GitStateTests(unittest.TestCase):
                     "rev-parse",
                     "--path-format=absolute",
                     "--git-path",
-                    "agentic-template",
+                    "rygor",
                 ):
                     return Err(UnsupportedGitTarget(TargetReason.GIT_UNAVAILABLE))
                 raise AssertionError(f"unexpected git call: {args}")
@@ -1039,14 +1038,14 @@ class GitStateTests(unittest.TestCase):
                     "rev-parse",
                     "--path-format=absolute",
                     "--git-path",
-                    "agentic-template",
+                    "rygor",
                 ):
                     return Ok(
                         GitCommandResult(
                             129, b"", b"error: unknown option `path-format'\n"
                         )
                     )
-                if args == ("rev-parse", "--git-path", "agentic-template"):
+                if args == ("rev-parse", "--git-path", "rygor"):
                     return Err(UnsupportedGitTarget(TargetReason.GIT_UNAVAILABLE))
                 raise AssertionError(f"unexpected git call: {args}")
 
@@ -1071,9 +1070,9 @@ class GitStateTests(unittest.TestCase):
                     "rev-parse",
                     "--path-format=absolute",
                     "--git-path",
-                    "agentic-template",
+                    "rygor",
                 ):
-                    return Ok(GitCommandResult(0, b"/x/agentic-template\n", b""))
+                    return Ok(GitCommandResult(0, b"/x/rygor\n", b""))
                 if args == ("rev-parse", "--absolute-git-dir"):
                     return Err(UnsupportedGitTarget(TargetReason.GIT_UNAVAILABLE))
                 raise AssertionError(f"unexpected git call: {args}")
@@ -1086,7 +1085,7 @@ class GitStateTests(unittest.TestCase):
     def test_missing_root_is_a_typed_observation_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = os.fsencode(os.path.join(tmp, "missing"))
-            state_root = os.path.join(tmp, "tree", "agentic-template")
+            state_root = os.path.join(tmp, "tree", "rygor")
             os.makedirs(state_root, exist_ok=True)
 
             def runner(
@@ -1101,7 +1100,7 @@ class GitStateTests(unittest.TestCase):
                     "rev-parse",
                     "--path-format=absolute",
                     "--git-path",
-                    "agentic-template",
+                    "rygor",
                 ):
                     return Ok(GitCommandResult(0, os.fsencode(state_root) + b"\n", b""))
                 if args == ("rev-parse", "--absolute-git-dir"):
@@ -1122,7 +1121,7 @@ class GitStateTests(unittest.TestCase):
             os.makedirs(os.path.join(tmp, "denied"))
             os.chmod(os.path.join(tmp, "denied"), 0o000)
             root = os.fsencode(os.path.join(tmp, "denied", "repo"))
-            state_root = os.path.join(tmp, "tree", "agentic-template")
+            state_root = os.path.join(tmp, "tree", "rygor")
             os.makedirs(state_root, exist_ok=True)
 
             def runner(
@@ -1137,7 +1136,7 @@ class GitStateTests(unittest.TestCase):
                     "rev-parse",
                     "--path-format=absolute",
                     "--git-path",
-                    "agentic-template",
+                    "rygor",
                 ):
                     return Ok(GitCommandResult(0, os.fsencode(state_root) + b"\n", b""))
                 if args == ("rev-parse", "--absolute-git-dir"):
@@ -1178,7 +1177,7 @@ class GitStateTests(unittest.TestCase):
     def test_path_format_fallback_resolves_against_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = os.fsencode(tmp)
-            os.makedirs(os.path.join(tmp, ".git", "agentic-template"), exist_ok=True)
+            os.makedirs(os.path.join(tmp, ".git", "rygor"), exist_ok=True)
 
             def runner(
                 args: tuple[str, ...],
@@ -1192,15 +1191,15 @@ class GitStateTests(unittest.TestCase):
                     "rev-parse",
                     "--path-format=absolute",
                     "--git-path",
-                    "agentic-template",
+                    "rygor",
                 ):
                     return Ok(
                         GitCommandResult(
                             129, b"", b"error: unknown option `path-format'\n"
                         )
                     )
-                if args == ("rev-parse", "--git-path", "agentic-template"):
-                    return Ok(GitCommandResult(0, b".git/agentic-template\n", b""))
+                if args == ("rev-parse", "--git-path", "rygor"):
+                    return Ok(GitCommandResult(0, b".git/rygor\n", b""))
                 if args == ("rev-parse", "--absolute-git-dir"):
                     return Ok(
                         GitCommandResult(
@@ -1213,7 +1212,7 @@ class GitStateTests(unittest.TestCase):
             assert isinstance(resolved, ResolvedGitWorktree)
             self.assertEqual(
                 resolved.state_root_abs,
-                posixpath.normpath(posixpath.join(root, b".git", b"agentic-template")),
+                posixpath.normpath(posixpath.join(root, b".git", b"rygor")),
             )
 
     def test_inconsistent_git_answers_fail_closed(self) -> None:
@@ -1232,11 +1231,9 @@ class GitStateTests(unittest.TestCase):
                     "rev-parse",
                     "--path-format=absolute",
                     "--git-path",
-                    "agentic-template",
+                    "rygor",
                 ):
-                    return Ok(
-                        GitCommandResult(0, b"/elsewhere/agentic-template\n", b"")
-                    )
+                    return Ok(GitCommandResult(0, b"/elsewhere/rygor\n", b""))
                 if args == ("rev-parse", "--absolute-git-dir"):
                     return Ok(GitCommandResult(0, b"/somewhere/.git\n", b""))
                 raise AssertionError(f"unexpected git call: {args}")
@@ -1256,7 +1253,7 @@ class GitStateTests(unittest.TestCase):
             os.makedirs(os.path.join(tmp, "elsewhere"), exist_ok=True)
             os.symlink(
                 os.path.join(tmp, "elsewhere"),
-                os.path.join(repo, ".git", "agentic-template"),
+                os.path.join(repo, ".git", "rygor"),
             )
             # git canonicalizes the symlink away, so the resolved state root no
             # longer equals the git-dir child and the equality check fails closed.
@@ -1378,7 +1375,7 @@ class JournalTests(unittest.TestCase):
             + b"b" * 64
             + b'","operation_index":0,"ownership_token_sha256":"8408c6d2a7b286b16d526315e5e8216cf36a7148cdbbd6e064762cd75ec5ae66","role":"backup","transaction_id":"'
             + b"a" * 64
-            + b'"}],"schema_version":1,"target":{"device":1,"digest":"9a085b29788a7164b212a458bb4f97c779b1cefad3d86f17179e6d7bc2450a86","inode":2,"root":"2f73616d706c65"},"transaction_id":"'
+            + b'"}],"schema_version":1,"target":{"device":1,"digest":"3b0cb54b96c15562ab50394cabe018784f121b52ac0ab57a347c632b9fa6ea33","inode":2,"root":"2f73616d706c65"},"transaction_id":"'
             + b"a" * 64
             + b'"}'
         )

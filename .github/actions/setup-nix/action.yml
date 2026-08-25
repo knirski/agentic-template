@@ -18,9 +18,9 @@ runs:
     - uses: cachix/cachix-action@5f2d7c5294214f71b873db4b969586b980625e71 # v17
       if: ${{ inputs.cachix-auth-token == '' }}
       with:
-        name: knirski-agentic-template
+        name: knirski-rygor
     - uses: cachix/cachix-action@5f2d7c5294214f71b873db4b969586b980625e71 # v17
       if: ${{ inputs.cachix-auth-token != '' }}
       with:
-        name: knirski-agentic-template
+        name: knirski-rygor
         authToken: '${{ inputs.cachix-auth-token }}'

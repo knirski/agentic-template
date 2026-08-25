@@ -39,7 +39,7 @@ def _activate_or_skip(raw: Path) -> tuple[Path, Path]:
 
 
 def test_restore_repairs_drifted_managed_file() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-restore.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-restore.") as raw:
         project, _record = _activate_or_skip(Path(raw))
         managed = project / test_source_bootstrap.CORE_CI_PATH
         compiled = test_source_bootstrap.render_for(())[
@@ -64,7 +64,7 @@ def test_restore_repairs_drifted_managed_file() -> None:
 
 
 def test_plan_restore_does_not_mutate_and_receipt_is_written() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-restore.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-restore.") as raw:
         project, _record = _activate_or_skip(Path(raw))
         managed = project / test_source_bootstrap.CORE_CI_PATH
         compiled = test_source_bootstrap.render_for(())[
@@ -100,7 +100,7 @@ def test_plan_restore_does_not_mutate_and_receipt_is_written() -> None:
 
 
 def test_restore_leaves_unrelated_drift() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-restore.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-restore.") as raw:
         project, _record = _activate_or_skip(Path(raw))
         managed = project / test_source_bootstrap.CORE_CI_PATH
         compiled = test_source_bootstrap.render_for(())[

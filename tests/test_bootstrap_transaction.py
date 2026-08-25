@@ -860,7 +860,7 @@ class TestPlanSnapshotCapture:
                 worktree=ResolvedGitWorktree(
                     root_abs=root,
                     git_dir_abs=os.fsencode(os.path.join(tmp, ".git")),
-                    state_root_abs=os.fsencode(os.path.join(tmp, "agentic-template")),
+                    state_root_abs=os.fsencode(os.path.join(tmp, "rygor")),
                     target=TARGET,
                 ),
                 ownership_tokens=(),
@@ -1491,7 +1491,7 @@ class TestMachineEffectFailures:
                 worktree=ResolvedGitWorktree(
                     root_abs=os.fsencode(tmp),
                     git_dir_abs=os.fsencode(os.path.join(tmp, ".git")),
-                    state_root_abs=os.fsencode(os.path.join(tmp, "agentic-template")),
+                    state_root_abs=os.fsencode(os.path.join(tmp, "rygor")),
                     target=TARGET,
                 ),
                 ownership_tokens=tokens,

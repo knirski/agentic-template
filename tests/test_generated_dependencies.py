@@ -500,9 +500,7 @@ def test_source_lock_and_dev_packages_do_not_leak_into_generated_projects() -> N
     ownership_document = cast(
         dict[str, object],
         json.loads(
-            (SOURCE_ROOT / ".agentic-template/source-ownership.json").read_text(
-                encoding="utf-8"
-            )
+            (SOURCE_ROOT / ".rygor/source-ownership.json").read_text(encoding="utf-8")
         ),
     )
     cleanup_paths = ownership_document.get("snapshot_cleanup_paths")
@@ -568,7 +566,7 @@ def test_generated_fixture_creates_and_uses_its_own_uv_lock() -> None:
     uv = shutil.which("uv")
     if uv is None:
         pytest.skip("uv is required for the generated lock fixture")
-    with tempfile.TemporaryDirectory(prefix="agentic-template-generated-deps.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-generated-deps.") as raw:
         project = Path(raw)
         _ = (project / "pyproject.toml").write_bytes(
             render_generated_pyproject(

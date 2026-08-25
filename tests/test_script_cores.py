@@ -74,7 +74,7 @@ class FunctionalCoreTests(unittest.TestCase):
 
     def test_readme_core_preserves_boilerplate_diagnostics(self) -> None:
         findings = readiness.evaluate_readme(
-            """# Agentic Delivery Template
+            """# Rygor
 
 A language-neutral GitHub repository template for planning.
 """,

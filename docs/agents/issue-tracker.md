@@ -3,7 +3,7 @@
 ## Tracker
 
 - **Provider:** GitHub Issues
-- **Location:** `knirski/agentic-template`
+- **Location:** `knirski/rygor`
 - **Tool or procedure:** GitHub web workflow or `gh issue`
 - **Mirror Spec-backed tasks:** no
 

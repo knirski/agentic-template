@@ -11,7 +11,7 @@ permissions:
 jobs:
   mutmut:
     name: Focused mutation testing
-    if: github.repository == 'knirski/agentic-template'
+    if: github.repository == 'knirski/rygor'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

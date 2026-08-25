@@ -54,7 +54,7 @@ on:
   pull_request:
   push:
     branches:
-      - agentic-template:value:default-branch
+      - rygor:value:default-branch
   workflow_dispatch:
 
 permissions:
@@ -84,16 +84,16 @@ jobs:
       - name: Validate generic delivery files
         run: uv run --python 3.14 scripts/validate_template.py
 
-agentic-template:slot:capability-checks
-agentic-template:slot:publish-job
-agentic-template:slot:release-job
+rygor:slot:capability-checks
+rygor:slot:publish-job
+rygor:slot:release-job
 """
 
 # --- semantic-release --------------------------------------------------------
 
 RELEASERC_TEMPLATE: Final[bytes] = b"""\
 {
-  "branches": [agentic-template:value:default-branch],
+  "branches": [rygor:value:default-branch],
   "plugins": [
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
@@ -109,7 +109,7 @@ RELEASERC_TEMPLATE: Final[bytes] = b"""\
         "assets": [
           "pyproject.toml",
           "uv.lock",
-          ".agentic-template/maintenance-artifacts.json"
+          ".rygor/maintenance-artifacts.json"
         ],
         "message": "chore(release): ${nextRelease.version} [skip ci]\\n\\n${nextRelease.notes}"
       }
@@ -179,10 +179,10 @@ RELEASE_JOB: Final[bytes] = b"""\
     # branch check compares the run ref with the repository's default branch
     # instead of interpolating a YAML-encoded scalar into the expression.
     if: >
-      github.repository != 'knirski/agentic-template' &&
+      github.repository != 'knirski/rygor' &&
       github.ref_name == github.event.repository.default_branch &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: agentic-template:value:release-needs
+    needs: rygor:value:release-needs
     permissions:
       contents: write
       pull-requests: write
@@ -224,7 +224,7 @@ NIX_CHECK_JOB: Final[bytes] = b"""\
 # checks.  It never references source-only paths (tests, uv metadata).
 FLAKE_NIX_TEMPLATE: Final[bytes] = b"""\
 {
-  description = agentic-template:value:project-name;
+  description = rygor:value:project-name;
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -242,7 +242,7 @@ FLAKE_NIX_TEMPLATE: Final[bytes] = b"""\
     {
       devShells = forAllSystems (system: {
         default = nixpkgs.legacyPackages.${system}.mkShell {
-          name = agentic-template:value:project-name;
+          name = rygor:value:project-name;
 
           packages = with nixpkgs.legacyPackages.${system}; [
             actionlint
@@ -391,11 +391,11 @@ jobs:
       - name: Set up Cachix cache
         uses: cachix/cachix-action@5f2d7c5294214f71b873db4b969586b980625e71 # v17
         with:
-          name: agentic-template:value:cache-name
+          name: rygor:value:cache-name
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Build and push flake outputs
         env:
-          CACHIX_CACHE_NAME: agentic-template:value:cache-name
+          CACHIX_CACHE_NAME: rygor:value:cache-name
         run: |
           system=$(nix eval --raw --impure --expr 'builtins.currentSystem')
           nix build ".#devShells.${system}.default"

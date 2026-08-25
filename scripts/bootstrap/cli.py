@@ -635,14 +635,14 @@ def _runtime_artifact_path(path: RepoPath) -> bool:
     return (
         path.value
         in {
-            ".agentic-template/lock",
-            ".agentic-template/journal.json",
-            ".agentic-template/journal.pending",
+            ".rygor/lock",
+            ".rygor/journal.json",
+            ".rygor/journal.pending",
         }
-        or ".agentic-template-stage" in components
+        or ".rygor-stage" in components
         or components[:2]
         == (
-            ".agentic-template",
+            ".rygor",
             "transactions",
         )
     )

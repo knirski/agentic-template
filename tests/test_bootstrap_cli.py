@@ -83,15 +83,12 @@ def test_lifecycle_manifest_helpers_preserve_candidate_type() -> None:
     assert identity_annotations["manifest"] is CandidateManifest
 
 
-SCAFFOLD_README = "# Placeholder\n\n<!-- agentic-template:placeholder:readme -->\n"
-SCAFFOLD_PRD = "# Product\n\n<!-- agentic-template:placeholder:prd -->\n"
-SCAFFOLD_SECURITY = "# Security\n\n<!-- agentic-template:placeholder:security -->\n"
-SCAFFOLD_CONTRIBUTING = (
-    "# Contributing\n\n<!-- agentic-template:placeholder:contributing -->\n"
-)
+SCAFFOLD_README = "# Placeholder\n\n<!-- rygor:placeholder:readme -->\n"
+SCAFFOLD_PRD = "# Product\n\n<!-- rygor:placeholder:prd -->\n"
+SCAFFOLD_SECURITY = "# Security\n\n<!-- rygor:placeholder:security -->\n"
+SCAFFOLD_CONTRIBUTING = "# Contributing\n\n<!-- rygor:placeholder:contributing -->\n"
 SCAFFOLD_HOOK = (
-    "#!/bin/sh\n# agentic-template:unconfigured:validate-project\n"
-    "echo unconfigured\nexit 0\n"
+    "#!/bin/sh\n# rygor:unconfigured:validate-project\necho unconfigured\nexit 0\n"
 )
 
 SUPPLIED_README = "# Product\n\n## Setup\nRun it.\n\n## Validation\nRun `python3 scripts/validate_repository.py`.\n"
@@ -153,7 +150,7 @@ class TemplatePackage:
             source_path = self.root / source.value
             source_path.parent.mkdir(parents=True, exist_ok=True)
             _ = shutil.copy2(self.root / installed.value, source_path)
-        ownership = self.root / ".agentic-template/source-ownership.json"
+        ownership = self.root / ".rygor/source-ownership.json"
         ownership.parent.mkdir(parents=True, exist_ok=True)
         _ = ownership.write_text(
             json.dumps(
@@ -173,7 +170,7 @@ class TemplatePackage:
         hook = self.root / "scripts/validate-project"
         _ = hook.write_text(
             "#!/bin/sh\n"
-            + "# agentic-template:unconfigured:validate-project\n"
+            + "# rygor:unconfigured:validate-project\n"
             + "echo run >> "
             + str(hook_runs)
             + "\nexit 0\n",
@@ -213,8 +210,8 @@ class ScaffoldFixture:
             target.parent.mkdir(parents=True, exist_ok=True)
             _ = shutil.copy2(source, target)
         _ = shutil.copy2(
-            template.root / ".agentic-template/source-ownership.json",
-            self.root / ".agentic-template/source-ownership.json",
+            template.root / ".rygor/source-ownership.json",
+            self.root / ".rygor/source-ownership.json",
         )
         # The source's cleanup-control inventory is exercised by the
         # real-snapshot fixtures (test_github_template_readiness.py); the CLI
@@ -222,7 +219,7 @@ class ScaffoldFixture:
         # so its cleanup cases stay independent of the live source tree's
         # inventory.  The source-ownership declaration is generated-lifecycle
         # source and stays in the fixture.
-        target = self.root / ".agentic-template/maintenance-artifacts.json"
+        target = self.root / ".rygor/maintenance-artifacts.json"
         if target.is_file():
             _ = target.unlink()
         self.hook_runs = parent / "hook-runs"
@@ -359,7 +356,7 @@ def _make_fixture(
             "_commit: 0.1.0\n", encoding="utf-8"
         )
     if maintenance:
-        ownership = fixture.root / ".agentic-template/source-ownership.json"
+        ownership = fixture.root / ".rygor/source-ownership.json"
         _ = ownership.write_text(
             json.dumps(
                 {
@@ -371,7 +368,7 @@ def _make_fixture(
             ),
             encoding="utf-8",
         )
-        inventory = fixture.root / ".agentic-template/maintenance-artifacts.json"
+        inventory = fixture.root / ".rygor/maintenance-artifacts.json"
         _ = inventory.write_text(
             json.dumps(_inventory_document(fixture), sort_keys=True), encoding="utf-8"
         )
@@ -448,7 +445,7 @@ class CliFamilyTests(unittest.TestCase):
         self.assertEqual(main(["status", "--help"]), 0)
 
     def test_status_invalid_journal_exits_two(self) -> None:
-        state_root = self.fixture.root / ".git/agentic-template"
+        state_root = self.fixture.root / ".git/rygor"
         state_root.mkdir(mode=0o700)
         _ = (state_root / "journal.json").write_text("not json", encoding="utf-8")
         result = self.run_cli(["status", "--target", self.target_arg()])
@@ -456,7 +453,7 @@ class CliFamilyTests(unittest.TestCase):
         self.assertIn("state_root", render_text(result))
 
     def test_status_invalid_manifest_exits_two(self) -> None:
-        manifest = self.fixture.root / ".agentic-template/project.json"
+        manifest = self.fixture.root / ".rygor/project.json"
         manifest.parent.mkdir(exist_ok=True)
         _ = manifest.write_text("not json", encoding="utf-8")
         result = self.run_cli(["status", "--target", self.target_arg()])
@@ -646,7 +643,7 @@ class CliFamilyTests(unittest.TestCase):
         bundle.mkdir()
         (bundle / "content").mkdir()
         _ = (bundle / "content" / "readme.md").write_text(
-            "<!-- agentic-template:placeholder:readme -->\n", encoding="utf-8"
+            "<!-- rygor:placeholder:readme -->\n", encoding="utf-8"
         )
         _ = (bundle / "bootstrap.json").write_text(
             json.dumps(
@@ -739,9 +736,7 @@ class CliFamilyTests(unittest.TestCase):
             ["apply", "--bundle", str(self.bundle.root), "--target", self.target_arg()]
         )
         self.assertEqual(_exit_code(result), 1)
-        self.assertTrue(
-            (self.fixture.root / ".agentic-template/project.json").is_file()
-        )
+        self.assertTrue((self.fixture.root / ".rygor/project.json").is_file())
         self.assertEqual(self.fixture.run_count(), 1)
 
     def test_apply_revalidates_initial_candidate_before_writing(self) -> None:
@@ -792,9 +787,7 @@ class CliFamilyTests(unittest.TestCase):
         self.assertEqual(calls, 2)
         self.assertEqual(_exit_code(result), 2)
         self.assertIn("PRECONDITION_CHANGED", render_text(result))
-        self.assertFalse(
-            (self.fixture.root / ".agentic-template/project.json").exists()
-        )
+        self.assertFalse((self.fixture.root / ".rygor/project.json").exists())
         self.assertEqual(self.fixture.run_count(), 0)
 
     def test_restore_retains_existing_readiness_findings(self) -> None:
@@ -846,16 +839,14 @@ class CliFamilyTests(unittest.TestCase):
         )
         self.assertEqual(_exit_code(result), 1)  # scaffold slots remain unready
         self.assertFalse((fixture.root / "tests").exists())
-        self.assertFalse(
-            (fixture.root / ".agentic-template/maintenance-artifacts.json").exists()
-        )
-        self.assertTrue((fixture.root / ".agentic-template/project.json").is_file())
+        self.assertFalse((fixture.root / ".rygor/maintenance-artifacts.json").exists())
+        self.assertTrue((fixture.root / ".rygor/project.json").is_file())
         self.assertEqual(fixture.run_count(), 1)
         # A completed transaction leaves no stage litter behind.
         for stage_root in (
-            fixture.root / ".agentic-template-stage",
-            fixture.root / "docs/.agentic-template-stage",
-            fixture.root / "scripts/.agentic-template-stage",
+            fixture.root / ".rygor-stage",
+            fixture.root / "docs/.rygor-stage",
+            fixture.root / "scripts/.rygor-stage",
         ):
             self.assertFalse(stage_root.exists())
 
@@ -883,9 +874,7 @@ class CliFamilyTests(unittest.TestCase):
         self.assertIn("CLEANUP_CONTRACT_INVALID", render_text(refused))
         self.assertIn("tests", render_text(refused))
         self.assertIn("--leave-maintenance-artifacts", render_text(refused))
-        self.assertTrue(
-            (fixture.root / ".agentic-template/maintenance-artifacts.json").is_file()
-        )
+        self.assertTrue((fixture.root / ".rygor/maintenance-artifacts.json").is_file())
         leave = execute_command(
             _parse(
                 [
@@ -900,10 +889,8 @@ class CliFamilyTests(unittest.TestCase):
             template_root=str(template.root),
         )
         self.assertEqual(_exit_code(leave), 1)  # scaffold slots remain unready
-        self.assertTrue(
-            (fixture.root / ".agentic-template/maintenance-artifacts.json").is_file()
-        )
-        self.assertTrue((fixture.root / ".agentic-template/project.json").is_file())
+        self.assertTrue((fixture.root / ".rygor/maintenance-artifacts.json").is_file())
+        self.assertTrue((fixture.root / ".rygor/project.json").is_file())
 
     def test_protected_target_refuses(self) -> None:
         parent = Path(self.tmp.name) / "protected"
@@ -917,7 +904,7 @@ class CliFamilyTests(unittest.TestCase):
                 "remote",
                 "add",
                 "origin",
-                "https://github.com/knirski/agentic-template.git",
+                "https://github.com/knirski/rygor.git",
             ],
             check=True,
             capture_output=True,
@@ -942,7 +929,7 @@ class CliFamilyTests(unittest.TestCase):
         self.assertEqual(self.fixture.run_count(), 0)
 
     def test_recover_stale_pending_discards(self) -> None:
-        state_root = self.fixture.root / ".git/agentic-template"
+        state_root = self.fixture.root / ".git/rygor"
         state_root.mkdir(mode=0o700)
         _ = (state_root / "journal.pending").write_text("stale", encoding="utf-8")
         result = self.run_cli(["recover", "--target", self.target_arg()])
@@ -950,7 +937,7 @@ class CliFamilyTests(unittest.TestCase):
         self.assertFalse((state_root / "journal.pending").exists())
 
     def test_recover_invalid_journal_exits_two(self) -> None:
-        state_root = self.fixture.root / ".git/agentic-template"
+        state_root = self.fixture.root / ".git/rygor"
         state_root.mkdir(mode=0o700)
         _ = (state_root / "journal.json").write_text("not json", encoding="utf-8")
         result = self.run_cli(["recover", "--target", self.target_arg()])
@@ -960,7 +947,7 @@ class CliFamilyTests(unittest.TestCase):
     def test_recover_target_mismatch_exits_one(self) -> None:
         from scripts.bootstrap.identity import target_identity
 
-        state_root = self.fixture.root / ".git/agentic-template"
+        state_root = self.fixture.root / ".git/rygor"
         state_root.mkdir(mode=0o700)
         other = target_identity(b"/somewhere-else", device=1, inode=2)
         envelope = JournalEnvelope(
@@ -976,7 +963,7 @@ class CliFamilyTests(unittest.TestCase):
         self.assertTrue((state_root / "journal.json").is_file())
 
     def test_planned_recovery_cleans_preparations(self) -> None:
-        state_root = self.fixture.root / ".git/agentic-template"
+        state_root = self.fixture.root / ".git/rygor"
         state_root.mkdir(mode=0o700)
         planned = self.run_cli(
             [
@@ -1017,7 +1004,7 @@ class CliFamilyTests(unittest.TestCase):
         # marked stage directories.  Recovery must finish the forward cleanup
         # using the journaled identities (original ownership-token hashes),
         # never freshly minted tokens.
-        state_root = self.fixture.root / ".git/agentic-template"
+        state_root = self.fixture.root / ".git/rygor"
         state_root.mkdir(mode=0o700)
         planned = self.run_cli(
             [
@@ -1080,7 +1067,7 @@ class CliFamilyTests(unittest.TestCase):
             receipt=cast(PlanReceipt, receipt),
         )
         _ = (state_root / "journal.json").write_bytes(encode_journal(envelope))
-        stage_root = self.fixture.root / ".agentic-template-stage"
+        stage_root = self.fixture.root / ".rygor-stage"
         stage_dir = stage_root / transaction_id / str(stage_spec.operation_index)
         stage_dir.mkdir(parents=True)
         marker = canonical_json(

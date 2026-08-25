@@ -365,7 +365,7 @@ def test_compiled_workflows_pass_actionlint() -> None:
     actionlint = shutil.which("actionlint")
     if actionlint is None:
         pytest.skip("actionlint is required for the workflow lint check")
-    with tempfile.TemporaryDirectory(prefix="agentic-template-actionlint.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-actionlint.") as raw:
         directory = Path(raw)
         for selection in ((), ("semantic-release",), ALL_CAPABILITIES):
             rendered = render_for(selection)
@@ -413,7 +413,7 @@ def test_adopter_fixture_installs_and_runs_capability_commands() -> None:
     uv = shutil.which("uv")
     if uv is None:
         pytest.skip("uv is required for the adopter fixture")
-    with tempfile.TemporaryDirectory(prefix="agentic-template-adopter.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-adopter.") as raw:
         project = Path(raw)
         rendered = render_for(ALL_CAPABILITIES)
         _ = (project / "pyproject.toml").write_bytes(rendered["pyproject.toml"])

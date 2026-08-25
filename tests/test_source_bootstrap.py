@@ -81,11 +81,7 @@ MAINTAINER_ONLY_MARKERS = (
 def test_maintainer_only_jobs_are_excluded_from_generated_projects() -> None:
     source_ownership = cast(
         dict[str, object],
-        json.loads(
-            (ROOT / ".agentic-template/source-ownership.json").read_text(
-                encoding="utf-8"
-            )
-        ),
+        json.loads((ROOT / ".rygor/source-ownership.json").read_text(encoding="utf-8")),
     )
     copier_config = cast(
         dict[str, object],
@@ -101,7 +97,7 @@ def test_maintainer_only_jobs_are_excluded_from_generated_projects() -> None:
     # list must cover every declared cleanup path (plus the inventory itself).
     assert set(CLEANUP_PATHS) == set(cleanup_paths)
     assert set(CLEANUP_PATHS) <= excludes
-    assert ".agentic-template/maintenance-artifacts.json" in excludes
+    assert ".rygor/maintenance-artifacts.json" in excludes
     assert ".github/workflows/project-validation.yml" in excludes
     assert ".github/workflows/project-validation.yml" not in set(
         cast(list[str], source_ownership["lifecycle_paths"])
@@ -210,11 +206,7 @@ def test_every_committed_workflow_is_pinned_or_excluded() -> None:
     """
     source_ownership = cast(
         dict[str, object],
-        json.loads(
-            (ROOT / ".agentic-template/source-ownership.json").read_text(
-                encoding="utf-8"
-            )
-        ),
+        json.loads((ROOT / ".rygor/source-ownership.json").read_text(encoding="utf-8")),
     )
     copier_config = cast(
         dict[str, object],
@@ -309,7 +301,7 @@ def _activate_source(
 
 def test_apply_compiles_and_manages_per_profile_ci() -> None:
     """A portable activation installs the compiled, managed baseline CI."""
-    with tempfile.TemporaryDirectory(prefix="agentic-template-source.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-source.") as raw:
         project, _record = _activate_source(Path(raw))
 
         # The installed ci.yml is the compiled portable render -- managed
@@ -322,9 +314,7 @@ def test_apply_compiles_and_manages_per_profile_ci() -> None:
         # ci.yml is a managed artifact the status/restore machinery tracks.
         manifest = cast(
             dict[str, object],
-            json.loads(
-                (project / ".agentic-template/project.json").read_text(encoding="utf-8")
-            ),
+            json.loads((project / ".rygor/project.json").read_text(encoding="utf-8")),
         )
         managed_paths = {
             str(entry["path"])
@@ -364,7 +354,7 @@ def test_apply_compiles_selected_capability_workflows() -> None:
     makes apply compile every selected artifact into the project -- and only
     those, so adopters receive exactly the workflows they selected.
     """
-    with tempfile.TemporaryDirectory(prefix="agentic-template-source.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-source.") as raw:
         parent = Path(raw)
         selection = tuple(sorted(ALL_CAPABILITIES))
         project, _record = _activate_source(
@@ -415,19 +405,19 @@ def test_leave_maintenance_artifacts_retains_and_still_validates() -> None:
     """A repaired adopter that retains the maintenance inventory validates.
 
     ``apply --leave-maintenance-artifacts`` keeps
-    ``.agentic-template/maintenance-artifacts.json``, so the shipped
+    ``.rygor/maintenance-artifacts.json``, so the shipped
     ``scripts/validate_template.py`` must not mistake a managed adopter for the
     template source and pin its per-profile compiled CI against the source's
     portable baseline.
     """
-    with tempfile.TemporaryDirectory(prefix="agentic-template-source.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-source.") as raw:
         project, _record = _activate_source(
             Path(raw),
             capabilities=tuple(sorted(ALL_CAPABILITIES)),
             capability_settings={"cachix-publish": {"cache_name": "example"}},
             retain_maintenance=True,
         )
-        assert (project / ".agentic-template/maintenance-artifacts.json").is_file()
-        assert (project / ".agentic-template/project.json").is_file()
+        assert (project / ".rygor/maintenance-artifacts.json").is_file()
+        assert (project / ".rygor/project.json").is_file()
         validated = run([sys.executable, str(project / "scripts/validate_template.py")])
         assert validated.returncode == 0, validated.stdout + validated.stderr

@@ -6,7 +6,7 @@ shared readiness contract separate from path-specific packaging.
 ## Language
 
 **Template source**:
-The maintained `knirski/agentic-template` repository from which projects are created.
+The maintained `knirski/rygor` repository from which projects are created.
 _Avoid_: Source project, generated template
 
 **Generated project**:

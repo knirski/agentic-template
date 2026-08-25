@@ -2,7 +2,7 @@
 
 This directory contains source-owned declarative Markdown fragments used by
 the bootstrap renderer. Fragment bodies may contain only the documented
-`agentic-template:value:*` markers; they must not read the environment, execute
+`rygor:value:*` markers; they must not read the environment, execute
 commands, or introduce adopter-owned paths.
 
 To add a compatible capability:
@@ -15,7 +15,7 @@ To add a compatible capability:
    path inside the four managed operational documents.
 4. Add matrix, rendering, workflow, readiness, and external-activation fixtures
    before changing the frozen catalog surface.
-5. Update `.agentic-template/source-ownership.json` for every new lifecycle
+5. Update `.rygor/source-ownership.json` for every new lifecycle
    source file and run the complete template validation suite.
 
 Capability definitions must remain declarative. The resolver, renderer,

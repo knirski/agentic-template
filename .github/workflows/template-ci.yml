@@ -17,7 +17,7 @@ jobs:
   python-source:
     name: Python 3.14 source checks
     if: >
-      github.repository == 'knirski/agentic-template' &&
+      github.repository == 'knirski/rygor' &&
       (github.event_name != 'pull_request' ||
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
@@ -89,7 +89,7 @@ jobs:
     # The source repo releases only after its maintainer check suite passes;
     # generated projects use the portable gate in ci.yml instead.
     if: >
-      github.repository == 'knirski/agentic-template' &&
+      github.repository == 'knirski/rygor' &&
       github.ref_name == github.event.repository.default_branch &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [python-source, source-fixtures, workflow-lint, copier-smoke]

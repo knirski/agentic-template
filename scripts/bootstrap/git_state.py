@@ -1,10 +1,10 @@
 """Git state-root resolution effects for verified worktree targets.
 
 State resolution is exactly: try ``git rev-parse --path-format=absolute
---git-path agentic-template``; retry with plain ``--git-path`` resolved against
+--git-path rygor``; retry with plain ``--git-path`` resolved against
 the worktree root when and only when Git reports ``--path-format`` unsupported;
 independently obtain ``--absolute-git-dir`` and require the state-root result
-to equal its ``agentic-template`` child; then re-verify the state-root path
+to equal its ``rygor`` child; then re-verify the state-root path
 descriptor-relatively.  Linked worktrees and submodules therefore resolve
 independent state roots; bare repositories, non-worktrees, and unavailable Git
 are typed target failures.
@@ -154,15 +154,13 @@ def resolve_git_worktree(
         case Ok(_):
             pass
 
-    match run(
-        ("rev-parse", "--path-format=absolute", "--git-path", "agentic-template")
-    ):
+    match run(("rev-parse", "--path-format=absolute", "--git-path", "rygor")):
         case Err(error):
             return _target_error(error)
         case Ok(result) if result.returncode == 0:
             state_root_abs = result.stdout.strip()
         case Ok(result) if b"path-format" in result.stderr:
-            match run(("rev-parse", "--git-path", "agentic-template")):
+            match run(("rev-parse", "--git-path", "rygor")):
                 case Err(error):
                     return _target_error(error)
                 case Ok(fallback) if fallback.returncode != 0:
@@ -183,7 +181,7 @@ def resolve_git_worktree(
         case Ok(result):
             git_dir_abs = result.stdout.strip()
 
-    expected = posixpath.normpath(posixpath.join(git_dir_abs, b"agentic-template"))
+    expected = posixpath.normpath(posixpath.join(git_dir_abs, b"rygor"))
     if posixpath.normpath(state_root_abs) != expected:
         return Err(
             ObservationError(
