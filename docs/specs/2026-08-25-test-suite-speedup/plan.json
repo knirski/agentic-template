@@ -163,7 +163,7 @@
             "status": "completed",
             "completion": {
               "completed_at": "2026-08-25",
-              "commits": [],
+              "commits": ["ce583c0"],
               "evidence": [
                 "Focused live/synthetic builder smoke passed with one seed commit, hook run_count 0-to-1, synthetic template exposure, copier marker, and maintenance inventory",
                 "uv run pytest -q passed: 1405 tests, 82 subtests",
