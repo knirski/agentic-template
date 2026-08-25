@@ -13,12 +13,12 @@
     {
       "kind": "file",
       "path": ".github/workflows/pr-agent-commands.yml",
-      "sha256": "28c48270403c49f8e5ed4406d965941cc8b3e371004e0a1e28630b61672ae4b2"
+      "sha256": "1a9609c46bd7ff9746c28d06ae501e6a82771cb201594cb31be5b335efd15ed3"
     },
     {
       "kind": "file",
       "path": ".github/workflows/pr-agent.yml",
-      "sha256": "350881fd295b8246d43b29ac20a5197117084f815888b4c9f7c94a734bcdbc10"
+      "sha256": "ada643687ee57ad603a4c32b3517ff73c60f0c246739cfb8b0554116f6c146a5"
     },
     {
       "kind": "file",
@@ -33,7 +33,7 @@
     {
       "kind": "file",
       "path": ".pr_agent.toml",
-      "sha256": "27d66919f96cff6bd0cf2b47a0ffdc3a15f24d7ba55ab7ade84b883c696514ef"
+      "sha256": "35d16e6c730e10cd8b71dd463477fdec637490d51b953f409e42b058e3dea978"
     },
     {
       "kind": "file",
