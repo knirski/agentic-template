@@ -63,7 +63,7 @@
     {
       "kind": "file",
       "path": "pyproject.toml",
-      "sha256": "7e18f6ee99af9a348ac86165eb5068e704b4013a5622fbfdeceebafe3a5b0e7e"
+      "sha256": "c0bab4a24214fe2bb6580fd03770c59b4c98facd601c58127da5d097d3b3fc61"
     },
     {
       "kind": "directory",
@@ -73,7 +73,7 @@
     {
       "kind": "file",
       "path": "uv.lock",
-      "sha256": "fcd62c054e7745b0579121bfaf8f26421030699e6129949089f59f49abc479bf"
+      "sha256": "c3e374ec5366425994a7a523592cbd688efc022223500738d6c5c6ec81b76a40"
     }
   ],
   "schema_version": 1
