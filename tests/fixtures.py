@@ -28,6 +28,7 @@ from scripts.bootstrap.render import (
     ProjectInfo,
 )
 from scripts.bootstrap.result import Err, Ok, Result
+from tests.git_config import deterministic_git_environment
 
 PRD = """# Product
 ## Problem
@@ -146,7 +147,12 @@ def run(
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        command, cwd=cwd, env=env, text=True, capture_output=True, check=False
+        command,
+        cwd=cwd,
+        env=deterministic_git_environment(env),
+        text=True,
+        capture_output=True,
+        check=False,
     )
 
 
