@@ -1,0 +1,410 @@
+{
+  "feature": "test-suite-speedup",
+  "spec": "docs/specs/2026-08-25-test-suite-speedup/design.md",
+  "goal": "Eliminate the git-maintenance flake, enable parallel pytest execution, unify all project-fixture construction in a typed factory engine, and convert the suite to native pytest across eight green checkpoints.",
+  "preserved_behavior": [
+    "Every behavior covered by the 1404 baseline tests keeps passing at every checkpoint; the collected count may only grow where subTest loops become parametrized cases (T13-T18, compared in T19)",
+    "No changes under scripts/ (production code untouched)",
+    "Mutmut pinned file paths survive and -k target test_canonical_json_round_trips_arbitrary_strict_values keeps its name",
+    "Coverage flags on .github/workflows/template-ci.yml unchanged",
+    "Generated projects unaffected (tests/ removed by snapshot cleanup)"
+  ],
+  "phases": [
+    {
+      "id": "P1",
+      "name": "Deterministic git environment",
+      "tasks": [
+        {
+          "id": "T1",
+          "name": "Session autouse deterministic-git-env fixture",
+          "depends_on": [],
+          "inputs": [
+            "Root cause evidence from docs/specs/2026-08-25-test-suite-speedup/design.md (detached git auto-maintenance children writing into fixture .git during teardown)",
+            "Required env: GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_SYSTEM=/dev/null, GIT_CONFIG_NOSYSTEM=1; the maintenance config keys gc.auto=0, gc.autoDetach=false, maintenance.auto=false are injected via GIT_CONFIG_COUNT=3 with GIT_CONFIG_KEY_0..2 / GIT_CONFIG_VALUE_0..2 pairs (dotted keys are not environment variables and are inert when set directly)"
+          ],
+          "description": "Create tests/conftest.py defining a session-scoped autouse fixture named deterministic_git_env that force-sets the full environment described in the inputs (config-path nulling plus the GIT_CONFIG_COUNT/KEY/VALUE injection pairs) on os.environ before any test spawns a subprocess. Intent-revealing docstring records the btrfs/detached-gc rationale and evidence counts (baseline 15 failures / 80 probe iterations vs 0 / 80 disabled, probes using the same injection mechanism). No other changes in this task.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": [], "create": ["tests/conftest.py"], "modify": [], "delete": []},
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "40 consecutive runs of tests/test_bootstrap_cli.py::CliFamilyTests::test_text_json_parity pass (baseline flake rate ~7%)",
+              "10 consecutive full-file runs of tests/test_bootstrap_cli.py pass"
+            ],
+            "acceptance": [
+              "uv run pytest -q passes with zero ENOTEMPTY teardown failures",
+              "conftest fixture visible under --setup-plan as session-scoped autouse"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P2",
+      "name": "Parallel execution",
+      "tasks": [
+        {
+          "id": "T2",
+          "name": "Add pytest-xdist, CI flag, CONTRIBUTING docs",
+          "depends_on": ["T1"],
+          "inputs": [
+            "pytest>=9.1.1 already in [dependency-groups] test",
+            "template-ci.yml line 42 runs: uv run pytest --cov=scripts --cov-report=term-missing --cov-report=xml",
+            "Decision: no addopts change (mutmut runs its own pytest invocations)"
+          ],
+          "description": "Add \"pytest-xdist>=3.8\" to [dependency-groups] test in pyproject.toml and regenerate uv.lock via uv lock (or uv add --group test pytest-xdist). Append -n auto to the pytest invocation in .github/workflows/template-ci.yml keeping all coverage flags. Add a short 'Running tests' section to CONTRIBUTING.md documenting `uv run pytest` and `uv run pytest -n auto`. Do not touch [tool.pytest.ini_options] addopts.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {
+            "reuse": [],
+            "create": [],
+            "modify": ["pyproject.toml", "uv.lock", ".github/workflows/template-ci.yml", "CONTRIBUTING.md"],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "uv run pytest -q green (serial)",
+              "uv run pytest -n auto -q green (parallel)",
+              ".github/workflows/template-ci.yml still parses as YAML and retains --cov flags"
+            ],
+            "acceptance": [
+              "coverage.xml produced under -n auto with combined worker data",
+              "uv.lock updated; uv sync succeeds"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "name": "Factory engine",
+      "tasks": [
+        {
+          "id": "T3",
+          "name": "Factory core: config, pristine snapshot, copy_tree, git helper",
+          "depends_on": [],
+          "inputs": [
+            "API surface from design.md API Design section",
+            "Repository typed-FP conventions: frozen dataclasses, Literal unions, match/assert_never, pure functions, no production Result imports",
+            "tests/fixtures.py::tracked_files enumerates tracked files via git ls-files"
+          ],
+          "description": "Create tests/factory.py (pytest-free) with: type TemplateSource = Literal['live', 'synthetic']; frozen dataclasses SnapshotConfig (template, maintenance=False, copier_marker=False) and SnapshotProject (root, hook_runs, template_root, run_count()); REPO_ROOT constant; build_pristine_snapshot(root, parent) building the snapshot by enumerating the source set with fixtures.tracked_files() (git ls-files -co --exclude-standard: tracked plus non-ignored untracked; entries failing is_file(), today the committed .claude/skills/* symlinks, are omitted exactly as the current helper does) and copying each enumerated file individually preserving bytes+modes — never a copytree over the repository root; pristine_snapshot() as lru_cache(1) accessor delegating to build_pristine_snapshot (the one sanctioned cache): on first call it creates its root via tempfile.mkdtemp(prefix='agentic-template-pristine.') and registers atexit cleanup (shutil.rmtree with ignore_errors=True) so the tree outlives every consumer in the process and never leaks beyond exit — under xdist each worker owns one such copy (~15ms, accepted); copy_tree(source, target, ignore=CANONICAL_IGNORE) centralizing the canonical ignore frozenset replacing four bespoke shutil.ignore_patterns lists (.git, .direnv, __pycache__, result, .venv, .hypothesis, .pytest_cache, .ruff_cache, .mypy_cache, .coverage); git(*args, cwd) helper running subprocess git and raising with captured stderr on failure. Preserve today's symlink-follows-to-file copying semantics.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": ["tests/fixtures.py"], "create": ["tests/factory.py"], "modify": [], "delete": []},
+          "new_abstractions": [
+            {"name": "SnapshotConfig/SnapshotProject", "requirement": "Typed, immutable configuration and single-value result for fixture project construction", "consumers": "build_snapshot_project (T4), conftest scaffolded_project (T12), converting suites (P4, P6-P7)"},
+            {"name": "pristine_snapshot/build_pristine_snapshot", "requirement": "Build the tracked-source copy once instead of per fixture (~107ms x ~50 fixtures today)", "consumers": "build_snapshot_project (T4), conftest pristine_source fixture (T12)"},
+            {"name": "copy_tree + CANONICAL_IGNORE", "requirement": "One canonical ignore list replacing four bespoke copytree ignore lists", "consumers": "shape-B suites (T10), conftest materialized_tree (T12)"}
+          ],
+          "validation": {
+            "tests": ["importable without pytest installed-side-effects", "basedpyright clean on new module"],
+            "acceptance": ["no pytest imports in tests/factory.py", "existing suite untouched and green"]
+          }
+        },
+        {
+          "id": "T4",
+          "name": "Snapshot-project builder with template dispatch",
+          "depends_on": ["T3"],
+          "inputs": [
+            "Overlay flow duplicated in tests/test_bootstrap_cli.py::ScaffoldFixture.__init__ and tests/test_github_template_readiness.py::GitHubBootstrapTests._snapshot",
+            "Synthetic template package definition in tests/test_bootstrap_cli.py::TemplatePackage (nine legal files + source-ownership.json + scaffold source copies)",
+            "Seed commit sequence: git init -q -b main; add -A; commit with -c user.email=t@t -c user.name=t",
+            "Recording hook contract: writes one line per run; run_count() counts lines in hook_runs file"
+          ],
+          "description": "Add build_snapshot_project(parent, config, *, pristine) -> SnapshotProject to tests/factory.py. Materialize pristine into parent/<name> via stdlib copytree; apply overlays by dispatching match config.template: case 'live' (recording hook into scripts/validate-project plus its fragment blob, SCAFFOLD_CONTRIBUTING, SCAFFOLD_SECURITY placeholders) and case 'synthetic' (port TemplatePackage construction here as the overlay source); case _: assert_never. Optional maintenance inventory and copier marker per config flags, mirroring _make_fixture(maintenance=True/copier=True) semantics. Finish with exactly one seed commit via the git() helper. Return SnapshotProject(root, hook_runs, template_root set only for synthetic). Keep hook recording byte-compatible so run_count() semantics match today.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": ["tests/test_bootstrap_cli.py::TemplatePackage", "tests/test_github_template_readiness.py::GitHubBootstrapTests._snapshot"], "create": [], "modify": ["tests/factory.py"], "delete": []},
+          "new_abstractions": [
+            {"name": "build_snapshot_project", "requirement": "Replace three near-identical copy-overlay-commit flows with one typed builder", "consumers": "CLI suite (T7), readiness/source suites (T8), scaffolded_project fixture (T12)"}
+          ],
+          "validation": {
+            "tests": ["builder output compared against both predecessor flows in T6 fidelity tests"],
+            "acceptance": ["single seed commit per built project", "run_count() starts at 0 and counts identically to ScaffoldFixture.run_count()"]
+          }
+        },
+        {
+          "id": "T5",
+          "name": "Seed-repo and unified answer-bundle builders",
+          "depends_on": ["T3"],
+          "inputs": [
+            "Inline git init/add sites in test_bootstrap_observation.py (~978, 1051), test_bootstrap_recovery.py (~985), test_bootstrap_state_root.py",
+            "Bundle writers: tests/fixtures.py::write_bundle and tests/test_bootstrap_cli.py::BundleDir (all_scaffold/supplied variants, record_path wiring, bootstrap.json schema_version 1 document)"
+          ],
+          "description": "Add to tests/factory.py: seed_repo(parent, files: Mapping[str, str | bytes], *, name='repo') -> Path writing the given files and producing one committed repo via git(); the repo initializes with --initial-branch=main and commits with local identity (-c user.name -c user.email) because the session env fixture nulls global/system git config — clean runners must not depend on ambient configuration. Also write_answer_bundle(parent, *, supplied, record, name='bundle', capabilities=None, capability_settings=None) merging write_bundle and BundleDir behavior including the exact bootstrap.json field order/content and executable hook bits.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": ["tests/fixtures.py::write_bundle", "tests/test_bootstrap_cli.py::BundleDir"], "create": [], "modify": ["tests/factory.py"], "delete": []},
+          "new_abstractions": [
+            {"name": "seed_repo", "requirement": "Tiny committed repos without scattered inline git subprocesses", "consumers": "observation/recovery/state-root suites (T9)"},
+            {"name": "write_answer_bundle", "requirement": "One answer-bundle writer ending two divergent implementations with silent drift risk", "consumers": "CLI suite (T7), readiness suites (T8, T13)"}
+          ],
+          "validation": {
+            "tests": ["seed_repo repo recognized as worktree by git status", "bundle documents byte-equal to both predecessors in T6"],
+            "acceptance": ["hook files carry executable mode 0o755"]
+          }
+        },
+        {
+          "id": "T6",
+          "name": "Factory fidelity tests",
+          "depends_on": ["T4", "T5"],
+          "inputs": [
+            "Baseline constructions available before any suite migrates: ScaffoldFixture/_make_fixture, _snapshot(), write_bundle, BundleDir"
+          ],
+          "description": "Create tests/test_factory.py covering: byte-digest and permission-bit equality between build_snapshot_project output and today's ScaffoldFixture/_snapshot constructions; write_answer_bundle equivalence against write_bundle and BundleDir for supplied and all-scaffold modes; seed_repo produces a valid worktree with expected files/modes; template dispatch exhaustiveness (unknown TemplateSource rejected); pristine_snapshot cache returns identical path within a process. These tests pin the engine before any consumer migrates.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": ["tests/fixtures.py", "tests/bootstrap_fixtures.py"], "create": ["tests/test_factory.py"], "modify": [], "delete": []},
+          "new_abstractions": [],
+          "validation": {
+            "tests": ["uv run pytest tests/test_factory.py -q green", "full existing suite still green and untouched"],
+            "acceptance": ["fidelity assertions compare against live baseline constructions, not hardcoded digests"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "name": "Direct-call adoption",
+      "tasks": [
+        {
+          "id": "T7",
+          "name": "CLI suite onto factory builders",
+          "depends_on": ["T6"],
+          "inputs": [
+            "CliFamilyTests.setUp builds TemplatePackage + ScaffoldFixture + BundleDir for every test (~107ms)",
+            "Maintenance-inventory digest helpers (_inventory_document, _directory_digest) are CLI-suite-local and stay local",
+            "~40 test methods reference self.template/self.fixture/self.bundle/self.tmp"
+          ],
+          "description": "Rewrite tests/test_bootstrap_cli.py fixture layer: ScaffoldFixture.__init__ body becomes a call to build_snapshot_project; delete TemplatePackage and BundleDir classes (factory owns them now); BundleDir call sites use write_answer_bundle; keep attribute names (self.fixture.root, self.hook_runs access patterns, self.template.root equivalent via returned handle) so test methods need no edits. Suites remain unittest.TestCase at this stage. Parse-only tests keep paying setUp cost for now (laziness lands with native conversion in T16).",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": ["tests/factory.py"], "create": [], "modify": ["tests/test_bootstrap_cli.py"], "delete": []},
+          "new_abstractions": [],
+          "validation": {
+            "tests": ["uv run pytest tests/test_bootstrap_cli.py -q green serial and -n auto"],
+            "acceptance": ["no TemplatePackage/BundleDir class definitions remain in the file"]
+          }
+        },
+        {
+          "id": "T8",
+          "name": "Readiness and source suites onto builders",
+          "depends_on": ["T6"],
+          "inputs": [
+            "GitHubBootstrapTests._snapshot overlays from literal constants onto a live tracked copy",
+            "Bare refusal case test_apply_refuses_without_a_git_working_tree uses plain copy_tracked",
+            "_activate_source in test_source_bootstrap.py mirrors _snapshot then applies a bundle"
+          ],
+          "description": "Replace GitHubBootstrapTests._snapshot body with build_snapshot_project(live config) plus its local apply-wrapper; replace the bare tracked-copy in the refusal test with factory.copy_tree from pristine; rewrite _activate_source to builder + local apply wrapper. Keep assertion logic untouched.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": ["tests/factory.py"], "create": [], "modify": ["tests/test_github_template_readiness.py", "tests/test_source_bootstrap.py"], "delete": []},
+          "new_abstractions": [],
+          "validation": {
+            "tests": ["both files green serial and -n auto"],
+            "acceptance": ["no copy_tracked calls remain in these files"]
+          }
+        },
+        {
+          "id": "T9",
+          "name": "Shape-C suites onto seed_repo",
+          "depends_on": ["T6"],
+          "inputs": [
+            "Inline git sites: test_bootstrap_observation.py lines ~978/~1015/~1051, test_bootstrap_recovery.py ~985, state-root spawn helpers"
+          ],
+          "description": "Replace every inline git init/add(/commit) fixture site in test_bootstrap_observation.py, test_bootstrap_recovery.py, test_bootstrap_state_root.py with factory.seed_repo calls carrying the same file sets. Process-spawn and locking test logic unchanged.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": ["tests/factory.py::seed_repo"], "create": [], "modify": ["tests/test_bootstrap_observation.py", "tests/test_bootstrap_recovery.py", "tests/test_bootstrap_state_root.py"], "delete": []},
+          "new_abstractions": [],
+          "validation": {
+            "tests": ["three files green serial and -n auto"],
+            "acceptance": ["rg '\"git\", ?\"init\"' shows no fixture-repo construction in these files outside factory.py/conftest.py"]
+          }
+        },
+        {
+          "id": "T10",
+          "name": "Shape-B partial-tree suites onto copy_tree",
+          "depends_on": ["T6"],
+          "inputs": [
+            "Bespoke ignores: test_repository_validation.py (~43), test_project_readiness.py (~65) copy scripts/bootstrap subset; test_capability_matrix.py (~420) copies scripts/"
+          ],
+          "description": "Replace the bespoke shutil.copytree calls with factory.copy_tree one-liners using the centralized CANONICAL_IGNORE. Rendered-output writes in capability_matrix stay local.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": ["tests/factory.py::copy_tree"], "create": [], "modify": ["tests/test_repository_validation.py", "tests/test_project_readiness.py", "tests/test_capability_matrix.py"], "delete": []},
+          "new_abstractions": [],
+          "validation": {
+            "tests": ["three files green serial and -n auto"],
+            "acceptance": ["no shutil.ignore_patterns literals remain in these files"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "name": "Baseline cleanup",
+      "tasks": [
+        {
+          "id": "T11",
+          "name": "Dead-code removal and clean-baseline validation",
+          "depends_on": ["T7", "T8", "T9", "T10"],
+          "inputs": ["Symbols made redundant: fixtures.copy_tracked, fixtures.write_bundle, residual duplicate helpers/ignore lists"],
+          "description": "Delete copy_tracked and write_bundle from tests/fixtures.py and any residual duplicated builders or ignore-list literals. Record the pre-stage-7 baselines here: full --collect-only output (ids and count) and serial wall time, so T19 can compare against them. Run repository searches proving consolidation, then full serial and parallel suites plus ruff/basedpyright. This checkpoint is the Approach-A complete fallback boundary.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": [], "create": [], "modify": ["tests/fixtures.py"], "delete": []},
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "rg 'copy_tracked|write_bundle' tests/ scripts/ returns no code references (spec/doc mentions aside)",
+              "rg '\"git\", ?\"init\"' tests/ shows hits only in tests/factory.py",
+              "uv run pytest -q green; uv run pytest -n auto -q green",
+              "uv run ruff check . clean; basedpyright clean"
+            ],
+            "acceptance": ["US-3 and US-5 acceptance criteria from design.md hold"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P6",
+      "name": "Fixture graph and exemplar conversion",
+      "tasks": [
+        {
+          "id": "T12",
+          "name": "Native conftest fixture graph",
+          "depends_on": ["T11"],
+          "inputs": [
+            "Fixture table from design.md Architecture section",
+            "xdist fact: session-scoped fixtures execute once per worker (~15ms pristine build makes FileLock sharing unnecessary)"
+          ],
+          "description": "Extend tests/conftest.py with: pristine_source (session scope, delegates to factory.pristine_snapshot()), scaffolded_project(tmp_path) returning factory.build_snapshot_project(tmp_path, SnapshotConfig(), pristine=factory.pristine_snapshot()), make_bundle(tmp_path) and make_seed_repo(tmp_path) returning bound builder callables, materialized_tree(tmp_path) returning factory.copy_tree output of the pristine source. Native signatures only; suites intentionally remain on direct calls until converted (documented interim state inside the PR, not dead code).",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": ["tests/factory.py"], "create": [], "modify": ["tests/conftest.py"], "delete": []},
+          "new_abstractions": [
+            {"name": "scaffolded_project/pristine_source/make_bundle/make_seed_repo/materialized_tree fixtures", "requirement": "Declarative pytest-native consumption of the engine with pytest-owned lifetimes", "consumers": "converted suites in T13-T18"}
+          ],
+          "validation": {
+            "tests": ["--setup-plan shows scopes correctly", "full suite green (suites unchanged)"],
+            "acceptance": ["fixtures importable/requestable from a scratch test file exercising each one"]
+          }
+        },
+        {
+          "id": "T13",
+          "name": "Exemplar conversion: GitHubBootstrapTests to native pytest",
+          "depends_on": ["T12"],
+          "inputs": [
+            "Conversion pattern from design.md Suite conversion pattern section: TestCase->module functions, assert*->bare asserts, subTest->parametrize with ids, setUp/tearDown dissolve into tmp_path + fixture requests",
+            "This class exercises snapshot projects, bundles, subprocess runs, and subTests - the full pattern surface"
+          ],
+          "description": "Convert the GitHubBootstrapTests class in tests/test_github_template_readiness.py end-to-end to module-level test functions requesting conftest fixtures (tmp_path, scaffolded_project or direct builder calls with explicit SnapshotConfig where configs differ, make_bundle). Plain asserts throughout; subTest loops become @pytest.mark.parametrize with explicit ids. Record the mechanical pattern in the PR description as the template for T14-T18 batches. Remaining unittest classes in the file stay untouched in this task.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": ["tests/conftest.py fixtures"], "create": [], "modify": ["tests/test_github_template_readiness.py"], "delete": []},
+          "new_abstractions": [],
+          "validation": {
+            "tests": ["file green serial and -n auto", "former subTest cases appear as distinct parametrized ids in --collect-only"],
+            "acceptance": ["pattern documented; no behavior assertions weakened"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P7",
+      "name": "Native conversion batches",
+      "tasks": [
+        {
+          "id": "T14",
+          "name": "Convert contracts cluster",
+          "depends_on": ["T13"],
+          "inputs": ["Files: test_bootstrap_bundles.py, test_bootstrap_presentation.py, test_vocabulary.py, test_plan_contract.py, test_mutation_contract.py, test_template_contract.py (all contain TestCase classes; none build projects)"],
+          "description": "Apply the exemplar pattern mechanically: classes to module functions, self.assert* to bare asserts, subTest to parametrize, setUp/tearDown to fixtures or local context managers. No assertion logic changes.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": ["exemplar pattern from T13"], "create": [], "modify": ["tests/test_bootstrap_bundles.py", "tests/test_bootstrap_presentation.py", "tests/test_vocabulary.py", "tests/test_plan_contract.py", "tests/test_mutation_contract.py", "tests/test_template_contract.py"], "delete": []},
+          "new_abstractions": [],
+          "validation": {"tests": ["six files green serial and -n auto"], "acceptance": ["no TestCase subclasses remain in them"]}
+        },
+        {
+          "id": "T15",
+          "name": "Convert unit cluster (mutmut-pinned)",
+          "depends_on": ["T14"],
+          "inputs": [
+            "Files: test_bootstrap_decisions.py, test_bootstrap_determinism.py, test_bootstrap_foundations.py, test_script_cores.py, test_bootstrap_readiness.py, test_bootstrap_readiness_rules.py, test_bootstrap_scaffold.py, test_bootstrap_stateful.py, test_bootstrap_transaction.py",
+            "Four of these are mutmut-pinned in pyproject.toml; preserve paths and the -k target name test_canonical_json_round_trips_arbitrary_strict_values"
+          ],
+          "description": "Same mechanical conversion as T14 across nine files. Verify mutmut constraint immediately after conversion: pinned files collect cleanly and the -k filter still selects its complement correctly.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": ["exemplar pattern from T13"], "create": [], "modify": ["tests/test_bootstrap_decisions.py", "tests/test_bootstrap_determinism.py", "tests/test_bootstrap_foundations.py", "tests/test_script_cores.py", "tests/test_bootstrap_readiness.py", "tests/test_bootstrap_readiness_rules.py", "tests/test_bootstrap_scaffold.py", "tests/test_bootstrap_stateful.py", "tests/test_bootstrap_transaction.py"], "delete": []},
+          "new_abstractions": [],
+          "validation": {
+            "tests": ["nine files green serial and -n auto", "mutmut pinned-file collection command from pyproject succeeds"],
+            "acceptance": ["the -k target test name exists post-conversion"]
+          }
+        },
+        {
+          "id": "T16",
+          "name": "Convert CLI suite to native pytest",
+          "depends_on": ["T15"],
+          "inputs": [
+            "test_bootstrap_cli.py is the largest file (1213 lines; CliFamilyTests 40 methods, EntryPointTests runpy flow, ProjectChangesTests)",
+            "EntryPointTests redirects sys.argv and runs runpy; convert to monkeypatch + tmp_path idioms"
+          ],
+          "description": "Convert all remaining classes in tests/test_bootstrap_cli.py to module functions with fixture requests; CliFamilyTests drops self.tmp entirely (tmp_path + scaffolded_project/make_bundle); EntryPointTests uses monkeypatch.setattr(sys, 'argv', ...) capturing SystemExit; parse-only tests gain structural laziness automatically by not requesting project fixtures.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": ["exemplar pattern", "tests/conftest.py fixtures"], "create": [], "modify": ["tests/test_bootstrap_cli.py"], "delete": []},
+          "new_abstractions": [],
+          "validation": {
+            "tests": ["40 consecutive runs of the parity test green (flake fix holds under native form)", "file green serial and -n auto"],
+            "acceptance": ["no tempfile.TemporaryDirectory lifecycle remains in the file"]
+          }
+        },
+        {
+          "id": "T17",
+          "name": "Convert stateful fixture cluster",
+          "depends_on": ["T16"],
+          "inputs": ["Files: test_bootstrap_observation.py, test_bootstrap_recovery.py, test_bootstrap_state_root.py - mix of already-function-style tests and TestCase classes; state_root contains LockingTests with 127 test definitions incl. process-spawn cases"],
+          "description": "Convert remaining TestCase classes in the three files to functions; swap direct builder calls to conftest fixtures where natural; keep process-spawn/locking logic byte-for-byte.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": ["exemplar pattern", "tests/conftest.py fixtures"], "create": [], "modify": ["tests/test_bootstrap_observation.py", "tests/test_bootstrap_recovery.py", "tests/test_bootstrap_state_root.py"], "delete": []},
+          "new_abstractions": [],
+          "validation": {"tests": ["three files green serial and -n auto"], "acceptance": ["locking/process-death tests unchanged in logic"]}
+        },
+        {
+          "id": "T18",
+          "name": "Convert remaining suites",
+          "depends_on": ["T17"],
+          "inputs": ["Files: residual classes in test_github_template_readiness.py (GitHubSnapshot, SourceContractTests, EligibilityScriptBranchTests), test_project_readiness.py, test_repository_validation.py"],
+          "description": "Final conversion batch applying the exemplar pattern; eligibility script tests move env patching to monkeypatch idioms.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": ["exemplar pattern"], "create": [], "modify": ["tests/test_github_template_readiness.py", "tests/test_project_readiness.py", "tests/test_repository_validation.py"], "delete": []},
+          "new_abstractions": [],
+          "validation": {
+            "tests": ["rg 'unittest' tests/ returns no code references", "full suite green serial and -n auto"],
+            "acceptance": ["zero TestCase subclasses remain under tests/"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P8",
+      "name": "Final validation",
+      "tasks": [
+        {
+          "id": "T19",
+          "name": "Full acceptance gate",
+          "depends_on": ["T18"],
+          "inputs": ["US acceptance criteria from design.md", "Baseline collection count captured before stage 7"],
+          "description": "Run the complete gate: uv run ruff check .; basedpyright; collection comparison versus pre-conversion baseline (same behaviors, parametrized ids added); mutmut pinned-file collection plus a targeted mutant sample; repository search proving no node-id references broke; template-ci.yml coverage flags intact; walk every US acceptance criterion and record evidence. No code changes expected in this task.",
+          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "files": {"reuse": [], "create": [], "modify": [], "delete": []},
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "uv run pytest -q green serial",
+              "uv run pytest -n auto -q green with wall-time improvement recorded",
+              "uv run ruff check . clean; basedpyright clean",
+              "mutmut collect over pinned files succeeds; targeted mutant sample killed as expected",
+              "rg for old Class-style node ids across CI/scripts/docs returns nothing"
+            ],
+            "acceptance": [
+              "All design.md US-1 through US-6 criteria verified with recorded evidence",
+              "coverage.xml produced by CI-equivalent command with flags intact"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
