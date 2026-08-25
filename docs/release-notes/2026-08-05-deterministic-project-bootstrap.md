@@ -2,10 +2,10 @@
 
 ## Compatibility baseline
 
-The activation release establishes the first generated-project compatibility
-baseline for bootstrap schema 1. It supports recognized GitHub snapshots and
-Copier-generated projects with one shared deterministic compiler and managed
-output inventory; the exact release identifier is recorded when published.
+The activation release, `v2.0.0`, establishes the first generated-project
+compatibility baseline for bootstrap schema 1. It supports recognized GitHub
+snapshots and Copier-generated projects with one shared deterministic compiler
+and managed output inventory.
 
 ## Generated-project lifecycle
 
@@ -21,7 +21,7 @@ PRD, and validation-hook files remain outside managed drift repair.
 
 ## Operational requirements
 
-- Run `python3 scripts/validate_repository.py` as the canonical generated-project
+- Run `uv run --python 3.14 scripts/validate_repository.py` as the canonical generated-project
   validation boundary.
 - Configure the `Project validation` merge check in the default-branch ruleset.
 - Keep credentials in GitHub Actions secrets; bootstrap accepts no secrets.

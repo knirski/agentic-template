@@ -26,7 +26,7 @@ transition is available, prepare an `additions.json` input using the additions
 schema and preview it with:
 
 ```console
-python3 scripts/bootstrap_project.py plan add --target . --input additions.json --out receipt.json
+uv run --python 3.14 scripts/bootstrap_project.py plan add --target . --input additions.json --out receipt.json
 ```
 
 Apply only the reviewed plan. Capability removal, replacement, and

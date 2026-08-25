@@ -40,7 +40,8 @@ readiness evidence, intact placeholder content can be mistaken for a releasable 
 ### REQ-001: Detect incomplete generated-project setup
 
 An untouched generated project must fail deterministic readiness checks with stable diagnostics and
-concrete next actions for its PRD, README, and project-validation hook.
+concrete next actions for its PRD, README, security policy, contributing guide, and project-validation
+hook.
 
 ### REQ-002: Provide one generated-project validation command
 

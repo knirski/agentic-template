@@ -48,7 +48,7 @@ setup and validation details in `README.md`, and put contributor process in
 Run the single project boundary from the repository root:
 
 ```console
-python3 scripts/validate_repository.py
+uv run --python 3.14 scripts/validate_repository.py
 ```
 
 It checks the template contract, mechanical project readiness, and the
@@ -61,10 +61,10 @@ The adopter-owned executable hook is `scripts/validate-project`.
 The bootstrap lifecycle is inspectable and recoverable:
 
 ```console
-python3 scripts/bootstrap_project.py status --target .
-python3 scripts/bootstrap_project.py plan apply --bundle ./bundle --target . --out receipt.json
-python3 scripts/bootstrap_project.py apply --bundle ./bundle --target .
-python3 scripts/bootstrap_project.py recover --target .
+uv run --python 3.14 scripts/bootstrap_project.py status --target .
+uv run --python 3.14 scripts/bootstrap_project.py plan apply --bundle ./bundle --target . --out receipt.json
+uv run --python 3.14 scripts/bootstrap_project.py apply --bundle ./bundle --target .
+uv run --python 3.14 scripts/bootstrap_project.py recover --target .
 ```
 
 Recovery never re-runs the project validation hook. Hook-created files and
@@ -76,10 +76,11 @@ The managed CI workflow calls the adopter-owned project-validation workflow
 with read-only repository access and no caller secrets. Extend that reusable
 workflow for product checks without editing managed CI.
 
-When automated release capability is selected, its release job waits for
-Project validation and every selected managed check. The release gate is a
-workflow dependency; the merge gate is the administrator-configured required
-status check in the default-branch ruleset. Configure both deliberately.
+When the `semantic-release` capability is selected, including through the
+`release-automated` or `integrated` profile, its release job waits for Project
+validation and every selected managed check. The release gate is a workflow
+dependency; the merge gate is the administrator-configured required status
+check in the default-branch ruleset. Configure both deliberately.
 
 Projects that need stable line endings may add this adopter-owned `.gitattributes`
 rule:
@@ -113,8 +114,8 @@ Copier conflicts, then run the bootstrap reconciliation preview and apply it:
 
 ```console
 copier update
-python3 scripts/bootstrap_project.py plan reconcile --target . --out receipt.json
-python3 scripts/bootstrap_project.py reconcile --target .
+uv run --python 3.14 scripts/bootstrap_project.py plan reconcile --target . --out receipt.json
+uv run --python 3.14 scripts/bootstrap_project.py reconcile --target .
 ```
 
 A GitHub-generated project is a snapshot. It receives no later template updates
@@ -130,8 +131,8 @@ edits to managed CI, generated dependency metadata, selected capability output,
 or these documents are drift. Restore only recorded managed identities:
 
 ```console
-python3 scripts/bootstrap_project.py plan restore --target . --path docs/capabilities.md --out receipt.json
-python3 scripts/bootstrap_project.py restore --target . --path docs/capabilities.md
+uv run --python 3.14 scripts/bootstrap_project.py plan restore --target . --path docs/capabilities.md --out receipt.json
+uv run --python 3.14 scripts/bootstrap_project.py restore --target . --path docs/capabilities.md
 ```
 
 Restore does not change the manifest identity or rewrite adopter-owned files.
@@ -193,7 +194,7 @@ When the append-only capability-addition transition is available, prepare an
 `additions.json` input using the additions schema and preview the change:
 
 ```console
-python3 scripts/bootstrap_project.py plan add --target . --input additions.json --out receipt.json
+uv run --python 3.14 scripts/bootstrap_project.py plan add --target . --input additions.json --out receipt.json
 ```
 
 Apply only the reviewed plan. Capability removal, replacement, and

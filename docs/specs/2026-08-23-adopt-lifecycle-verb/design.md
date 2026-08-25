@@ -197,10 +197,10 @@ intent/state pairs lives in the decision core; all effects remain in the imperat
 ## API Design
 
 ```console
-python3 scripts/bootstrap_project.py init --from ./adoption.json --output ./bundle
-python3 scripts/bootstrap_project.py plan adopt --bundle ./bundle --target . --out receipt.json
-python3 scripts/bootstrap_project.py adopt --bundle ./bundle --target .
-python3 scripts/bootstrap_project.py status --target .
+uv run --python 3.14 scripts/bootstrap_project.py init --from ./adoption.json --output ./bundle
+uv run --python 3.14 scripts/bootstrap_project.py plan adopt --bundle ./bundle --target . --out receipt.json
+uv run --python 3.14 scripts/bootstrap_project.py adopt --bundle ./bundle --target .
+uv run --python 3.14 scripts/bootstrap_project.py status --target .
 ```
 
 - Envelopes: identical canonical JSON envelope shapes; `intent` values `adopt` and `plan-adopt`.

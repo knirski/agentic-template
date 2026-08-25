@@ -10,9 +10,10 @@ software changes with coding agents.
 1. Select **Use this template** on GitHub.
 2. Replace the marked contract in `docs/prd.md` with the project's product requirements.
 3. Replace this marked README with the project title, setup, and validation instructions.
-4. Replace `scripts/validate-project` with the project's formatting, linting, tests, and build checks.
-5. Run `python3.14 scripts/validate_repository.py` and address every readiness diagnostic.
-6. Require the `Project validation` check in the default-branch ruleset.
+4. Replace the marked `SECURITY.md` and `CONTRIBUTING.md` with the project's policies and guidance.
+5. Replace `scripts/validate-project` with the project's formatting, linting, tests, and build checks.
+6. Run `uv run --python 3.14 scripts/validate_repository.py` and address every readiness diagnostic.
+7. Require the `Project validation` check in the default-branch ruleset.
 
 The template is maintained with [Copier](https://copier.readthedocs.io/):
 
@@ -28,8 +29,9 @@ uses semantic-release Git tags to identify template versions, preserves project 
 updates, and reports conflicts for manual review. Run `copier update --vcs-ref <tag>` to select a
 specific release.
 
-Copier requires Python and Git. Template-owned readiness validation requires Python 3.14+ and the
-standard library. The template itself does not bundle or distribute a custom updater.
+Copier requires Python and Git. Template-owned readiness validation and bootstrap commands require
+Python 3.14+ and use the standard library. The template itself does not bundle or distribute a
+custom updater.
 
 ### Deterministic bootstrap CLI
 
@@ -38,11 +40,11 @@ reviewable input bundle into one complete typed installation plan and applies it
 recoverable transaction:
 
 ```console
-python3 scripts/bootstrap_project.py init --from ./bootstrap.json --output ./bundle
-python3 scripts/bootstrap_project.py status --target ./my-project
-python3 scripts/bootstrap_project.py plan apply --bundle ./bundle --target ./my-project --out receipt.json
-python3 scripts/bootstrap_project.py apply --bundle ./bundle --target ./my-project
-python3 scripts/bootstrap_project.py recover --target ./my-project
+uv run --python 3.14 scripts/bootstrap_project.py init --from ./bootstrap.json --output ./bundle
+uv run --python 3.14 scripts/bootstrap_project.py status --target ./my-project
+uv run --python 3.14 scripts/bootstrap_project.py plan apply --bundle ./bundle --target ./my-project --out receipt.json
+uv run --python 3.14 scripts/bootstrap_project.py apply --bundle ./bundle --target ./my-project
+uv run --python 3.14 scripts/bootstrap_project.py recover --target ./my-project
 ```
 
 `init` writes a complete reviewable bundle from an input file; there is no interactive mode. `status`
@@ -52,7 +54,7 @@ target; only `apply` installs. An install whose adopter hook succeeds exits 0. U
 refusals, unmet preconditions, expected scaffolds, and installed-but-unready hook results exit 1.
 Usage, input, contract, manifest, render-contract, transaction, and internal failures exit 2.
 `apply` on an already-installed project refuses and names `status` or
-`python3 scripts/validate_repository.py` as the next action. `recover` finishes or discards an
+`uv run --python 3.14 scripts/validate_repository.py` as the next action. `recover` finishes or discards an
 interrupted transaction; a target mismatch or third state can block automatic recovery, retain
 evidence, and exit 1. `recover` never re-runs the adopter hook.
 `--format json` emits exactly one canonical command envelope on stdout.
@@ -85,7 +87,7 @@ required only when the project needs update lineage.
 Generated projects use one validation boundary:
 
 ```console
-python3.14 scripts/validate_repository.py
+uv run --python 3.14 scripts/validate_repository.py
 ```
 
 It runs the template contract, readiness inspection, and adopter-owned project validation in that
@@ -102,53 +104,57 @@ source-only paths. When tracked files under those paths change, regenerate it fr
 source before committing:
 
 ```console
-git add -A
-uv run python -c "import json, sys; sys.path.insert(0, '.'); from tests.test_github_template_readiness import expected_cleanup_inventory; open('.rygor/maintenance-artifacts.json', 'w', encoding='utf-8').write(json.dumps(expected_cleanup_inventory(), sort_keys=True, indent=2) + chr(10))"
-git add .rygor/maintenance-artifacts.json
+uv run python scripts/regenerate_cleanup_inventory.py
 ```
 
-The final ``git add`` re-stages the rewritten inventory; without it the commit
-would record the pre-regeneration bytes.
+Stage the rewritten inventory together with the intended source changes; avoid staging unrelated
+files while regenerating it.
 
 `test_cleanup_inventory_matches_the_tracked_source` fails on a stale inventory, so the fixture
 suites catch a forgotten regeneration.
 
-## Automated PR reviews
+## Optional automated PR reviews
 
-PR Agent automatically describes, reviews, and suggests improvements when a same-repository pull
-request is opened, reopened, or marked ready for review. Fork and bot pull requests are skipped
+Projects selecting the `pr-agent-gemini` capability automatically receive workflows that describe,
+review, and suggest improvements when a same-repository pull request is opened, reopened, or marked
+ready for review. The `integrated` profile includes this capability; other profiles do not receive
+these workflows unless the capability is explicitly added. Fork and bot pull requests are skipped
 because GitHub withholds ordinary Actions secrets and restricts their workflow token to read-only,
 while PR Agent requires the secret and write access. Repository owners, members, and collaborators
-may also run `/review`, `/describe`, and `/improve` commands in pull-request comments.
+may also run `/review`, `/describe`, and `/improve` commands in pull-request comments when the
+capability is installed.
 
-Add a `GEMINI_API_KEY` Actions repository secret before opening a pull request; create the key in
-Google AI Studio and store it in the generated repository under **Settings → Secrets and variables →
-Actions**. Never commit the key.
+When `pr-agent-gemini` is selected, add a `GEMINI_API_KEY` Actions repository secret before opening a
+pull request; create the key in Google AI Studio and store it in the generated repository under
+**Settings → Secrets and variables → Actions**. Never commit the key.
 
-### Required repository secrets
+### Required secret for PR Agent
 
-Configure these user-provided secrets under **Settings → Secrets and variables → Actions**:
+Configure this user-provided secret under **Settings → Secrets and variables → Actions** when the
+capability is selected:
 
-- `GEMINI_API_KEY` — required by both PR Agent workflows. Create it in Google AI Studio.
+- `GEMINI_API_KEY` — required by both PR Agent workflows; create it in Google AI Studio.
 
-`GITHUB_TOKEN` and `GH_TOKEN` are supplied automatically by GitHub Actions for the PR Agent and
-semantic-release workflows; do not create or commit them manually.
+`GITHUB_TOKEN` and `GH_TOKEN` are supplied automatically by GitHub Actions for installed PR Agent
+and semantic-release workflows; do not create or commit them manually.
 
-The default model and review behavior are configured in `.pr_agent.toml`. Projects may adapt those
-settings while retaining the workflow's least-privilege permissions and secret-based credential
-wiring.
+The default model and review behavior are configured in `.pr_agent.toml` when the capability is
+installed. Projects may adapt those settings while retaining the workflow's least-privilege
+permissions and secret-based credential wiring.
 
-## Releases
+## Optional automated releases
 
-After the project-validation and delivery-contract checks succeed, generated projects run
-semantic-release for pushes to `main` and manual CI dispatches from `main`. The template source
-releases through the maintainer workflow only after its locked source checks, source fixtures, and
-workflow lint pass. Releases are serialized, and Conventional Commit messages determine the next
-version, release notes, Git tag, and GitHub Release. Generated projects own their product-specific
-commands through `scripts/validate-project`; every release-critical validation job must be
-added to the `release` job's `needs`. Maintainer-only source checks (locked uv sync, Python source
-checks, and actionlint) run in the separate source-maintainer workflow that Copier excludes and
-GitHub snapshots clean up, so generated projects do not require the template's source toolchain.
+Generated projects run semantic-release only when the `semantic-release` capability is selected,
+for example through the `release-automated` or `integrated` profile. Its release job waits for the
+project-validation and selected managed checks before running on pushes to `main` or manual CI
+dispatches from `main`. The template source releases through the maintainer workflow only after its
+locked source checks, source fixtures, and workflow lint pass. Releases are serialized, and
+Conventional Commit messages determine the next version, release notes, Git tag, and GitHub Release.
+Generated projects own their product-specific commands through `scripts/validate-project`; every
+release-critical validation job must be added to the `release` job's `needs`. Maintainer-only source
+checks (locked uv sync, Python source checks, and actionlint) run in the separate source-maintainer
+workflow that Copier excludes and GitHub snapshots clean up, so generated projects do not require the
+template's source toolchain.
 
 ## Scope
 

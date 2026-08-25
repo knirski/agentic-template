@@ -329,7 +329,7 @@ _ = _TARGET_PARSER.add_argument("--target")
 
 def _build_parser() -> _CapturingArgumentParser:
     parser = _CapturingArgumentParser(
-        prog="python3 scripts/bootstrap_project.py",
+        prog="uv run --python 3.14 scripts/bootstrap_project.py",
         add_help=True,
         description=(
             "Deterministic capability-profile-driven project bootstrap. "
@@ -589,7 +589,9 @@ def _transition_diagnostic(
             subject=subject,
             summary="bootstrap files were installed; the repository is not locally ready",
             details=details,
-            next_action=RunCommand(("python3", "scripts/validate_repository.py")),
+            next_action=RunCommand(
+                ("uv", "run", "--python", "3.14", "scripts/validate_repository.py")
+            ),
         ),
     )
 
@@ -715,7 +717,15 @@ def _already_installed_next_action(system: SystemState) -> RunCommand | None:
                         condition=CopierSourceSame(managed=ManagedVerified())
                     )
                 ):
-                    return RunCommand(("python3", "scripts/validate_repository.py"))
+                    return RunCommand(
+                        (
+                            "uv",
+                            "run",
+                            "--python",
+                            "3.14",
+                            "scripts/validate_repository.py",
+                        )
+                    )
                 case _:
                     return None
         case _:
@@ -1470,7 +1480,7 @@ def _execute_status(
     if outcome is None:
         outcome = Succeeded(
             hook_evidence=NotAttempted(
-                "adopter hook: not evaluated; run python3 scripts/validate_repository.py"
+                "adopter hook: not evaluated; run uv run --python 3.14 scripts/validate_repository.py"
             ),
         )
     changes = (
@@ -1478,7 +1488,7 @@ def _execute_status(
         Change(
             "hook",
             "not evaluated",
-            "run python3 scripts/validate_repository.py",
+            "run uv run --python 3.14 scripts/validate_repository.py",
         ),
     )
     return _result(

@@ -344,7 +344,7 @@ def evaluate_readme(text: str, path: Path) -> tuple[CoreFinding, ...]:
                 "READINESS_README_COMMAND",
                 path,
                 "README does not name the canonical validation command",
-                "document python3.14 scripts/validate_repository.py in the Validation section",
+                "document uv run --python 3.14 scripts/validate_repository.py in the Validation section",
             )
         )
     return tuple(findings)

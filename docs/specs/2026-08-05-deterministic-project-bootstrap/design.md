@@ -1805,34 +1805,34 @@ This is the only value called `ProjectReadinessOutcome`. The transaction gate co
 `MechanicalReadinessResult`; an empty mechanical finding set never implies that the hook ran. Hook
 evidence is **point-in-time evidence**: never written to the manifest, never cached, never replayed.
 `status` does not execute it and claims no outcome, reporting mechanical readiness and then
-`adopter hook: not evaluated; run python3 scripts/validate_repository.py`.
+`adopter hook: not evaluated; run uv run --python 3.14 scripts/validate_repository.py`.
 
 ## CLI contract
 
 ```text
-python3 scripts/bootstrap_project.py [global-output-options] init
+uv run --python 3.14 scripts/bootstrap_project.py [global-output-options] init
     --output PATH --from FILE
 
-python3 scripts/bootstrap_project.py [global-output-options] status [--target PATH]
+uv run --python 3.14 scripts/bootstrap_project.py [global-output-options] status [--target PATH]
 
-python3 scripts/bootstrap_project.py [global-output-options] plan apply
+uv run --python 3.14 scripts/bootstrap_project.py [global-output-options] plan apply
     --bundle PATH [--target PATH] [--leave-maintenance-artifacts] [--out FILE]
-python3 scripts/bootstrap_project.py [global-output-options] plan add
+uv run --python 3.14 scripts/bootstrap_project.py [global-output-options] plan add
     --input FILE [--target PATH] [--out FILE]
-python3 scripts/bootstrap_project.py [global-output-options] plan restore
+uv run --python 3.14 scripts/bootstrap_project.py [global-output-options] plan restore
     [--path PATH]... [--target PATH] [--out FILE]
-python3 scripts/bootstrap_project.py [global-output-options] plan reconcile
+uv run --python 3.14 scripts/bootstrap_project.py [global-output-options] plan reconcile
     [--target PATH] [--overwrite-drift] [--out FILE]
 
-python3 scripts/bootstrap_project.py [global-output-options] apply
+uv run --python 3.14 scripts/bootstrap_project.py [global-output-options] apply
     --bundle PATH [--target PATH] [--leave-maintenance-artifacts]
-python3 scripts/bootstrap_project.py [global-output-options] add
+uv run --python 3.14 scripts/bootstrap_project.py [global-output-options] add
     --input FILE [--target PATH]
-python3 scripts/bootstrap_project.py [global-output-options] restore
+uv run --python 3.14 scripts/bootstrap_project.py [global-output-options] restore
     [--path PATH]... [--target PATH]
-python3 scripts/bootstrap_project.py [global-output-options] reconcile
+uv run --python 3.14 scripts/bootstrap_project.py [global-output-options] reconcile
     [--target PATH] [--overwrite-drift --plan FILE]
-python3 scripts/bootstrap_project.py [global-output-options] recover [--target PATH]
+uv run --python 3.14 scripts/bootstrap_project.py [global-output-options] recover [--target PATH]
 
 global-output-options :=
     [--format text|json] [--color auto|always|never] [--explain] [--quiet]
@@ -2087,7 +2087,7 @@ recovery stop at the first failure where continuing could mutate state or destro
 ### US-11: Extend project validation without editing managed CI
 
 - Bootstrap seeds `.github/workflows/project-validation.yml`, then treats it as adopter-owned.
-- Its initial form exposes `workflow_call` and runs `python3 scripts/validate_repository.py`.
+- Its initial form exposes `workflow_call` and runs `uv run --python 3.14 scripts/validate_repository.py`.
 - Managed CI calls it as a stable `Project validation` job, passing no secrets, granting
   `contents: read`, and waiting for the complete called workflow.
 - Selected release automation depends on it and on all selected managed checks.
@@ -2166,7 +2166,7 @@ recovery stop at the first failure where continuing could mutate state or destro
 Managed CI calls `.github/workflows/project-validation.yml` as a stable `Project validation` job,
 declaring `contents: read`, passing no named or inherited secrets, and using no privileged environment.
 The seeded adopter workflow declares `on.workflow_call`, checks out without persisted credentials, runs
-on the supported GitHub-hosted runner, invokes `python3 scripts/validate_repository.py`, and uses no
+on the supported GitHub-hosted runner, invokes `uv run --python 3.14 scripts/validate_repository.py`, and uses no
 secret and no write-capable permission.
 
 Adopters may add jobs, matrices, and toolchain setup inside it. GitHub constrains reusable-workflow
@@ -2368,7 +2368,7 @@ edits are drift repaired by `restore`.
 
 ## Cleanup inventory
 
-`.agentic-template/maintenance-artifacts.json` declares the source-only paths that a GitHub snapshot
+`.rygor/maintenance-artifacts.json` declares the source-only paths that a GitHub snapshot
 must remove: source test suites, the Copier smoke workflow, the source `pyproject.toml` and `uv.lock`,
 the readiness-rule fixtures, and historical specs. Each entry records the path,
 its expected source hash or tree hash, and whether it is a regular file or a directory tree. Entries may
@@ -2800,13 +2800,9 @@ The licensing and provenance audit gates every licensing mode and precedes batch
 proposed `LICENSES/Apache-2.0.txt` or `NOTICE.md` layout, this design must be amended and reconfirmed
 before licence-writing implementation proceeds.
 
-Seed-once exclusion gate (recorded from T13): the generation-paths section says Copier excludes
-seed-once output, but bootstrap reads scaffold bytes from the generated project's own seed files, so
-excluding them today would break Copier scaffold recognition and all-scaffold installs. Once the
-template ships seed-once scaffold content at distinct generated-lifecycle blob paths (render-source
-work), Copier must exclude the seed-once root paths and bootstrap must read the scaffold from the
-blob paths; until then the seed-once files ship in the Copier copy and Copier's merge/conflict
-handling preserves adopter edits.
+Seed-once exclusion gate (resolved by T13): Copier excludes the seed-once root paths, and bootstrap
+materializes their initial contents from the canonical generated-lifecycle scaffold blobs. Copier's
+merge and conflict handling therefore does not claim those adopter-owned root paths during updates.
 
 ## References
 

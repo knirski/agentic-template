@@ -15,8 +15,8 @@ reconciliation:
 
 ```console
 copier update
-python3 scripts/bootstrap_project.py plan reconcile --target . --out receipt.json
-python3 scripts/bootstrap_project.py reconcile --target .
+uv run --python 3.14 scripts/bootstrap_project.py plan reconcile --target . --out receipt.json
+uv run --python 3.14 scripts/bootstrap_project.py reconcile --target .
 ```
 
 A GitHub-generated project is a snapshot. It receives no later template updates
@@ -30,8 +30,8 @@ edits to managed CI, generated dependency metadata, selected capability output,
 or these documents are drift. Restore only recorded managed identities:
 
 ```console
-python3 scripts/bootstrap_project.py plan restore --target . --path docs/capabilities.md --out receipt.json
-python3 scripts/bootstrap_project.py restore --target . --path docs/capabilities.md
+uv run --python 3.14 scripts/bootstrap_project.py plan restore --target . --path docs/capabilities.md --out receipt.json
+uv run --python 3.14 scripts/bootstrap_project.py restore --target . --path docs/capabilities.md
 ```
 
 Restore does not change manifest identity or rewrite adopter-owned files. An
