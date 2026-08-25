@@ -481,9 +481,9 @@ jobs:
       pull-requests: write
     steps:
       - name: Run PR Agent
-        uses: the-pr-agent/pr-agent@6ad7cf75d95cb3bbb54cf2ad92050eb03804964a # v0.40.0
+        uses: the-pr-agent/pr-agent@f6af7d77554ff8d26adffded077e6461329e92fa # v0.42.0
         env:
-          config.model: gemini/gemini-3.6-flash
+          config.model: gemini/gemini-3.7-flash
           config.fallback_models: '["gemini/gemini-3.5-flash-lite"]'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GOOGLE_AI_STUDIO.GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -540,9 +540,9 @@ jobs:
       pull-requests: write
     steps:
       - name: Run PR Agent command
-        uses: the-pr-agent/pr-agent@6ad7cf75d95cb3bbb54cf2ad92050eb03804964a # v0.40.0
+        uses: the-pr-agent/pr-agent@f6af7d77554ff8d26adffded077e6461329e92fa # v0.42.0
         env:
-          config.model: gemini/gemini-3.6-flash
+          config.model: gemini/gemini-3.7-flash
           config.fallback_models: '["gemini/gemini-3.5-flash-lite"]'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GOOGLE_AI_STUDIO.GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -550,7 +550,7 @@ jobs:
 
 PR_AGENT_TOML: Final[bytes] = b"""\
 [config]
-model = "gemini/gemini-3.6-flash"
+model = "gemini/gemini-3.7-flash"
 fallback_models = ["gemini/gemini-3.5-flash-lite"]
 
 [github_action_config]
