@@ -158,7 +158,22 @@
             "Recording hook contract: writes one line per run; run_count() counts lines in hook_runs file"
           ],
           "description": "Add build_snapshot_project(parent, config, *, pristine) -> SnapshotProject to tests/factory.py. Materialize pristine into parent/<name> via stdlib copytree; apply overlays by dispatching match config.template: case 'live' (recording hook into scripts/validate-project plus its fragment blob, SCAFFOLD_CONTRIBUTING, SCAFFOLD_SECURITY placeholders) and case 'synthetic' (port TemplatePackage construction here as the overlay source); case _: assert_never. Optional maintenance inventory and copier marker per config flags, mirroring _make_fixture(maintenance=True/copier=True) semantics. Finish with exactly one seed commit via the git() helper. Return SnapshotProject(root, hook_runs, template_root set only for synthetic). Keep hook recording byte-compatible so run_count() semantics match today.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-25",
+              "commits": ["ce583c0"],
+              "evidence": [
+                "Focused live/synthetic builder smoke passed with one seed commit, hook run_count 0-to-1, synthetic template exposure, copier marker, and maintenance inventory",
+                "uv run pytest -q passed: 1405 tests, 82 subtests",
+                "uv run ruff check . passed with All checks passed",
+                "uv run ruff format --check . passed with 103 files already formatted",
+                "uv run basedpyright passed with 0 errors, 0 warnings, 0 notes",
+                "Regenerated .rygor/maintenance-artifacts.json for the T4 factory and execution-record source digests"
+              ]
+            }
+          },
           "files": {"reuse": ["tests/test_bootstrap_cli.py::TemplatePackage", "tests/test_github_template_readiness.py::GitHubBootstrapTests._snapshot"], "create": [], "modify": ["tests/factory.py"], "delete": []},
           "new_abstractions": [
             {"name": "build_snapshot_project", "requirement": "Replace three near-identical copy-overlay-commit flows with one typed builder", "consumers": "CLI suite (T7), readiness/source suites (T8), scaffolded_project fixture (T12)"}
