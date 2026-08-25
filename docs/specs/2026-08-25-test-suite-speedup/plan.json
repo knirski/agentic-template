@@ -23,7 +23,23 @@
             "Required env: GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_SYSTEM=/dev/null, GIT_CONFIG_NOSYSTEM=1; the maintenance config keys gc.auto=0, gc.autoDetach=false, maintenance.auto=false are injected via GIT_CONFIG_COUNT=3 with GIT_CONFIG_KEY_0..2 / GIT_CONFIG_VALUE_0..2 pairs (dotted keys are not environment variables and are inert when set directly)"
           ],
           "description": "Create tests/conftest.py defining a session-scoped autouse fixture named deterministic_git_env that force-sets the full environment described in the inputs (config-path nulling plus the GIT_CONFIG_COUNT/KEY/VALUE injection pairs) on os.environ before any test spawns a subprocess. Intent-revealing docstring records the btrfs/detached-gc rationale and evidence counts (baseline 15 failures / 80 probe iterations vs 0 / 80 disabled, probes using the same injection mechanism). No other changes in this task.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-25",
+              "commits": ["177dd30"],
+              "evidence": [
+                "40 consecutive parity-test runs passed; each run reported 1 passed and 3 subtests",
+                "10 consecutive tests/test_bootstrap_cli.py runs passed; each run reported 40 passed and 16 subtests",
+                "uv run pytest -q passed: 1405 tests, 82 subtests, 5 skipped",
+                "uv run ruff check . passed with All checks passed",
+                "uv run basedpyright passed with 0 errors, 0 warnings, 0 notes",
+                "nix flake check passed all checks",
+                "Regenerated .rygor/maintenance-artifacts.json to include the new conftest.py tree digests; this scope extension was explicitly approved"
+              ]
+            }
+          },
           "files": {"reuse": [], "create": ["tests/conftest.py"], "modify": [], "delete": []},
           "new_abstractions": [],
           "validation": {
