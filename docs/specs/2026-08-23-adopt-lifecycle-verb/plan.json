@@ -103,7 +103,7 @@
             },
             "deviations": [
               "CollisionsInput is a frozen/strict pydantic RootModel[dict[path, action]] instead of a StrictModel subclass: pydantic forbids RootModel models from carrying StrictModel's extra=\"forbid\" config; applicable StrictModel semantics (frozen, strict, validate_assignment) are replicated verbatim.",
-              ".agentic-template/maintenance-artifacts.json was regenerated in this task's commit although T9 lists it: tracked test sources changed, the cleanup-inventory gate fails until regeneration, and T1 set the precedent of shipping it with edited test sources."
+              ".rygor/maintenance-artifacts.json was regenerated in this task's commit although T9 lists it: tracked test sources changed, the cleanup-inventory gate fails until regeneration, and T1 set the precedent of shipping it with edited test sources."
             ]
           },
           "files": {
@@ -468,7 +468,7 @@
             "README procedure: Regenerating the source cleanup inventory",
             "repository source checks listed in README Validation section"
           ],
-          "description": "Run every repository gate: uv sync --all-groups --locked, uv run python scripts/validate_template.py, uv run ruff check, uv run ruff format --check, uv run basedpyright, and the complete pytest suite. Regenerate .agentic-template/maintenance-artifacts.json using the documented procedure because tracked source changed, then git add the rewritten inventory; test_cleanup_inventory_matches_the_tracked_source fails otherwise. Conventional-commit discipline applies when committing.",
+          "description": "Run every repository gate: uv sync --all-groups --locked, uv run python scripts/validate_template.py, uv run ruff check, uv run ruff format --check, uv run basedpyright, and the complete pytest suite. Regenerate .rygor/maintenance-artifacts.json using scripts/regenerate_cleanup_inventory.py because tracked source changed, then stage the rewritten inventory with the intended changes; test_cleanup_inventory_matches_the_tracked_source fails otherwise. Conventional-commit discipline applies when committing.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -478,7 +478,7 @@
             "reuse": [],
             "create": [],
             "modify": [
-              ".agentic-template/maintenance-artifacts.json"
+              ".rygor/maintenance-artifacts.json"
             ],
             "delete": []
           },

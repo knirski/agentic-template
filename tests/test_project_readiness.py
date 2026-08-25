@@ -42,7 +42,7 @@ VALID_README = """# Example Product
 Install the product.
 
 ## Validation
-Run `python3.14 scripts/validate_repository.py`.
+Run `uv run --python 3.14 scripts/validate_repository.py`.
 """
 VALID_HOOK = """#!/usr/bin/env python3
 print('project validation passed')
@@ -165,8 +165,8 @@ class ReadinessFixtures(unittest.TestCase):
         self.write(
             "README.md",
             VALID_README.replace(
-                "## Validation\nRun `python3.14 scripts/validate_repository.py`.",
-                "## Validation\nRun another command.\n\n## Setup\npython3.14 scripts/validate_repository.py",
+                "## Validation\nRun `uv run --python 3.14 scripts/validate_repository.py`.",
+                "## Validation\nRun another command.\n\n## Setup\nuv run --python 3.14 scripts/validate_repository.py",
             ),
         )
         result = self.run_checker()

@@ -11,7 +11,7 @@ The adopter-owned executable hook is `scripts/validate-project`.
 Run the single project boundary from the repository root:
 
 ```console
-python3 scripts/validate_repository.py
+uv run --python 3.14 scripts/validate_repository.py
 ```
 
 It checks the template contract, mechanical project readiness, and the
@@ -21,10 +21,10 @@ can still need project content or can report a hook failure.
 The lifecycle is inspectable and recoverable:
 
 ```console
-python3 scripts/bootstrap_project.py status --target .
-python3 scripts/bootstrap_project.py plan apply --bundle ./bundle --target . --out receipt.json
-python3 scripts/bootstrap_project.py apply --bundle ./bundle --target .
-python3 scripts/bootstrap_project.py recover --target .
+uv run --python 3.14 scripts/bootstrap_project.py status --target .
+uv run --python 3.14 scripts/bootstrap_project.py plan apply --bundle ./bundle --target . --out receipt.json
+uv run --python 3.14 scripts/bootstrap_project.py apply --bundle ./bundle --target .
+uv run --python 3.14 scripts/bootstrap_project.py recover --target .
 ```
 
 Recovery never re-runs the project validation hook. Hook-created files and
@@ -36,9 +36,11 @@ Managed CI calls the adopter-owned project-validation workflow with read-only
 repository access and no caller secrets. Extend that reusable workflow for
 product checks without editing managed CI.
 
-The release gate is a workflow dependency on Project validation and selected
-managed checks. The merge gate is the administrator-configured required status
-check in the default-branch ruleset. Configure both deliberately.
+When the `semantic-release` capability is selected, including through the
+`release-automated` or `integrated` profile, its release job waits for Project
+validation and every selected managed check. The release gate is a workflow
+dependency; the merge gate is the administrator-configured required status check
+in the default-branch ruleset. Configure both deliberately.
 
 Projects that need stable line endings may add this adopter-owned rule:
 

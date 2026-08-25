@@ -33,11 +33,11 @@ cleanup contract authorizes deletion.
 
 Seed-once output (README, PRD, SECURITY, `CONTRIBUTING.md`, the hook, and the
 legal/provenance files) is adopter-owned: bootstrap installs it once and reconcile never
-rewrites it. Copier excludes seed-once output by design; that exclusion takes effect once the
-template ships scaffold content at distinct generated-lifecycle blob paths (the recorded T13
-follow-up gate), and until then the seed-once files ship in the Copier copy so the generated
-project carries its own scaffold, with Copier's merge and conflict handling preserving adopter
-edits during updates.
+rewrites it. The initial implementation kept those files in the Copier copy while the scaffold-blob
+follow-up gate was pending. That gate is now complete: Copier excludes the seed-once root paths, while
+bootstrap materializes their initial contents from the canonical generated-lifecycle scaffold blobs.
+Copier's merge and conflict handling therefore does not claim those adopter-owned root paths during
+updates.
 
 Future Copier-generated projects upgrade the template through `copier update`: Copier delivers
 generated-lifecycle source updates, bootstrap reconciles the derived managed output on the

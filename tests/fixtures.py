@@ -52,7 +52,7 @@ README = """# Product
 ## Setup
 Setup.
 ## Validation
-Run `python3 scripts/validate_repository.py`.
+Run `uv run --python 3.14 scripts/validate_repository.py`.
 """
 SUPPLIED_SECURITY = "# Security\n\nReport privately.\n"
 SUPPLIED_CONTRIBUTING = "# Contributing\n\nWelcome.\n"

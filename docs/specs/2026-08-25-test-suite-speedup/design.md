@@ -300,7 +300,7 @@ Decisions:
 - `pristine_snapshot()` is the single sanctioned cache (`lru_cache(1)`); the
   session fixture delegates to it. Deliberate dual ownership, documented.
   Lifetime and ownership are explicit: on first call the cached root is
-  created under `tempfile.mkdtemp(prefix="agentic-template-pristine.")` and
+  created under `tempfile.mkdtemp(prefix="rygor-pristine.")` and
   registered with `atexit.register(shutil.rmtree, ..., ignore_errors=True)`,
   so it outlives every consumer in the process and never leaks beyond it.
   Under xdist each worker builds its own copy (~15ms, accepted — see

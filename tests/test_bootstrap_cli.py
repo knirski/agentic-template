@@ -91,7 +91,7 @@ SCAFFOLD_HOOK = (
     "#!/bin/sh\n# rygor:unconfigured:validate-project\necho unconfigured\nexit 0\n"
 )
 
-SUPPLIED_README = "# Product\n\n## Setup\nRun it.\n\n## Validation\nRun `python3 scripts/validate_repository.py`.\n"
+SUPPLIED_README = "# Product\n\n## Setup\nRun it.\n\n## Validation\nRun `uv run --python 3.14 scripts/validate_repository.py`.\n"
 SUPPLIED_PRD = (
     "# Product\n## Problem\nP.\n## Goals\nG.\n## Non-goals\nN.\n"
     "## Users and workflows\nU.\n## Requirements\n### REQ-001: Works\nBody.\n"
@@ -819,7 +819,10 @@ class CliFamilyTests(unittest.TestCase):
             ["apply", "--bundle", str(self.bundle.root), "--target", self.target_arg()]
         )
         self.assertEqual(_exit_code(second), 1)
-        self.assertIn("run python3 scripts/validate_repository.py", render_text(second))
+        self.assertIn(
+            "run uv run --python 3.14 scripts/validate_repository.py",
+            render_text(second),
+        )
 
     def test_valid_cleanup_apply_removes_declared_paths(self) -> None:
         parent = Path(self.tmp.name) / "clean-valid"
