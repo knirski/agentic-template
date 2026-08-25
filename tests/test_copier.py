@@ -9,8 +9,12 @@ import sys
 import tempfile
 from pathlib import Path
 
-VERSION = "9.17.0"
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from tests.git_config import deterministic_git_environment  # noqa: E402
+
+VERSION = "9.17.0"
 VALID_PRD = """# Product\n## Problem\nProblem.\n## Goals\nGoals.\n## Non-goals\nNo.\n## Users and workflows\nUsers.\n## Requirements\n### REQ-001: Works\nBody.\n## Quality attributes\nReliable.\n## Release criteria\nGreen.\n## Open questions\nNone.\n"""
 VALID_README = """# Product\n## Setup\nSetup.\n## Validation\nRun `uv run --python 3.14 scripts/validate_repository.py`.\n"""
 VALID_SECURITY = "# Security\n\nReport issues privately.\n"
@@ -20,7 +24,14 @@ VALID_CONTRIBUTING = "# Contributing\n\nContribution guidance.\n"
 def run(
     command: list[str], cwd: Path | None = None
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=cwd, text=True, capture_output=True, check=False)
+    return subprocess.run(
+        command,
+        cwd=cwd,
+        env=deterministic_git_environment(),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
 
 
 def main() -> int:

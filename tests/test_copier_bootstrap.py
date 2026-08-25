@@ -27,6 +27,7 @@ from tests.fixtures import (  # noqa: E402
     scaffold_hook,
     write_bundle,
 )
+from tests.git_config import configure_deterministic_git_environment  # noqa: E402
 
 RETAINED_COPIER_PATHS = (
     ".rygor/source-ownership.json",
@@ -51,6 +52,7 @@ def copier_command() -> list[str] | None:
 
 
 def main() -> int:
+    configure_deterministic_git_environment()
     command = copier_command()
     if command is None:
         print(
