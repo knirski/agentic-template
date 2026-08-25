@@ -157,6 +157,32 @@ def run(
     )
 
 
+def assert_ok[ValueT, ErrorT](
+    result: Result[ValueT, ErrorT], message: str = ""
+) -> ValueT:
+    """Return the ``Ok`` value; fail the test with the error otherwise."""
+
+    match result:
+        case Ok(value):
+            return value
+        case Err(error):
+            context = f"{message}: " if message else ""
+            raise AssertionError(f"{context}expected success, got {error}")
+
+
+def assert_err[ErrorT, ValueT](
+    result: Result[ValueT, ErrorT], message: str = ""
+) -> ErrorT:
+    """Return the ``Err`` value; fail the test when the result is ``Ok``."""
+
+    match result:
+        case Err(error):
+            return error
+        case Ok(_):
+            context = f"{message}: " if message else ""
+            raise AssertionError(f"{context}expected a failure")
+
+
 def tracked_files(root: Path) -> list[str]:
     """List source files available in the checkout for a fixture copy."""
     files = [
