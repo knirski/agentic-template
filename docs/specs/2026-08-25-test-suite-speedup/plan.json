@@ -3,7 +3,7 @@
   "spec": "docs/specs/2026-08-25-test-suite-speedup/design.md",
   "goal": "Eliminate the git-maintenance flake, enable parallel pytest execution, unify all project-fixture construction in a typed factory engine, and convert the suite to native pytest across eight green checkpoints.",
   "preserved_behavior": [
-    "All 1404 existing tests keep passing at every checkpoint",
+    "Every behavior covered by the 1404 baseline tests keeps passing at every checkpoint; the collected count may only grow where subTest loops become parametrized cases (T13-T18, compared in T19)",
     "No changes under scripts/ (production code untouched)",
     "Mutmut pinned file paths survive and -k target test_canonical_json_round_trips_arbitrary_strict_values keeps its name",
     "Coverage flags on .github/workflows/template-ci.yml unchanged",
