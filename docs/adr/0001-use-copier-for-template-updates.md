@@ -22,7 +22,7 @@ Copier owns source lifecycle updates; bootstrap owns derived-output reconciliati
 retains every generated-lifecycle source input and excludes bootstrap-managed output, seed-once
 output, source-only snapshot-cleanup targets, and the cleanup-control inventory from generated
 projects. The maintenance exclusions are the finite template-maintenance artifact set declared by
-`.agentic-template/source-ownership.json`, so a Copier-generated project never receives source
+`.rygor/source-ownership.json`, so a Copier-generated project never receives source
 uv metadata (`pyproject.toml`, `uv.lock`, `.python-version`), Nix maintenance inputs
 (`flake.nix`, `flake.lock`), maintainer-only workflows, source test suites, or historical specs.
 Because a custom `_exclude` list replaces Copier's built-in exclusions, the template re-declares

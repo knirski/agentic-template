@@ -168,7 +168,7 @@ def test_local_canary_never_leaks_the_sentinel(
     """Every preflight script run outside GitHub leaks no secret value anywhere."""
     rendered = render_for(("pr-agent-gemini", "nix", "cachix-publish"))
     script = _preflight_script(rendered[path].decode("utf-8"), preflight_job)
-    with tempfile.TemporaryDirectory(prefix="agentic-template-canary.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-canary.") as raw:
         directory = Path(raw)
         output = directory / "github-output"
         env = {
@@ -211,7 +211,7 @@ def test_canary_unavailable_state_is_constant_guidance(
 ) -> None:
     rendered = render_for(("pr-agent-gemini", "nix", "cachix-publish"))
     script = _preflight_script(rendered[path].decode("utf-8"), preflight_job)
-    with tempfile.TemporaryDirectory(prefix="agentic-template-canary.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-canary.") as raw:
         directory = Path(raw)
         output = directory / "github-output"
         env = {
@@ -262,7 +262,7 @@ def test_cachix_run_block_never_interpolates_the_cache_name() -> None:
     publish = _job_block(text, "publish")
     run_block = publish.split("run: |", 1)[-1]
     assert "CACHIX_CACHE_NAME" in run_block
-    assert "agentic-template:value:" not in run_block
+    assert "rygor:value:" not in run_block
     assert "cachix push" in run_block
     assert "$CACHIX_CACHE_NAME" in run_block
 

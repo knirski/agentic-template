@@ -74,9 +74,9 @@ SEED_ONCE_PATHS: tuple[RepoPath, ...] = tuple(
     sorted((path for path in SEED_ONCE_SLOTS.values()), key=lambda p: p.value.encode())
 )
 COPIER_ANSWERS_PATH = RepoPath(".copier-answers.yml")
-MAINTENANCE_INVENTORY_PATH = RepoPath(".agentic-template/maintenance-artifacts.json")
-SOURCE_OWNERSHIP_PATH = RepoPath(".agentic-template/source-ownership.json")
-_OWNERSHIP_ADMIN_ROOTS = (".git", ".agentic-template")
+MAINTENANCE_INVENTORY_PATH = RepoPath(".rygor/maintenance-artifacts.json")
+SOURCE_OWNERSHIP_PATH = RepoPath(".rygor/source-ownership.json")
+_OWNERSHIP_ADMIN_ROOTS = (".git", ".rygor")
 _OWNERSHIP_RESERVED_PATHS = (
     *SEED_ONCE_PATHS,
     RepoPath("LICENSE"),

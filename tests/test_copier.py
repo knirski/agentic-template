@@ -35,7 +35,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    with tempfile.TemporaryDirectory(prefix="agentic-template-copier.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-copier.") as raw:
         workspace = Path(raw)
         source, project = workspace / "source", workspace / "project"
         _ = shutil.copytree(

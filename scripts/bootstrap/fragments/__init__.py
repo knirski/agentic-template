@@ -30,16 +30,16 @@ jobs:
         with:
           version: "0.12.1"
           python-version: "3.14"
-          enable-cache: ${{ github.repository != 'knirski/agentic-template' }}
+          enable-cache: ${{ github.repository != 'knirski/rygor' }}
       - name: Validate repository
-        if: github.repository != 'knirski/agentic-template'
+        if: github.repository != 'knirski/rygor'
         run: uv run --python 3.14 scripts/validate_repository.py
 """
 
 DELIVERY_WORKFLOW: Final[bytes] = b"""\
 # Delivery workflow
 
-This document is managed by the Agentic Delivery Template. Put product-specific
+This document is managed by the Rygor. Put product-specific
 setup and validation details in `README.md`, and put contributor process in
 `CONTRIBUTING.md`.
 
@@ -98,7 +98,7 @@ the managed workflow remains the template-owned delivery gate.
 TEMPLATE_UPDATES: Final[bytes] = b"""\
 # Template updates
 
-This document is managed by the Agentic Delivery Template. Put product-specific
+This document is managed by the Rygor. Put product-specific
 project information in `README.md`, and put contribution policy in
 `CONTRIBUTING.md`.
 
@@ -121,7 +121,7 @@ A GitHub-generated project is a snapshot. It receives no later template updates
 to generated-lifecycle source or bootstrap-managed output and cannot use
 `reconcile`. Regeneration is the supported way to obtain a later snapshot.
 
-This project uses the `agentic-template:value:generation-path` generation path.
+This project uses the `rygor:value:generation-path` generation path.
 
 ## Managed drift and restore
 
@@ -148,11 +148,11 @@ cleanup is intentionally skipped.
 
 ## Cleanup ownership
 
-- Maintenance status: `agentic-template:value:maintenance-status`
+- Maintenance status: `rygor:value:maintenance-status`
 - Retained maintenance paths:
 
   ```text
-  agentic-template:value:retained-paths
+  rygor:value:retained-paths
   ```
 
 Retained paths become adopter-owned and remain outside future template cleanup.
@@ -161,7 +161,7 @@ Retained paths become adopter-owned and remain outside future template cleanup.
 CAPABILITIES: Final[bytes] = b"""\
 # Capabilities
 
-This document is managed by the Agentic Delivery Template. Put product-specific
+This document is managed by the Rygor. Put product-specific
 architecture and operating guidance in `README.md`, and put contribution
 process in `CONTRIBUTING.md`.
 
@@ -172,17 +172,17 @@ The adopter-owned validation hook is `scripts/validate-project`.
 The creation-time profile is frozen in the project manifest. Later additions
 are append-only and do not re-expand or replace the original profile.
 
-- Profile: `agentic-template:value:profile-id`
-- Frozen profile selection: `agentic-template:value:profile-frozen`
-- Explicit additions: `agentic-template:value:additions`
-- Effective dependency closure: `agentic-template:value:effective`
+- Profile: `rygor:value:profile-id`
+- Frozen profile selection: `rygor:value:profile-frozen`
+- Explicit additions: `rygor:value:additions`
+- Effective dependency closure: `rygor:value:effective`
 
 ## Selected capability details
 
 The following details are derived from the selected declarative definitions.
 Unselected capability artifacts and jobs are absent.
 
-agentic-template:value:capability-summary
+rygor:value:capability-summary
 
 Capability settings are normalized, displayable, and non-secret. Bootstrap does
 not install packages, create credentials, or certify external activation.
@@ -203,7 +203,7 @@ reconfiguration are not available in this lifecycle.
 GITHUB_SETUP: Final[bytes] = b"""\
 # GitHub setup
 
-This document is managed by the Agentic Delivery Template. Put project-specific
+This document is managed by the Rygor. Put project-specific
 setup in `README.md`, and put contributor and security process in
 `CONTRIBUTING.md`.
 

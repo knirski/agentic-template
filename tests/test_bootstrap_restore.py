@@ -330,7 +330,7 @@ def _worktree() -> SupportedWorktree:
     return SupportedWorktree(
         WorktreeContext(
             target=target_identity(b"/tmp/project", device=1, inode=2),
-            state_root=RepoPath(".agentic-template"),
+            state_root=RepoPath(".rygor"),
             protection=OrdinaryProject(),
         )
     )

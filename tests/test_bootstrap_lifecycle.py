@@ -86,7 +86,7 @@ def test_recorded_render_preserves_profile_capability_closure() -> None:
 
 
 def test_restore_repairs_drifted_managed_file_in_process() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
         project, _record = _activate(Path(raw))
         managed = project / test_source_bootstrap.CORE_CI_PATH
         compiled = test_source_bootstrap.render_for(())[
@@ -103,7 +103,7 @@ def test_restore_repairs_drifted_managed_file_in_process() -> None:
 
 
 def test_plan_restore_writes_receipt_in_process() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
         project, _record = _activate(Path(raw))
         managed = project / test_source_bootstrap.CORE_CI_PATH
         _ = managed.write_bytes(b"drifted in-process\n")
@@ -124,7 +124,7 @@ def test_plan_restore_writes_receipt_in_process() -> None:
 
 
 def test_out_occupied_is_refused_in_process() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
         project, _record = _activate(Path(raw))
         receipt = Path(raw) / "restore-plan.json"
         _ = receipt.write_text("occupied", encoding="utf-8")
@@ -144,7 +144,7 @@ def test_out_occupied_is_refused_in_process() -> None:
 
 
 def test_add_installs_an_append_only_capability_in_process() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
         parent = Path(raw)
         project, _record = _activate(parent)
         additions = parent / "additions.json"
@@ -163,15 +163,13 @@ def test_add_installs_an_append_only_capability_in_process() -> None:
         )
         assert isinstance(result.outcome, Succeeded), result.outcome
         assert (project / ".releaserc").is_file()
-        decoded = decode_manifest(
-            (project / ".agentic-template/project.json").read_bytes()
-        )
+        decoded = decode_manifest((project / ".rygor/project.json").read_bytes())
         assert isinstance(decoded, Ok)
         assert decoded.value.additions.requested == ("semantic-release",)
 
 
 def test_add_persists_complete_normalized_dependency_settings_in_process() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
         parent = Path(raw)
         project, _record = _activate(parent)
         additions = parent / "additions.json"
@@ -184,9 +182,7 @@ def test_add_persists_complete_normalized_dependency_settings_in_process() -> No
         )
         result = _execute(["add", "--target", str(project), "--input", str(additions)])
         assert isinstance(result.outcome, Succeeded), result.outcome
-        decoded = decode_manifest(
-            (project / ".agentic-template/project.json").read_bytes()
-        )
+        decoded = decode_manifest((project / ".rygor/project.json").read_bytes())
         assert isinstance(decoded, Ok)
         assert decoded.value.additions.settings == {
             "cachix-publish": {"cache_name": "example"},
@@ -195,7 +191,7 @@ def test_add_persists_complete_normalized_dependency_settings_in_process() -> No
 
 
 def test_plan_add_writes_an_append_only_receipt_without_mutating_in_process() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
         parent = Path(raw)
         project, _record = _activate(parent)
         additions = parent / "additions.json"
@@ -219,15 +215,13 @@ def test_plan_add_writes_an_append_only_receipt_without_mutating_in_process() ->
         assert isinstance(result.outcome, Succeeded), result.outcome
         assert receipt.is_file()
         assert not (project / ".releaserc").exists()
-        decoded = decode_manifest(
-            (project / ".agentic-template/project.json").read_bytes()
-        )
+        decoded = decode_manifest((project / ".rygor/project.json").read_bytes())
         assert isinstance(decoded, Ok)
         assert decoded.value.additions.requested == ()
 
 
 def test_restore_no_drift_is_a_no_op_in_process() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
         project, _record = _activate(Path(raw))
         result = _execute(["restore", "--target", str(project)])
         assert isinstance(result.outcome, Succeeded), result.outcome
@@ -235,7 +229,7 @@ def test_restore_no_drift_is_a_no_op_in_process() -> None:
 
 
 def test_restore_unknown_requested_path_is_refused_in_process() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
         project, _record = _activate(Path(raw))
         result = _execute(
             ["restore", "--target", str(project), "--path", "docs/not-managed.md"]
@@ -245,7 +239,7 @@ def test_restore_unknown_requested_path_is_refused_in_process() -> None:
 
 
 def test_unusual_filename_is_refused_in_process() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
         project, _record = _activate(Path(raw))
         odd = project / "bad\\name"
         _ = odd.write_text("weird\n", encoding="utf-8")
@@ -255,7 +249,7 @@ def test_unusual_filename_is_refused_in_process() -> None:
 
 
 def test_hardlinked_file_is_refused_in_process() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
         project, _record = _activate(Path(raw))
         source = project / "README.md"
         os.link(source, project / "README-link.md")
@@ -265,9 +259,9 @@ def test_hardlinked_file_is_refused_in_process() -> None:
 
 
 def test_corrupt_ownership_is_refused_in_process() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
         project, _record = _activate(Path(raw))
-        ownership = project / ".agentic-template/source-ownership.json"
+        ownership = project / ".rygor/source-ownership.json"
         _ = ownership.write_text("{garbage", encoding="utf-8")
         managed = project / test_source_bootstrap.CORE_CI_PATH
         compiled = test_source_bootstrap.render_for(())[
@@ -288,7 +282,7 @@ def test_reconcile_binds_receipt_in_process() -> None:
         test_bootstrap_reconcile_cli.__dict__["_as_copier_project"],
     )
 
-    with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
         project, _record = _activate(Path(raw))
         as_copier_project(project)
         # An unselected capability artifact can remain in a Copier source tree;
@@ -366,7 +360,7 @@ def test_reconcile_refuses_stale_receipt_in_process() -> None:
         test_bootstrap_reconcile_cli.__dict__["_as_copier_project"],
     )
 
-    with tempfile.TemporaryDirectory(prefix="agentic-template-lifecycle.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
         project, _record = _activate(Path(raw))
         as_copier_project(project)
         source = project / "docs/agents/domain.md"

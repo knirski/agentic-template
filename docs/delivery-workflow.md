@@ -1,6 +1,6 @@
 # Delivery workflow
 
-This document is managed by the Agentic Delivery Template. Put product-specific
+This document is managed by the Rygor. Put product-specific
 setup and validation details in `README.md`, and put contributor process in
 `CONTRIBUTING.md`.
 

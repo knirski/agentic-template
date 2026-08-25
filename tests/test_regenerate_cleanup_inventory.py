@@ -10,7 +10,7 @@ import pytest
 import scripts.regenerate_cleanup_inventory as regenerator
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-INVENTORY = REPO_ROOT / ".agentic-template" / "maintenance-artifacts.json"
+INVENTORY = REPO_ROOT / ".rygor" / "maintenance-artifacts.json"
 
 
 def test_regeneration_is_idempotent_from_any_working_directory(

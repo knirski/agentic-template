@@ -110,7 +110,7 @@ def _activate_or_skip(raw: Path) -> tuple[Path, Path]:
 
 class TestVerifyReconcileReceipt:
     def test_matching_plan_receipt_is_accepted(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="agentic-template-reconcile.") as raw:
+        with tempfile.TemporaryDirectory(prefix="rygor-reconcile.") as raw:
             receipt = Path(raw) / "plan.json"
             plan = _plan()
             _ = receipt.write_bytes(encode_receipt(build_receipt(plan)))
@@ -118,7 +118,7 @@ class TestVerifyReconcileReceipt:
             assert isinstance(result, Ok)
 
     def test_mismatched_plan_receipt_is_refused(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="agentic-template-reconcile.") as raw:
+        with tempfile.TemporaryDirectory(prefix="rygor-reconcile.") as raw:
             receipt = Path(raw) / "plan.json"
             _ = receipt.write_bytes(encode_receipt(build_receipt(_plan())))
             result = _verify_reconcile_receipt(
@@ -130,7 +130,7 @@ class TestVerifyReconcileReceipt:
             assert "--plan does not match the current reconcile" in result.error.subject
 
     def test_oversized_plan_receipt_is_refused(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="agentic-template-reconcile.") as raw:
+        with tempfile.TemporaryDirectory(prefix="rygor-reconcile.") as raw:
             receipt = Path(raw) / "plan.json"
             with receipt.open("wb") as handle:
                 _ = handle.write(b"x" * (DEFAULT_LIMITS.max_file_bytes + 1))
@@ -142,7 +142,7 @@ class TestVerifyReconcileReceipt:
 
     def test_unreadable_plan_path_is_refused(self) -> None:
         result = _verify_reconcile_receipt(
-            "/nonexistent/agentic-template/plan.json", _plan(), DEFAULT_LIMITS
+            "/nonexistent/rygor/plan.json", _plan(), DEFAULT_LIMITS
         )
         assert isinstance(result, Err)
         assert isinstance(result.error, UsageError)
@@ -150,7 +150,7 @@ class TestVerifyReconcileReceipt:
         assert "--plan unreadable" in result.error.subject
 
     def test_invalid_receipt_bytes_are_refused(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="agentic-template-reconcile.") as raw:
+        with tempfile.TemporaryDirectory(prefix="rygor-reconcile.") as raw:
             receipt = Path(raw) / "plan.json"
             _ = receipt.write_bytes(b"not a receipt")
             result = _verify_reconcile_receipt(str(receipt), _plan(), DEFAULT_LIMITS)
@@ -160,7 +160,7 @@ class TestVerifyReconcileReceipt:
             assert "--plan is not a valid receipt" in result.error.subject
 
     def test_symlink_receipt_path_is_refused(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="agentic-template-reconcile.") as raw:
+        with tempfile.TemporaryDirectory(prefix="rygor-reconcile.") as raw:
             receipt = Path(raw) / "plan.json"
             target = Path(raw) / "target.json"
             _ = target.write_bytes(encode_receipt(build_receipt(_plan())))
@@ -183,7 +183,7 @@ def _as_copier_project(project: Path) -> None:
 
     answers = project / ".copier-answers.yml"
     _ = answers.write_text("_commit: e2e-reconcile\n", encoding="utf-8")
-    manifest_path = project / ".agentic-template/project.json"
+    manifest_path = project / ".rygor/project.json"
     match decode_manifest(manifest_path.read_bytes()):
         case Err(error):
             raise AssertionError(f"manifest decode failed: {error}")
@@ -211,7 +211,7 @@ def _as_copier_project(project: Path) -> None:
 
 
 def test_reconcile_plan_receipt_binds_execution() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-reconcile.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-reconcile.") as raw:
         project, _record = _activate_or_skip(Path(raw))
         _as_copier_project(project)
         source = project / "docs/agents/domain.md"
@@ -290,7 +290,7 @@ def test_reconcile_plan_receipt_binds_execution() -> None:
 
 
 def test_reconcile_refreshes_bootstrap_managed_document_transactionally() -> None:
-    with tempfile.TemporaryDirectory(prefix="agentic-template-reconcile.") as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-reconcile.") as raw:
         project, _record = _activate_or_skip(Path(raw))
         _as_copier_project(project)
         fragment = project / "scripts/bootstrap/fragments/__init__.py"
@@ -334,9 +334,7 @@ def test_reconcile_refreshes_bootstrap_managed_document_transactionally() -> Non
 
         document = project / "docs/capabilities.md"
         assert b"Reconciled guidance marker." in document.read_bytes()
-        match decode_manifest(
-            (project / ".agentic-template/project.json").read_bytes()
-        ):
+        match decode_manifest((project / ".rygor/project.json").read_bytes()):
             case Ok(manifest):
                 managed = next(
                     entry

@@ -76,11 +76,11 @@ SOURCE_ENTRIES = (
 )
 SLOT_CONTENTS: dict[str, bytes] = {
     "readme": b"# Example\n\nReal project description.\n",
-    "prd": b"<!-- agentic-template:placeholder:prd -->\n# Product\n",
-    "security_policy": b"<!-- agentic-template:placeholder:security -->\n",
-    "contributing": b"<!-- agentic-template:placeholder:contributing -->\n",
+    "prd": b"<!-- rygor:placeholder:prd -->\n# Product\n",
+    "security_policy": b"<!-- rygor:placeholder:security -->\n",
+    "contributing": b"<!-- rygor:placeholder:contributing -->\n",
     "validation_hook": (
-        b"#!/usr/bin/env python3\nagentic-template:unconfigured:validate-project\n"
+        b"#!/usr/bin/env python3\nrygor:unconfigured:validate-project\n"
     ),
     "project_validation": PROJECT_VALIDATION_SCAFFOLD,
 }

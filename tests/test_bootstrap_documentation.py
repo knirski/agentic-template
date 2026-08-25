@@ -67,7 +67,7 @@ def test_rendered_output_contains_all_durable_adopter_documents() -> None:
     assert set(DOCUMENT_PATHS) <= set(rendered)
     for path in DOCUMENT_PATHS:
         text = rendered[path].decode("utf-8")
-        assert "managed by the Agentic Delivery Template" in text
+        assert "managed by the Rygor" in text
         assert "README.md" in text
         assert "CONTRIBUTING.md" in text
 
@@ -132,7 +132,7 @@ def test_source_documentation_carries_the_same_operational_contract() -> None:
     legacy_hook = "scripts/" + "validate_project.py"
     for relative in DOCUMENT_PATHS:
         text = (ROOT / relative).read_text(encoding="utf-8")
-        assert "managed by the Agentic Delivery Template" in text
+        assert "managed by the Rygor" in text
         assert "README.md" in text
         assert "CONTRIBUTING.md" in text
         assert "scripts/validate-project" in text

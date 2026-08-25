@@ -118,14 +118,14 @@ from scripts.bootstrap.values import JournalPhase
 
 def worktree(*, protected: bool = False) -> SupportedWorktree:
     protection = (
-        CanonicalTemplateSource("github.com/knirski/agentic-template")
+        CanonicalTemplateSource("github.com/knirski/rygor")
         if protected
         else OrdinaryProject()
     )
     return SupportedWorktree(
         WorktreeContext(
             target=TargetIdentity(b"/tmp/project", 1, 2, "target"),
-            state_root=RepoPath(".agentic-template"),
+            state_root=RepoPath(".rygor"),
             protection=protection,
         )
     )
@@ -784,13 +784,13 @@ class ObservationTests(unittest.TestCase):
 
     def test_remote_normalization_matches_supported_github_forms(self) -> None:
         forms = (
-            "https://github.com/knirski/agentic-template.git",
-            "ssh://git@github.com:22/knirski/agentic-template.git",
-            "git@github.com:knirski/agentic-template",
+            "https://github.com/knirski/rygor.git",
+            "ssh://git@github.com:22/knirski/rygor.git",
+            "git@github.com:knirski/rygor",
         )
         self.assertEqual(
             {normalize_remote(form) for form in forms},
-            {"github.com/knirski/agentic-template"},
+            {"github.com/knirski/rygor"},
         )
         self.assertIsInstance(
             target_protection_for_remotes(forms), CanonicalTemplateSource

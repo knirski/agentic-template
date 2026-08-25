@@ -44,7 +44,7 @@ from tests.fixtures import (  # noqa: E402
 )
 
 RETAINED_PATHS = (
-    ".agentic-template/source-ownership.json",
+    ".rygor/source-ownership.json",
     "AGENTS.md",
     "copier.yml",
     "docs/agents/domain.md",
@@ -58,8 +58,8 @@ CLEANUP_PATH_EXEMPTIONS = frozenset({"pyproject.toml"})
 GENERATED_PYPROJECT = (
     ROOT / "scripts/fixtures/generated-dependencies/pyproject.toml"
 ).read_text(encoding="utf-8")
-SOURCE_OWNERSHIP = ROOT / ".agentic-template/source-ownership.json"
-MAINTENANCE_INVENTORY = ROOT / ".agentic-template/maintenance-artifacts.json"
+SOURCE_OWNERSHIP = ROOT / ".rygor/source-ownership.json"
+MAINTENANCE_INVENTORY = ROOT / ".rygor/maintenance-artifacts.json"
 ADR_0001 = ROOT / "docs/adr/0001-use-copier-for-template-updates.md"
 WORKFLOWS = ROOT / ".github/workflows"
 
@@ -165,9 +165,7 @@ class GitHubBootstrapTests(unittest.TestCase):
         self.assertNotEqual(hook.stat().st_mode & 0o111, 0)
         configured = run([str(hook)], cwd=ROOT)
         self.assertEqual(configured.returncode, 1)
-        self.assertIn(
-            "agentic-template:unconfigured:validate-project", configured.stderr
-        )
+        self.assertIn("rygor:unconfigured:validate-project", configured.stderr)
         usage = run([str(hook), "unexpected"], cwd=ROOT)
         self.assertEqual(usage.returncode, 2)
         self.assertIn("usage: scripts/validate-project", usage.stderr)
@@ -238,7 +236,7 @@ class GitHubBootstrapTests(unittest.TestCase):
         exit_code = self._apply(project, bundle)
         self.assertEqual(exit_code, 0)
         self.assertEqual(len(record.read_text(encoding="utf-8").splitlines()), 1)
-        self.assertTrue((project / ".agentic-template/project.json").is_file())
+        self.assertTrue((project / ".rygor/project.json").is_file())
         self.assertEqual((project / "docs/prd.md").read_text(encoding="utf-8"), PRD)
         self.assertEqual((project / "README.md").read_text(encoding="utf-8"), README)
         for relative in CLEANUP_PATHS:
@@ -248,9 +246,7 @@ class GitHubBootstrapTests(unittest.TestCase):
                 continue
             with self.subTest(path=relative):
                 self.assertFalse((project / relative).exists(), relative)
-        self.assertFalse(
-            (project / ".agentic-template/maintenance-artifacts.json").exists()
-        )
+        self.assertFalse((project / ".rygor/maintenance-artifacts.json").exists())
         self.assertEqual(
             (project / "pyproject.toml").read_text(encoding="utf-8"),
             GENERATED_PYPROJECT,
@@ -268,7 +264,7 @@ class GitHubBootstrapTests(unittest.TestCase):
         # Scaffold slots remain unready: the install completes and the hook
         # runs once, but the command reports not-ready at exit 1.
         self.assertEqual(self._apply(project, bundle), 1)
-        self.assertTrue((project / ".agentic-template/project.json").is_file())
+        self.assertTrue((project / ".rygor/project.json").is_file())
         self.assertEqual(len(record.read_text(encoding="utf-8").splitlines()), 1)
         for relative in CLEANUP_PATHS:
             if relative in CLEANUP_PATH_EXEMPTIONS:
@@ -301,16 +297,12 @@ class GitHubBootstrapTests(unittest.TestCase):
         self.assertIn("CLEANUP_CONTRACT_INVALID", refused.stdout + refused.stderr)
         self.assertIn("pyproject.toml", refused.stdout + refused.stderr)
         self.assertIn("--leave-maintenance-artifacts", refused.stdout + refused.stderr)
-        self.assertTrue(
-            (project / ".agentic-template/maintenance-artifacts.json").is_file()
-        )
+        self.assertTrue((project / ".rygor/maintenance-artifacts.json").is_file())
         self.assertEqual(len(record.read_text(encoding="utf-8").splitlines()), 0)
         self.assertEqual(self._apply(project, bundle, leave=True), 1)
-        self.assertTrue((project / ".agentic-template/project.json").is_file())
+        self.assertTrue((project / ".rygor/project.json").is_file())
         self.assertTrue(damaged.is_file())
-        self.assertTrue(
-            (project / ".agentic-template/maintenance-artifacts.json").is_file()
-        )
+        self.assertTrue((project / ".rygor/maintenance-artifacts.json").is_file())
         self.assertEqual(len(record.read_text(encoding="utf-8").splitlines()), 1)
 
     def test_apply_refuses_without_a_git_working_tree(self) -> None:
@@ -330,7 +322,7 @@ class GitHubBootstrapTests(unittest.TestCase):
             ]
         )
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertFalse((project / ".agentic-template/project.json").exists())
+        self.assertFalse((project / ".rygor/project.json").exists())
 
 
 class _InventoryEntry(TypedDict):
@@ -417,7 +409,7 @@ class SourceContractTests(unittest.TestCase):
         inventory = cast(_InventoryDocument, _json_mapping(MAINTENANCE_INVENTORY))
         maintenance = set(
             [entry["path"] for entry in inventory["entries"]]
-            + [".agentic-template/maintenance-artifacts.json"]
+            + [".rygor/maintenance-artifacts.json"]
         )
         self.assertEqual(
             excludes,
@@ -473,7 +465,7 @@ class SourceContractTests(unittest.TestCase):
                         self.assertNotRegex(line, _SHELL_SCRIPT_REFERENCE, line)
 
     def test_release_eligibility_script_contract(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="agentic-template-eligibility.") as raw:
+        with tempfile.TemporaryDirectory(prefix="rygor-eligibility.") as raw:
             parent = Path(raw)
             fake_gh = parent / "gh"
             _ = fake_gh.write_text(
@@ -574,7 +566,7 @@ class EligibilityScriptBranchTests(unittest.TestCase):
 
     def test_eligible_when_the_validated_commit_is_the_main_tip(self) -> None:
         gh = SimpleNamespace(returncode=0, stdout=MAIN_BRANCH_SHA, stderr="")
-        with tempfile.TemporaryDirectory(prefix="agentic-template-eligibility.") as raw:
+        with tempfile.TemporaryDirectory(prefix="rygor-eligibility.") as raw:
             output = Path(raw) / "output.txt"
             _ = output.write_text("", encoding="utf-8")
             self.assertEqual(self._run(gh=gh, GITHUB_OUTPUT=str(output)), 0)

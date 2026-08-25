@@ -1975,7 +1975,7 @@ def _execute_effect(
                         part for part in state_root_abs.split(b"/") if part
                     )[:-1]
                     parent = b"/" + b"/".join(parent_components)
-                    match _ensure_directory_chain(parent, (b"agentic-template",)):
+                    match _ensure_directory_chain(parent, (b"rygor",)):
                         case Err(error):
                             return EffectFailed(EffectRequestKind.ACQUIRE_LOCK, error)
                         case Ok(_):
@@ -2166,7 +2166,7 @@ def _is_utf8(content: bytes) -> bool:
     return True
 
 
-_STAGE_DIR_NAME = ".agentic-template-stage"
+_STAGE_DIR_NAME = ".rygor-stage"
 _MARKER_NAME = "marker"
 _PAYLOAD_NAME = "payload"
 
@@ -2261,9 +2261,7 @@ def _execute_recover(  # pyright: ignore[reportUnusedFunction] — shared recove
         case Err(_):
             pass
     if resources.state_root_fd is None:
-        match _ensure_directory_chain(
-            _parent_of(state_root_abs), (b"agentic-template",)
-        ):
+        match _ensure_directory_chain(_parent_of(state_root_abs), (b"rygor",)):
             case Err(error):
                 return _result(command, _recovery_outcome(error))
             case Ok(_):

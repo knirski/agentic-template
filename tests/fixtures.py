@@ -56,20 +56,13 @@ Run `python3 scripts/validate_repository.py`.
 """
 SUPPLIED_SECURITY = "# Security\n\nReport privately.\n"
 SUPPLIED_CONTRIBUTING = "# Contributing\n\nWelcome.\n"
-SCAFFOLD_CONTRIBUTING = (
-    "# Contributing\n\n<!-- agentic-template:placeholder:contributing -->\n"
-)
-SCAFFOLD_SECURITY = (
-    "# Security Policy\n\n<!-- agentic-template:placeholder:security -->\n"
-)
+SCAFFOLD_CONTRIBUTING = "# Contributing\n\n<!-- rygor:placeholder:contributing -->\n"
+SCAFFOLD_SECURITY = "# Security Policy\n\n<!-- rygor:placeholder:security -->\n"
 SCAFFOLD_HOOK_TEMPLATE = (
-    "#!/bin/sh\n"
-    "# agentic-template:unconfigured:validate-project\n"
-    "echo run >> {record}\n"
-    "exit 0\n"
+    "#!/bin/sh\n# rygor:unconfigured:validate-project\necho run >> {record}\nexit 0\n"
 )
 
-# The finite source-only set declared by .agentic-template/source-ownership.json
+# The finite source-only set declared by .rygor/source-ownership.json
 # and removed by an initial GitHub snapshot apply.  Capability workflow files
 # are source-maintainer artifacts: they are excluded from generated projects
 # and compiled per-profile by apply, so unselected adopters never receive them.

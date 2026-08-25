@@ -1,8 +1,8 @@
 # Product Requirements Document
 
-<!-- agentic-template:placeholder:prd -->
+<!-- rygor:placeholder:prd -->
 
-This file is authoritative for the Agentic Delivery Template. In a generated project, replace this
+This file is authoritative for the Rygor. In a generated project, replace this
 entire template-source contract with the product's own content while retaining the section and
 requirement structure demonstrated below.
 

@@ -29,7 +29,7 @@ from tests.fixtures import (  # noqa: E402
 )
 
 RETAINED_COPIER_PATHS = (
-    ".agentic-template/source-ownership.json",
+    ".rygor/source-ownership.json",
     ".copier-answers.yml",
     "AGENTS.md",
     "copier.yml",
@@ -58,9 +58,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    with tempfile.TemporaryDirectory(
-        prefix="agentic-template-copier-bootstrap."
-    ) as raw:
+    with tempfile.TemporaryDirectory(prefix="rygor-copier-bootstrap.") as raw:
         workspace = Path(raw)
         source, project = workspace / "source", workspace / "project"
         _ = shutil.copytree(
@@ -131,7 +129,7 @@ def main() -> int:
         for relative in (
             *CLEANUP_PATHS,
             ".git",
-            ".agentic-template/maintenance-artifacts.json",
+            ".rygor/maintenance-artifacts.json",
         ):
             if (project / relative).exists():
                 print(
@@ -161,7 +159,7 @@ def main() -> int:
         if applied.returncode != 0:
             print(applied.stdout + applied.stderr, file=sys.stderr)
             return 1
-        if not (project / ".agentic-template/project.json").is_file():
+        if not (project / ".rygor/project.json").is_file():
             print("Copier bootstrap apply left no manifest", file=sys.stderr)
             return 1
         generated_pyproject = (
@@ -263,7 +261,7 @@ def main() -> int:
         if scaffolded.returncode != 1:
             print(scaffolded.stdout + scaffolded.stderr, file=sys.stderr)
             return 1
-        if not (second / ".agentic-template/project.json").is_file():
+        if not (second / ".rygor/project.json").is_file():
             print("Copier scaffold apply left no manifest", file=sys.stderr)
             return 1
         if len(record.read_text(encoding="utf-8").splitlines()) != 2:

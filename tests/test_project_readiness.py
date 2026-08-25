@@ -13,7 +13,7 @@ from typing import override
 
 ROOT = Path(__file__).resolve().parent.parent
 CHECKER = ROOT / "scripts/check_project_readiness.py"
-HOOK_SENTINEL = "agentic-template:unconfigured:validate-project"
+HOOK_SENTINEL = "rygor:unconfigured:validate-project"
 
 
 VALID_PRD = """# Product
@@ -108,14 +108,14 @@ class ReadinessFixtures(unittest.TestCase):
             "docs/prd.md",
             VALID_PRD.replace(
                 "# Product",
-                "<!-- agentic-template:placeholder:prd -->\nThis file is authoritative for the Agentic Delivery Template.\n# Product",
+                "<!-- rygor:placeholder:prd -->\nThis file is authoritative for the Rygor.\n# Product",
             ),
         )
         self.write(
             "README.md",
             VALID_README.replace(
                 "# Example Product",
-                "<!-- agentic-template:placeholder:readme -->\n# Agentic Delivery Template",
+                "<!-- rygor:placeholder:readme -->\n# Rygor",
             ),
         )
         result = self.run_checker()

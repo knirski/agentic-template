@@ -135,7 +135,7 @@ from scripts.bootstrap.state import (
 from scripts.bootstrap.state import UnsupportedGitTarget as GitUnsupportedTarget
 from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
 
-_CANONICAL_REMOTE = "github.com/knirski/agentic-template"
+_CANONICAL_REMOTE = "github.com/knirski/rygor"
 _SCP_REMOTE = re.compile(r"^(?:[^@]+@)?(?P<host>[^:/]+):(?P<path>.+)$")
 _GENERATED_SOURCE_NAMES = frozenset(
     {
@@ -156,9 +156,9 @@ _GENERATED_SOURCE_NAMES = frozenset(
 _NON_PROJECT_ROOTS = frozenset({".claude"})
 _TRANSACTION_ARTIFACTS = frozenset(
     {
-        ".agentic-template/lock",
-        ".agentic-template/journal.json",
-        ".agentic-template/journal.pending",
+        ".rygor/lock",
+        ".rygor/journal.json",
+        ".rygor/journal.pending",
     }
 )
 
@@ -673,7 +673,7 @@ def resolve_shell_target(
             environment=SupportedWorktree(
                 WorktreeContext(
                     target=worktree.target,
-                    state_root=RepoPath("agentic-template"),
+                    state_root=RepoPath("rygor"),
                     protection=protection,
                 )
             ),
@@ -858,8 +858,8 @@ def _is_transaction_artifact(relative: str) -> bool:
     if relative in _TRANSACTION_ARTIFACTS:
         return True
     components = tuple(relative.split("/"))
-    return ".agentic-template-stage" in components or components[:2] == (
-        ".agentic-template",
+    return ".rygor-stage" in components or components[:2] == (
+        ".rygor",
         "transactions",
     )
 
@@ -1200,7 +1200,7 @@ def collect_template_source_entries(
         for name in names:
             child_relative = f"{relative}/{name}" if relative else name
             child_abs = os.path.join(directory, name)
-            if child_relative == ".git" or child_relative == ".agentic-template":
+            if child_relative == ".git" or child_relative == ".rygor":
                 continue
             if skip_reserved(child_relative):
                 continue
@@ -1523,7 +1523,7 @@ def observe_system(
         if isinstance(  # pyright: ignore[reportUnnecessaryIsInstance] — deliberate runtime contract check
             environment, _SupportedWorktree
         )
-        else RepoPath("agentic-template")
+        else RepoPath("rygor")
     )
     system = build_system_state(
         environment=environment,

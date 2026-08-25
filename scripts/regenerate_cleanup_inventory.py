@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate the cleanup inventory from the tracked source.
 
-Canonical writer for ``.agentic-template/maintenance-artifacts.json``: the
+Canonical writer for ``.rygor/maintenance-artifacts.json``: the
 inventory must describe the tracked source exactly, so it is recomputed
 through the readiness fixture of truth (the same function the fixture suites
 assert against) and written with the canonical formatting. Release tooling
@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 sys.path.insert(0, str(REPO_ROOT))
 
-INVENTORY_PATH = REPO_ROOT / ".agentic-template" / "maintenance-artifacts.json"
+INVENTORY_PATH = REPO_ROOT / ".rygor" / "maintenance-artifacts.json"
 READINESS_MODULE = REPO_ROOT / "tests" / "test_github_template_readiness.py"
 
 

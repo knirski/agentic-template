@@ -1,3 +1,3 @@
 # Security Policy
 
-<!-- agentic-template:placeholder:security -->
+<!-- rygor:placeholder:security -->

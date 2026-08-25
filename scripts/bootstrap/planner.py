@@ -84,7 +84,7 @@ PLAN_OPERATION_KIND: Literal["initial"] = "initial"
 ADD_OPERATION_KIND: Literal["add"] = "add"
 RESTORE_OPERATION_KIND: Literal["restore"] = "restore"
 RECONCILE_OPERATION_KIND: Literal["reconcile"] = "reconcile"
-MAINTENANCE_INVENTORY_PATH = RepoPath(".agentic-template/maintenance-artifacts.json")
+MAINTENANCE_INVENTORY_PATH = RepoPath(".rygor/maintenance-artifacts.json")
 
 
 class CompileErrorKind(StrEnum):
@@ -320,7 +320,7 @@ SLOT_PLACEHOLDER_RULES: tuple[SlotPlaceholderRule, ...] = (
     SlotPlaceholderRule(
         slot="readme",
         path=RepoPath("README.md"),
-        marker=b"<!-- agentic-template:placeholder:readme -->",
+        marker=b"<!-- rygor:placeholder:readme -->",
         detection="text",
         code="READINESS_README_MARKER",
         message="template replacement marker remains",
@@ -329,7 +329,7 @@ SLOT_PLACEHOLDER_RULES: tuple[SlotPlaceholderRule, ...] = (
     SlotPlaceholderRule(
         slot="prd",
         path=RepoPath("docs/prd.md"),
-        marker=b"<!-- agentic-template:placeholder:prd -->",
+        marker=b"<!-- rygor:placeholder:prd -->",
         detection="text",
         code="READINESS_PRD_MARKER",
         message="template replacement marker remains",
@@ -338,7 +338,7 @@ SLOT_PLACEHOLDER_RULES: tuple[SlotPlaceholderRule, ...] = (
     SlotPlaceholderRule(
         slot="security_policy",
         path=RepoPath("SECURITY.md"),
-        marker=b"<!-- agentic-template:placeholder:security -->",
+        marker=b"<!-- rygor:placeholder:security -->",
         detection="text",
         code="READINESS_SECURITY_MARKER",
         message="template replacement marker remains",
@@ -347,7 +347,7 @@ SLOT_PLACEHOLDER_RULES: tuple[SlotPlaceholderRule, ...] = (
     SlotPlaceholderRule(
         slot="contributing",
         path=RepoPath("CONTRIBUTING.md"),
-        marker=b"<!-- agentic-template:placeholder:contributing -->",
+        marker=b"<!-- rygor:placeholder:contributing -->",
         detection="text",
         code="READINESS_CONTRIBUTING_MARKER",
         message="template replacement marker remains",
@@ -356,7 +356,7 @@ SLOT_PLACEHOLDER_RULES: tuple[SlotPlaceholderRule, ...] = (
     SlotPlaceholderRule(
         slot="validation_hook",
         path=RepoPath("scripts/validate-project"),
-        marker=b"agentic-template:unconfigured:validate-project",
+        marker=b"rygor:unconfigured:validate-project",
         detection="raw",
         code="READINESS_HOOK_SENTINEL",
         message="unconfigured hook sentinel remains",

@@ -1,6 +1,6 @@
 """Candidate project manifest: primary recorded state, checksum, and strict round trips.
 
-``.agentic-template/project.json`` contains only primary recorded fields plus its checksum;
+``.rygor/project.json`` contains only primary recorded fields plus its checksum;
 it has no derived block.  Validity is parse, schema, and checksum — nothing else.  The
 document never contains product prose, legal text, input source paths, repository owner or
 name, timestamps, machine-specific absolute paths, secrets, or claims about seed-once
@@ -47,7 +47,7 @@ from scripts.bootstrap.vocabulary import (
 )
 
 MANIFEST_SCHEMA_VERSION = 1
-MANIFEST_PATH = RepoPath(".agentic-template/project.json")
+MANIFEST_PATH = RepoPath(".rygor/project.json")
 
 # The six content slots of the bootstrap input bundle; five installed paths have
 # placeholder markers and the project-validation workflow has a fixed scaffold.

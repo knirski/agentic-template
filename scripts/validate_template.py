@@ -35,11 +35,11 @@ READINESS_RULE_SCHEMA_VERSION = 1
 # drift check below never mistakes an adopter's compiled CI for source CI.
 # It is not reliable on its own: the documented ``apply
 # --leave-maintenance-artifacts`` repair retains this inventory in adopters.
-SOURCE_FIXTURE_MARKER = ".agentic-template/maintenance-artifacts.json"
+SOURCE_FIXTURE_MARKER = ".rygor/maintenance-artifacts.json"
 # The managed manifest apply always writes and the source never commits.  Its
 # presence marks a managed adopter (including the repair path above), whose
 # per-profile compiled ci.yml legitimately differs from the source baseline.
-MANAGED_ADOPTER_MARKER = ".agentic-template/project.json"
+MANAGED_ADOPTER_MARKER = ".rygor/project.json"
 
 
 def validate_catalog_surface(root: Path) -> tuple[str, ...]:

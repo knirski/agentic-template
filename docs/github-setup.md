@@ -1,6 +1,6 @@
 # GitHub setup
 
-This document is managed by the Agentic Delivery Template. Put project-specific
+This document is managed by the Rygor. Put project-specific
 setup in `README.md`, and put contributor and security process in
 `CONTRIBUTING.md`.
 

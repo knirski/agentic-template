@@ -336,21 +336,17 @@ class ResolvedContribution:
     rendered_body: str
 
 
-SLOT_MARKER_PREFIX = "agentic-template:slot:"
-VALUE_MARKER_PREFIX = "agentic-template:value:"
-OPTIONAL_SECTION_PREFIX = "agentic-template:if:"
+SLOT_MARKER_PREFIX = "rygor:slot:"
+VALUE_MARKER_PREFIX = "rygor:value:"
+OPTIONAL_SECTION_PREFIX = "rygor:if:"
 OPTIONAL_SECTION_BEGIN_SUFFIX = ":begin"
 OPTIONAL_SECTION_END_SUFFIX = ":end"
 
 _MARKER_NAME = MARKER_NAME_PATTERN.encode()
-_SLOT_MARKER = re.compile(
-    rb"agentic-template:slot:(" + _MARKER_NAME + rb")(?![a-z0-9_-])"
-)
-_VALUE_MARKER = re.compile(
-    rb"agentic-template:value:(" + _MARKER_NAME + rb")(?![a-z0-9_-])"
-)
+_SLOT_MARKER = re.compile(rb"rygor:slot:(" + _MARKER_NAME + rb")(?![a-z0-9_-])")
+_VALUE_MARKER = re.compile(rb"rygor:value:(" + _MARKER_NAME + rb")(?![a-z0-9_-])")
 _OPTIONAL_SECTION_MARKER = re.compile(
-    rb"agentic-template:if:(" + _MARKER_NAME + rb"):(begin|end)\b"
+    rb"rygor:if:(" + _MARKER_NAME + rb"):(begin|end)\b"
 )
 
 

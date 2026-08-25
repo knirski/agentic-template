@@ -115,10 +115,10 @@ from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
 
 SLOT_CONTENTS: dict[str, bytes] = {
     "readme": b"# Example\n\nReal project description.\n",
-    "prd": b"<!-- agentic-template:placeholder:prd -->\n# Product\n",
-    "security_policy": b"<!-- agentic-template:placeholder:security -->\n",
-    "contributing": b"<!-- agentic-template:placeholder:contributing -->\n",
-    "validation_hook": b"#!/usr/bin/env python3\nagentic-template:unconfigured:validate-project\n",
+    "prd": b"<!-- rygor:placeholder:prd -->\n# Product\n",
+    "security_policy": b"<!-- rygor:placeholder:security -->\n",
+    "contributing": b"<!-- rygor:placeholder:contributing -->\n",
+    "validation_hook": b"#!/usr/bin/env python3\nrygor:unconfigured:validate-project\n",
     "project_validation": PROJECT_VALIDATION_SCAFFOLD,
 }
 APACHE_TEXT = b"Apache License\nVersion 2.0, January 2004\n"
@@ -145,7 +145,7 @@ MANAGED_CONTENTS: tuple[tuple[str, Literal["text", "binary"], bytes], ...] = (
 )
 CLEANUP_PATHS = (RepoPath("tests"), RepoPath("uv.lock"), RepoPath("docs/specs"))
 SOURCE_CI = b"name: source-ci\njobs: {}\n"
-SOURCE_PYPROJECT = b'[project]\nname = "agentic-template"\n'
+SOURCE_PYPROJECT = b'[project]\nname = "rygor"\n'
 INVENTORY = b'{"schema_version": 1, "entries": []}\n'
 TARGET = target_identity(b"/work/example", device=1, inode=2)
 
@@ -365,7 +365,7 @@ def fixture_github_snapshot(*, licensing_mode: str) -> TargetSnapshot:
     files.append(observed_file(MAINTENANCE_INVENTORY_PATH, INVENTORY))
     files.extend(_contract_entries())
     directories = [
-        observed_directory(RepoPath(".agentic-template")),
+        observed_directory(RepoPath(".rygor")),
         observed_directory(RepoPath("docs")),
         observed_directory(RepoPath("docs/agents")),
         observed_directory(RepoPath(".github")),
@@ -1500,7 +1500,7 @@ class TestManifest:
                 raise AssertionError(f"manifest build failed: {error}")
         encoded = encode_manifest(manifest)
         assert b"Adopter license text" not in encoded
-        assert b"<!-- agentic-template:placeholder:prd -->" not in encoded
+        assert b"<!-- rygor:placeholder:prd -->" not in encoded
         assert b"Apache License" not in encoded
         assert manifest.answers.licensing.content_sha256 == sha256_hex(
             LEGAL_CONTENTS["provided-project-license"]["LICENSE"]
@@ -2380,7 +2380,7 @@ class TestPlanner:
     def test_apply_plan_rejects_removing_directory_with_remaining_files(self) -> None:
         plan = github_plan()
         remove = RemoveEmptyDirectoryOperation(
-            path=RepoPath(".agentic-template"),
+            path=RepoPath(".rygor"),
             expected_old=DirectoryState(PosixMode.DIRECTORY, ()),
             planned_new=DirectoryAbsent(),
         )
@@ -2490,7 +2490,7 @@ class TestPlanner:
             for operation in plan.ordered_operations
             if isinstance(operation, CreateTreeOperation)
         ]
-        assert {tree.root.value for tree in trees} == {"docs", ".agentic-template"}
+        assert {tree.root.value for tree in trees} == {"docs", ".rygor"}
         docs_tree = next(tree for tree in trees if tree.root.value == "docs")
         tree_paths = {entry.path.value for entry in docs_tree.planned_new.entries}
         assert tree_paths == {"docs/prd.md", "docs/template-updates.md"}
@@ -2515,9 +2515,7 @@ class TestPlanner:
             case Err(error):
                 raise AssertionError(f"copier plan did not overlay: {error}")
         by_path = {file.path.value: file.content for file in expected.files}
-        assert by_path["docs/prd.md"].startswith(
-            b"<!-- agentic-template:placeholder:prd -->"
-        )
+        assert by_path["docs/prd.md"].startswith(b"<!-- rygor:placeholder:prd -->")
         assert by_path[MANIFEST_PATH.value] == plan.manifest_after.payload
 
     def test_one_tree_roots_each_wholly_new_hierarchy_at_its_highest_absent_directory(
@@ -2552,7 +2550,7 @@ class TestPlanner:
             for operation in plan.ordered_operations
             if isinstance(operation, CreateTreeOperation)
         ]
-        assert {tree.root.value for tree in trees} == {"docs", ".agentic-template"}
+        assert {tree.root.value for tree in trees} == {"docs", ".rygor"}
         docs_tree = next(tree for tree in trees if tree.root.value == "docs")
         file_paths = {
             entry.path.value
@@ -2645,7 +2643,7 @@ class TestPlanner:
         assert {tree.root.value for tree in trees} == {
             "docs",
             "docs/agents/x",
-            ".agentic-template",
+            ".rygor",
         }
         deep_tree = next(tree for tree in trees if tree.root.value == "docs/agents/x")
         assert {entry.path.value for entry in deep_tree.planned_new.entries} == {
@@ -3100,7 +3098,7 @@ class TestPlanner:
                 raise AssertionError("over-limit plan compiled")
 
     def test_file_slot_rejects_marker_in_planned_bytes(self) -> None:
-        marked_readme = b"<!-- agentic-template:placeholder:readme -->\n"
+        marked_readme = b"<!-- rygor:placeholder:readme -->\n"
         answers = replace(
             fixture_answers(),
             slots=MappingProxyType(
@@ -3975,8 +3973,8 @@ class TestPlanDigest:
         receipt = build_receipt(github_plan())
         encoded = encode_receipt(receipt)
         assert b"Adopter" not in encoded
-        assert b"agentic-template:placeholder" not in encoded
-        assert b"agentic-template:unconfigured" not in encoded
+        assert b"rygor:placeholder" not in encoded
+        assert b"rygor:unconfigured" not in encoded
         assert b"Apache License" not in encoded
         assert b"def test_a" not in encoded
         operations = receipt["operations"]
@@ -4667,7 +4665,7 @@ class TestExpectedTarget:
             files=tuple(
                 replace(
                     file,
-                    content=b"<!-- agentic-template:placeholder:readme -->\n",
+                    content=b"<!-- rygor:placeholder:readme -->\n",
                 )
                 if file.path.value == "README.md"
                 else file
