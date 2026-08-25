@@ -86,7 +86,13 @@ def test_lifecycle_manifest_helpers_preserve_candidate_type() -> None:
 SCAFFOLD_README = "# Placeholder\n\n<!-- rygor:placeholder:readme -->\n"
 SCAFFOLD_PRD = "# Product\n\n<!-- rygor:placeholder:prd -->\n"
 SCAFFOLD_SECURITY = "# Security\n\n<!-- rygor:placeholder:security -->\n"
-SCAFFOLD_CONTRIBUTING = "# Contributing\n\n<!-- rygor:placeholder:contributing -->\n"
+SCAFFOLD_CONTRIBUTING = (
+    "# Contributing\n\n"
+    "<!-- rygor:placeholder:contributing -->\n\n"
+    "## Running tests\n\n"
+    "Run the test suite serially with `uv run pytest`. For faster feedback on a multi-core machine,\n"
+    "run `uv run pytest -n auto` to distribute tests across available workers.\n"
+)
 SCAFFOLD_HOOK = (
     "#!/bin/sh\n# rygor:unconfigured:validate-project\necho unconfigured\nexit 0\n"
 )

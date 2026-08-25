@@ -68,12 +68,27 @@
             "template-ci.yml line 42 runs: uv run pytest --cov=scripts --cov-report=term-missing --cov-report=xml",
             "Decision: no addopts change (mutmut runs its own pytest invocations)"
           ],
-          "description": "Add \"pytest-xdist>=3.8\" to [dependency-groups] test in pyproject.toml and regenerate uv.lock via uv lock (or uv add --group test pytest-xdist). Append -n auto to the pytest invocation in .github/workflows/template-ci.yml keeping all coverage flags. Add a short 'Running tests' section to CONTRIBUTING.md documenting `uv run pytest` and `uv run pytest -n auto`. Do not touch [tool.pytest.ini_options] addopts.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "description": "Add \"pytest-xdist>=3.8\" to [dependency-groups] test in pyproject.toml and regenerate uv.lock via uv lock (or uv add --group test pytest-xdist). Append -n auto to the pytest invocation in .github/workflows/template-ci.yml keeping all coverage flags. Add a short 'Running tests' section to CONTRIBUTING.md documenting `uv run pytest` and `uv run pytest -n auto`, and synchronize the generated scaffold fragment and test-side scaffold mirrors so source recognition remains byte-exact; the root CONTRIBUTING.md version wins. Do not touch [tool.pytest.ini_options] addopts.",
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-25",
+              "commits": [],
+              "evidence": [
+                "uv sync --locked resolved and installed pytest-xdist==3.8.0",
+                "uv run pytest -q passed: 1405 tests, 82 subtests in 45.24s",
+                "uv run pytest -n auto -q passed: 1405 tests, 82 subtests in 18.75s",
+                "template-ci.yml parsed as YAML and retained all coverage flags with -n auto",
+                "CONTRIBUTING.md, its generated scaffold fragment, and test-side scaffold mirrors are byte-synchronized",
+                "uv run ruff check . passed; uv run ruff format --check passed; basedpyright passed with 0 errors, 0 warnings, 0 notes"
+              ]
+            }
+          },
           "files": {
             "reuse": [],
             "create": [],
-            "modify": ["pyproject.toml", "uv.lock", ".github/workflows/template-ci.yml", "CONTRIBUTING.md"],
+            "modify": ["pyproject.toml", "uv.lock", ".github/workflows/template-ci.yml", "CONTRIBUTING.md", "scripts/bootstrap/fragments/scaffolds/contributing.md", "tests/fixtures.py", "tests/test_bootstrap_cli.py"],
             "delete": []
           },
           "new_abstractions": [],

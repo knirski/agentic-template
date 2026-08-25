@@ -28,7 +28,7 @@
     {
       "kind": "file",
       "path": ".github/workflows/template-ci.yml",
-      "sha256": "aa6fb590230f6285ad4d635ece99141a508108513ff4dc4f63ea595a82c18212"
+      "sha256": "d12783a4c14794605825474a447f8623aeeabc2718c1771b150cfcf27e511dc8"
     },
     {
       "kind": "file",
@@ -48,7 +48,7 @@
     {
       "kind": "directory",
       "path": "docs/specs",
-      "sha256": "8efc37ae3f87bebd932c8b2ef7b089909444c72a0635b60a409bb4dc266c93ee"
+      "sha256": "e5df4242ff4c82fbb2967e78b014291124b155cfacd51d3ac46df44e23dc7c52"
     },
     {
       "kind": "file",
@@ -63,17 +63,17 @@
     {
       "kind": "file",
       "path": "pyproject.toml",
-      "sha256": "f9c44b028cac8120e4780fd614b57270272d1e930f9bc29fc8de6415aebd1192"
+      "sha256": "1a8507676af2b24ee6f8c1be58289256d7749fa0148f8d7939e4e70d51e9f7a7"
     },
     {
       "kind": "directory",
       "path": "tests",
-      "sha256": "0957fa792b0681cc3266e376f87e435dc019daae794e9f5902543ccdda78e8d6"
+      "sha256": "94227e73aa4e464f3fb1797a70af6fed8c764ca6b81f6f4d7337d61f4e57c0b5"
     },
     {
       "kind": "file",
       "path": "uv.lock",
-      "sha256": "f915f57a538501536ee97858265c8354dd221d0f69508daa785c024481f4f21a"
+      "sha256": "84411f75b5b23dc8ebefb2a8cd690f2984a86fb860bd54dfb61b9635b141631d"
     }
   ],
   "schema_version": 1

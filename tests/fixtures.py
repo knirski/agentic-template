@@ -57,7 +57,13 @@ Run `uv run --python 3.14 scripts/validate_repository.py`.
 """
 SUPPLIED_SECURITY = "# Security\n\nReport privately.\n"
 SUPPLIED_CONTRIBUTING = "# Contributing\n\nWelcome.\n"
-SCAFFOLD_CONTRIBUTING = "# Contributing\n\n<!-- rygor:placeholder:contributing -->\n"
+SCAFFOLD_CONTRIBUTING = (
+    "# Contributing\n\n"
+    "<!-- rygor:placeholder:contributing -->\n\n"
+    "## Running tests\n\n"
+    "Run the test suite serially with `uv run pytest`. For faster feedback on a multi-core machine,\n"
+    "run `uv run pytest -n auto` to distribute tests across available workers.\n"
+)
 SCAFFOLD_SECURITY = "# Security Policy\n\n<!-- rygor:placeholder:security -->\n"
 SCAFFOLD_HOOK_TEMPLATE = (
     "#!/bin/sh\n# rygor:unconfigured:validate-project\necho run >> {record}\nexit 0\n"
