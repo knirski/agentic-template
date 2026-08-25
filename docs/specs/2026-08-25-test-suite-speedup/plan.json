@@ -20,9 +20,9 @@
           "depends_on": [],
           "inputs": [
             "Root cause evidence from docs/specs/2026-08-25-test-suite-speedup/design.md (detached git auto-maintenance children writing into fixture .git during teardown)",
-            "Required env: GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_SYSTEM=/dev/null, GIT_CONFIG_NOSYSTEM=1, gc.auto=0, gc.autoDetach=false, maintenance.auto=false"
+            "Required env: GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_SYSTEM=/dev/null, GIT_CONFIG_NOSYSTEM=1; the maintenance config keys gc.auto=0, gc.autoDetach=false, maintenance.auto=false are injected via GIT_CONFIG_COUNT=3 with GIT_CONFIG_KEY_0..2 / GIT_CONFIG_VALUE_0..2 pairs (dotted keys are not environment variables and are inert when set directly)"
           ],
-          "description": "Create tests/conftest.py defining a session-scoped autouse fixture named deterministic_git_env that force-overwrites the git environment variables above on os.environ before any test spawns a subprocess. Intent-revealing docstring records the btrfs/detached-gc rationale and evidence counts (baseline 15 failures / 80 probe iterations vs 0 / 80 disabled). No other changes in this task.",
+          "description": "Create tests/conftest.py defining a session-scoped autouse fixture named deterministic_git_env that force-sets the full environment described in the inputs (config-path nulling plus the GIT_CONFIG_COUNT/KEY/VALUE injection pairs) on os.environ before any test spawns a subprocess. Intent-revealing docstring records the btrfs/detached-gc rationale and evidence counts (baseline 15 failures / 80 probe iterations vs 0 / 80 disabled, probes using the same injection mechanism). No other changes in this task.",
           "execution": {"mode": "inline", "status": "pending", "completion": null},
           "files": {"reuse": [], "create": ["tests/conftest.py"], "modify": [], "delete": []},
           "new_abstractions": [],

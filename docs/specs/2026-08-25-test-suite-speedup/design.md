@@ -69,8 +69,12 @@ flaky red) and CI (wall time, flaky reruns).
   the suite, fixture git repos never produce detached-maintenance writes during
   teardown.
   - Given any suite run, when fixtures create git repos, then every git
-    subprocess inherits `gc.auto=0`, `gc.autoDetach=false`,
-    `maintenance.auto=false`, and nulled global/system git config.
+    subprocess inherits the maintenance keys `gc.auto=0`, `gc.autoDetach=false`,
+    `maintenance.auto=false` — injected via `GIT_CONFIG_COUNT=3` with
+    `GIT_CONFIG_KEY_0..2` / `GIT_CONFIG_VALUE_0..2` pairs (dotted config keys
+    are not themselves environment variables) — plus nulled global/system git
+    config (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null`,
+    `GIT_CONFIG_NOSYSTEM=1`).
   - Accept: 40 consecutive runs of
     `tests/test_bootstrap_cli.py::CliFamilyTests::test_text_json_parity`
     pass; 10 consecutive full-file runs pass.
