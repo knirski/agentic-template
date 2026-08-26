@@ -20,6 +20,7 @@ import sys
 import tempfile
 import time
 import unittest
+from pathlib import Path
 from typing import Literal, TextIO, cast
 from unittest.mock import patch
 
@@ -96,6 +97,7 @@ from scripts.bootstrap.state import (
     ValidatedJournal,
 )
 from scripts.bootstrap.values import JournalPhase, ResourceLimits
+from tests.factory import seed_repo
 
 O_DIRECTORY = os.O_DIRECTORY | os.O_RDONLY | os.O_CLOEXEC
 
@@ -123,6 +125,11 @@ def _open_dir(path: str) -> int:
 def _write(path: str, data: bytes) -> None:
     with open(path, "wb") as handle:
         _ = handle.write(data)
+
+
+def _seeded_repo(tmp: str, name: str = "repo") -> str:
+    """One committed worktree containing a single tracked file."""
+    return os.fspath(seed_repo(Path(tmp), {"f": b"x"}, name=name))
 
 
 def _read(path: str) -> bytes:
@@ -631,19 +638,9 @@ class GitStateTests(unittest.TestCase):
             check=False,
         )
 
-    def _init_repo(self, path: str) -> None:
-        os.makedirs(path, exist_ok=True)
-        _ = self._git("init", "-q", path)
-        _ = self._git("config", "user.email", "test@example.com", cwd=path)
-        _ = self._git("config", "user.name", "Test", cwd=path)
-
     def test_resolves_state_root_of_real_worktree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            repo = os.path.join(tmp, "repo")
-            self._init_repo(repo)
-            _write(os.path.join(repo, "f"), b"x")
-            _ = self._git("add", "f", cwd=repo)
-            _ = self._git("commit", "-qm", "init", cwd=repo)
+            repo = _seeded_repo(tmp)
             root = os.fsencode(repo)
             result = resolve_git_worktree(root)
             assert isinstance(result, Ok)
@@ -661,22 +658,14 @@ class GitStateTests(unittest.TestCase):
 
     def test_state_root_may_be_absent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            repo = os.path.join(tmp, "repo")
-            self._init_repo(repo)
-            _write(os.path.join(repo, "f"), b"x")
-            _ = self._git("add", "f", cwd=repo)
-            _ = self._git("commit", "-qm", "init", cwd=repo)
+            repo = _seeded_repo(tmp)
             resolved = _ok(resolve_git_worktree(os.fsencode(repo)))
             assert isinstance(resolved, ResolvedGitWorktree)
             self.assertFalse(os.path.exists(resolved.state_root_abs))
 
     def test_linked_worktrees_have_independent_state_roots(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            repo = os.path.join(tmp, "repo")
-            self._init_repo(repo)
-            _write(os.path.join(repo, "f"), b"x")
-            _ = self._git("add", "f", cwd=repo)
-            _ = self._git("commit", "-qm", "init", cwd=repo)
+            repo = _seeded_repo(tmp)
             other = os.path.join(tmp, "other")
             _ = self._git("worktree", "add", "-q", other, cwd=repo)
             first = _ok(resolve_git_worktree(os.fsencode(repo)))
@@ -689,16 +678,8 @@ class GitStateTests(unittest.TestCase):
 
     def test_submodule_uses_its_own_state_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            sub = os.path.join(tmp, "sub")
-            self._init_repo(sub)
-            _write(os.path.join(sub, "f"), b"x")
-            _ = self._git("add", "f", cwd=sub)
-            _ = self._git("commit", "-qm", "init", cwd=sub)
-            main = os.path.join(tmp, "main")
-            self._init_repo(main)
-            _write(os.path.join(main, "f"), b"x")
-            _ = self._git("add", "f", cwd=main)
-            _ = self._git("commit", "-qm", "init", cwd=main)
+            sub = _seeded_repo(tmp, "sub")
+            main = _seeded_repo(tmp, "main")
             _ = self._git(
                 "-c",
                 "protocol.file.allow=always",
@@ -726,8 +707,7 @@ class GitStateTests(unittest.TestCase):
 
     def test_git_directory_is_not_a_worktree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            repo = os.path.join(tmp, "repo")
-            self._init_repo(repo)
+            repo = _seeded_repo(tmp)
             result = resolve_git_worktree(os.fsencode(os.path.join(repo, ".git")))
             self.assertEqual(
                 result, Ok(UnsupportedGitTarget(TargetReason.NOT_WORKTREE))
@@ -1154,11 +1134,7 @@ class GitStateTests(unittest.TestCase):
 
     def test_symlinked_root_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            repo = os.path.join(tmp, "repo")
-            self._init_repo(repo)
-            _write(os.path.join(repo, "f"), b"x")
-            _ = self._git("add", "f", cwd=repo)
-            _ = self._git("commit", "-qm", "init", cwd=repo)
+            repo = _seeded_repo(tmp)
             link = os.path.join(tmp, "link")
             os.symlink(repo, link)
             error = cast(
@@ -1245,11 +1221,7 @@ class GitStateTests(unittest.TestCase):
 
     def test_state_root_symlink_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            repo = os.path.join(tmp, "repo")
-            self._init_repo(repo)
-            _write(os.path.join(repo, "f"), b"x")
-            _ = self._git("add", "f", cwd=repo)
-            _ = self._git("commit", "-qm", "init", cwd=repo)
+            repo = _seeded_repo(tmp)
             os.makedirs(os.path.join(tmp, "elsewhere"), exist_ok=True)
             os.symlink(
                 os.path.join(tmp, "elsewhere"),

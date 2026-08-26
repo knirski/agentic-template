@@ -337,7 +337,22 @@
             "Inline git sites: test_bootstrap_observation.py lines ~978/~1015/~1051, test_bootstrap_recovery.py ~985, state-root spawn helpers"
           ],
           "description": "Replace every inline git init/add(/commit) fixture site in test_bootstrap_observation.py, test_bootstrap_recovery.py, test_bootstrap_state_root.py with factory.seed_repo calls carrying the same file sets. Process-spawn and locking test logic unchanged.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-26",
+              "commits": [],
+              "evidence": [
+                "test_bootstrap_observation.py: _git_worktree and the _repo template builder now construct via factory.seed_repo (ownership JSON travels in the files mapping); test_bootstrap_recovery.py's git-clean fixture uses seed_repo; test_bootstrap_state_root.py replaces _init_repo plus its write/add/commit pattern with a _seeded_repo helper over seed_repo across seven sites including the submodule pair, and _init_repo is deleted",
+                "Deviation recorded: three raw-git literals remain in test_bootstrap_observation.py because seed_repo cannot express them without changing behavior - the unborn-HEAD evidence fixture (seed_repo commits by contract) and two symlink fixtures (mapping-based files cannot create symlinks; one also uses selective git add); the acceptance grep therefore shows exactly these three hits, all semantically required rather than seeded-repo construction",
+                "uv run pytest tests/test_bootstrap_observation.py tests/test_bootstrap_recovery.py tests/test_bootstrap_state_root.py -q: 242 passed serial and -n auto",
+                "uv run pytest -q passed: 1413 tests, 82 subtests, 5 skipped; uv run pytest -n auto -q passed: 1413 tests, 82 subtests",
+                "uv run ruff check . / ruff format --check . clean; basedpyright 0 errors, 0 warnings, 0 notes",
+                "Regenerated .rygor/maintenance-artifacts.json for the changed test sources"
+              ]
+            }
+          },
           "files": {"reuse": ["tests/factory.py::seed_repo"], "create": [], "modify": ["tests/test_bootstrap_observation.py", "tests/test_bootstrap_recovery.py", "tests/test_bootstrap_state_root.py"], "delete": []},
           "new_abstractions": [],
           "validation": {
