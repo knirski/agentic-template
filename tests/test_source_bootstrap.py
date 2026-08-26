@@ -31,16 +31,17 @@ from scripts.bootstrap.schemas import BootstrapBundle  # noqa: E402
 
 __all__ = ["CORE_CI_PATH", "_activate_source", "render_for"]
 from scripts.bootstrap.template_contract import SOURCE_WORKFLOW_SELECTIONS  # noqa: E402
+from tests.factory import (  # noqa: E402
+    SnapshotConfig,
+    build_snapshot_project,
+    pristine_snapshot,
+    write_answer_bundle,
+)
 from tests.fixtures import (  # noqa: E402
     ALL_CAPABILITIES,
     CLEANUP_PATHS,
-    SCAFFOLD_CONTRIBUTING,
-    SCAFFOLD_SECURITY,
-    copy_tracked,
     render_for,
     run,
-    scaffold_hook,
-    write_bundle,
 )
 
 # The source-maintainer-only workflows: excluded from generated projects by
@@ -241,42 +242,17 @@ def _activate_source(
     capability_settings: dict[str, dict[str, str | bool]] | None = None,
     retain_maintenance: bool = False,
 ) -> tuple[Path, Path]:
-    """Copy the tracked source, overlay remaining scaffold slots, and apply one bundle.
+    """Materialize a live snapshot project and apply one supplied bundle.
 
     With ``retain_maintenance`` the apply keeps the maintenance inventory (the
     documented ``--leave-maintenance-artifacts`` repair path).
     """
-    project = parent / "project"
-    copy_tracked(ROOT, project)
-    record = parent / "hook-runs"
-    _ = record.write_text("", encoding="utf-8")
-    hook = project / "scripts/validate-project"
-    _ = hook.write_text(scaffold_hook(record), encoding="utf-8")
-    hook.chmod(0o755)
-    _ = (project / "scripts/bootstrap/fragments/scaffolds/validate-project").write_text(
-        scaffold_hook(record), encoding="utf-8"
+    project = build_snapshot_project(
+        parent, SnapshotConfig(), pristine=pristine_snapshot()
     )
-    _ = (project / "CONTRIBUTING.md").write_text(
-        SCAFFOLD_CONTRIBUTING, encoding="utf-8"
-    )
-    _ = (project / "SECURITY.md").write_text(SCAFFOLD_SECURITY, encoding="utf-8")
-    for args in (
-        ("init", "-q", "-b", "main"),
-        ("add", "-A"),
-        (
-            "-c",
-            "user.email=t@t",
-            "-c",
-            "user.name=t",
-            "commit",
-            "-q",
-            "-m",
-            "scaffold",
-        ),
-    ):
-        result = run(["git", "-C", str(project), *args])
-        assert result.returncode == 0, result.stderr
-    bundle = write_bundle(
+    root = project.root
+    record = project.hook_runs
+    bundle = write_answer_bundle(
         parent,
         supplied=True,
         record=record,
@@ -285,18 +261,18 @@ def _activate_source(
     )
     apply_argv = [
         sys.executable,
-        str(project / "scripts/bootstrap_project.py"),
+        str(root / "scripts/bootstrap_project.py"),
         "apply",
         "--bundle",
         str(bundle),
         "--target",
-        str(project),
+        str(root),
     ]
     if retain_maintenance:
         apply_argv.append("--leave-maintenance-artifacts")
     applied = run(apply_argv)
     assert applied.returncode == 0, applied.stdout + applied.stderr
-    return project, record
+    return root, record
 
 
 def test_apply_compiles_and_manages_per_profile_ci() -> None:
