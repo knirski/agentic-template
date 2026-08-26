@@ -234,6 +234,9 @@ def build_snapshot_project(
         case "live":
             _overlay_live_snapshot(project, hook_runs)
         case "synthetic":
+            source_inventory = project / ".rygor/maintenance-artifacts.json"
+            if source_inventory.is_file():
+                _ = source_inventory.unlink()
             template_root = _write_synthetic_template(parent, hook_runs)
             _overlay_synthetic_snapshot(project, template_root)
         case _:

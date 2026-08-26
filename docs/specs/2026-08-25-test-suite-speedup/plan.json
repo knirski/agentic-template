@@ -229,7 +229,22 @@
             "Baseline constructions available before any suite migrates: ScaffoldFixture/_make_fixture, _snapshot(), and the canonical write_bundle"
           ],
           "description": "Create tests/test_factory.py covering: byte-digest and permission-bit equality between build_snapshot_project output and today's ScaffoldFixture/_snapshot constructions; write_answer_bundle equivalence against the canonical write_bundle for supplied and all-scaffold modes; seed_repo produces a valid worktree with expected files/modes; template dispatch exhaustiveness (unknown TemplateSource rejected); pristine_snapshot cache returns identical path within a process. These tests pin the engine before any consumer migrates.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-26",
+              "commits": [],
+              "evidence": [
+                "tests/test_factory.py pins eight cases against live baselines: synthetic build equals ScaffoldFixture/TemplatePackage output (byte digests + permission bits, hook-record paths normalized, untracked-non-ignored source extras tolerated), live build equals the GitHubBootstrapTests._snapshot flow exactly, write_answer_bundle is byte/mode-equal to canonical write_bundle for all-scaffold/supplied/supplied-custom-profile modes with executable hook bits, seed_repo yields a clean main worktree with one commit and expected bytes, unknown TemplateSource hits assert_never, pristine_snapshot returns an identical path twice",
+                "Fidelity testing exposed one T4 defect, fixed here: build_snapshot_project's synthetic branch retained the tracked .rygor/maintenance-artifacts.json that ScaffoldFixture deliberately deletes (the CLI suite controls the inventory via maintenance=True and asserts its absence by default); the synthetic branch now unlinks it, matching baseline semantics",
+                "uv run pytest -q passed: 1413 tests, 82 subtests, 5 skipped",
+                "uv run pytest -n auto -q passed: 1413 tests, 82 subtests",
+                "uv run ruff check . and uv run ruff format --check . passed; basedpyright passed with 0 errors, 0 warnings, 0 notes",
+                "Regenerated .rygor/maintenance-artifacts.json for the new tests/factory.py change and tests/test_factory.py digests"
+              ]
+            }
+          },
           "files": {"reuse": ["tests/fixtures.py", "tests/bootstrap_fixtures.py"], "create": ["tests/test_factory.py"], "modify": [], "delete": []},
           "new_abstractions": [],
           "validation": {
