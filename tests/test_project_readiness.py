@@ -6,14 +6,17 @@ from __future__ import annotations
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import override
 
-from tests.factory import copy_tree
-
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from tests.factory import copy_tree  # noqa: E402
+
 CHECKER = ROOT / "scripts/check_project_readiness.py"
 HOOK_SENTINEL = "rygor:unconfigured:validate-project"
 
