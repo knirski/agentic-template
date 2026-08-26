@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -30,17 +29,19 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from scripts.bootstrap.scaffold import SEED_ONCE_PATHS  # noqa: E402
+from tests.factory import (  # noqa: E402
+    SnapshotConfig,
+    build_snapshot_project,
+    copy_tree,
+    pristine_snapshot,
+    write_answer_bundle,
+)
 from tests.fixtures import (  # noqa: E402
     CLEANUP_PATHS,
     PRD,
     README,
-    SCAFFOLD_CONTRIBUTING,
-    SCAFFOLD_SECURITY,
-    copy_tracked,
     run,
-    scaffold_hook,
     tracked_files,
-    write_bundle,
 )
 
 RETAINED_PATHS = (
@@ -77,25 +78,7 @@ class GitHubSnapshot(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.project = Path(self.tmp.name) / "project"
-        if shutil.which("git"):
-            copy_tracked(ROOT, self.project)
-        else:
-            _ = shutil.copytree(
-                ROOT,
-                self.project,
-                ignore=shutil.ignore_patterns(
-                    ".git",
-                    ".direnv",
-                    "__pycache__",
-                    "result",
-                    ".venv",
-                    ".hypothesis",
-                    ".pytest_cache",
-                    ".ruff_cache",
-                    ".mypy_cache",
-                    ".coverage",
-                ),
-            )
+        copy_tree(pristine_snapshot(), self.project)
         self.assertFalse((self.project / ".git").exists())
         self.assertFalse((self.project / ".direnv").exists())
         self.assertFalse((self.project / "untracked-canary.txt").exists())
@@ -176,42 +159,13 @@ class GitHubBootstrapTests(unittest.TestCase):
         )
 
     def _snapshot(self, name: str) -> tuple[Path, Path]:
-        """Copy the tracked source, overlay the seed-once scaffold, git-init."""
-        parent = Path(self.tmp.name)
-        project = parent / name
-        copy_tracked(ROOT, project)
-        record = parent / f"{name}-hook-runs"
-        _ = record.write_text("", encoding="utf-8")
-        hook = project / "scripts/validate-project"
-        _ = hook.write_text(scaffold_hook(record), encoding="utf-8")
-        hook.chmod(0o755)
-        _ = (
-            project / "scripts/bootstrap/fragments/scaffolds/validate-project"
-        ).write_text(scaffold_hook(record), encoding="utf-8")
-        _ = (project / "CONTRIBUTING.md").write_text(
-            SCAFFOLD_CONTRIBUTING, encoding="utf-8"
+        """Materialize a live snapshot project and its recording-hook record."""
+        parent = Path(self.tmp.name) / name
+        parent.mkdir()
+        snapshot = build_snapshot_project(
+            parent, SnapshotConfig(), pristine=pristine_snapshot()
         )
-        # The scaffold slot contract requires marker-bearing placeholder
-        # content; the source's real SECURITY.md is not a placeholder.
-        _ = (project / "SECURITY.md").write_text(SCAFFOLD_SECURITY, encoding="utf-8")
-        for args in (
-            ("init", "-q", "-b", "main"),
-            ("add", "-A"),
-            (
-                "-c",
-                "user.email=t@t",
-                "-c",
-                "user.name=t",
-                "commit",
-                "-q",
-                "-m",
-                "scaffold",
-            ),
-        ):
-            result = run(["git", "-C", str(project), *args])
-            if result.returncode:
-                self.fail(result.stderr)
-        return project, record
+        return snapshot.root, snapshot.hook_runs
 
     def _apply(self, project: Path, bundle: Path, *, leave: bool = False) -> int:
         argv = [
@@ -232,7 +186,7 @@ class GitHubBootstrapTests(unittest.TestCase):
 
     def test_supplied_apply_installs_and_cleans_the_snapshot(self) -> None:
         project, record = self._snapshot("supplied")
-        bundle = write_bundle(Path(self.tmp.name), supplied=True, record=record)
+        bundle = write_answer_bundle(Path(self.tmp.name), supplied=True, record=record)
         exit_code = self._apply(project, bundle)
         self.assertEqual(exit_code, 0)
         self.assertEqual(len(record.read_text(encoding="utf-8").splitlines()), 1)
@@ -260,7 +214,7 @@ class GitHubBootstrapTests(unittest.TestCase):
 
     def test_all_scaffold_apply_installs_exits_one_and_cleans(self) -> None:
         project, record = self._snapshot("scaffold")
-        bundle = write_bundle(Path(self.tmp.name), supplied=False, record=record)
+        bundle = write_answer_bundle(Path(self.tmp.name), supplied=False, record=record)
         # Scaffold slots remain unready: the install completes and the hook
         # runs once, but the command reports not-ready at exit 1.
         self.assertEqual(self._apply(project, bundle), 1)
@@ -278,7 +232,7 @@ class GitHubBootstrapTests(unittest.TestCase):
 
     def test_cleanup_mismatch_refuses_then_leave_retains(self) -> None:
         project, record = self._snapshot("mismatch")
-        bundle = write_bundle(Path(self.tmp.name), supplied=False, record=record)
+        bundle = write_answer_bundle(Path(self.tmp.name), supplied=False, record=record)
         damaged = project / "pyproject.toml"
         with damaged.open("a", encoding="utf-8") as handle:
             _ = handle.write("\n# local drift\n")
@@ -308,8 +262,10 @@ class GitHubBootstrapTests(unittest.TestCase):
     def test_apply_refuses_without_a_git_working_tree(self) -> None:
         parent = Path(self.tmp.name)
         project = parent / "plain"
-        copy_tracked(ROOT, project)
-        bundle = write_bundle(parent, supplied=True, record=parent / "plain-runs")
+        copy_tree(pristine_snapshot(), project)
+        bundle = write_answer_bundle(
+            parent, supplied=True, record=parent / "plain-runs"
+        )
         result = run(
             [
                 sys.executable,

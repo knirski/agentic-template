@@ -303,7 +303,25 @@
             "_activate_source in test_source_bootstrap.py mirrors _snapshot then applies a bundle"
           ],
           "description": "Replace GitHubBootstrapTests._snapshot body with build_snapshot_project(live config) plus its local apply-wrapper; replace the bare tracked-copy in the refusal test with factory.copy_tree from pristine; rewrite _activate_source to builder + local apply wrapper. Keep assertion logic untouched.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-26",
+              "commits": [],
+              "evidence": [
+                "GitHubBootstrapTests._snapshot body replaced with build_snapshot_project(SnapshotConfig(), pristine=pristine_snapshot()) returning (root, hook_runs); the local _apply wrapper and all assertion logic untouched",
+                "test_apply_refuses_without_a_git_working_tree now builds its bare tree via factory.copy_tree from pristine_snapshot()",
+                "_activate_source rewritten onto build_snapshot_project + write_answer_bundle; returns (root, hook_runs) so caller assertions are unchanged",
+                "Deviation recorded: GitHubSnapshot.setUp also converted to copy_tree(pristine) replacing its copy_tracked branch and inline ignore-patterns fallback because the task acceptance forbids any remaining copy_tracked call in this file; setUp assertions unchanged",
+                "Readiness bundle call sites moved to write_answer_bundle per the T5/T8 consumer list (write_bundle dies at T11)",
+                "uv run pytest tests/test_github_template_readiness.py tests/test_source_bootstrap.py green serial and -n auto (28 passed, 43 subtests combined run)",
+                "uv run pytest -q passed: 1413 tests, 82 subtests, 5 skipped; uv run pytest -n auto -q passed: 1413 tests, 82 subtests",
+                "uv run ruff check . / ruff format --check . clean; basedpyright 0 errors, 0 warnings, 0 notes",
+                "Regenerated .rygor/maintenance-artifacts.json for the changed test sources"
+              ]
+            }
+          },
           "files": {"reuse": ["tests/factory.py"], "create": [], "modify": ["tests/test_github_template_readiness.py", "tests/test_source_bootstrap.py"], "delete": []},
           "new_abstractions": [],
           "validation": {
