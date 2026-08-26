@@ -451,7 +451,22 @@
             "xdist fact: session-scoped fixtures execute once per worker (~15ms pristine build makes FileLock sharing unnecessary)"
           ],
           "description": "Extend tests/conftest.py with: pristine_source (session scope, delegates to factory.pristine_snapshot()), scaffolded_project(tmp_path) returning factory.build_snapshot_project(tmp_path, SnapshotConfig(), pristine=factory.pristine_snapshot()), make_bundle(tmp_path) and make_seed_repo(tmp_path) returning bound builder callables, materialized_tree(tmp_path) returning factory.copy_tree output of the pristine source. Native signatures only; suites intentionally remain on direct calls until converted (documented interim state inside the PR, not dead code).",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-26",
+              "commits": [],
+              "evidence": [
+                "Extended tests/conftest.py with five native pytest fixtures: pristine_source (session scope), scaffolded_project, make_bundle, make_seed_repo, materialized_tree (all function scope)",
+                "All fixtures delegate to tests/factory.py engine; no pytest imports in factory",
+                "Full suite green serial (1410 passed) and parallel -n auto (1410 passed in ~19s)",
+                "Fixtures importable and requestable from scratch test files",
+                "Type-annotated with explicit type aliases (BundleOptions, RepoFiles, _MakeBundle, _MakeSeedRepo)",
+                "Ruff and basedpyright clean"
+              ]
+            }
+          },
           "files": {"reuse": ["tests/factory.py"], "create": [], "modify": ["tests/conftest.py"], "delete": []},
           "new_abstractions": [
             {"name": "scaffolded_project/pristine_source/make_bundle/make_seed_repo/materialized_tree fixtures", "requirement": "Declarative pytest-native consumption of the engine with pytest-owned lifetimes", "consumers": "converted suites in T13-T18"}
