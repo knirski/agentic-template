@@ -14,6 +14,7 @@ import os
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 
 from scripts.bootstrap.errors import ContractErrorKind
 from scripts.bootstrap.git_state import ResolvedGitWorktree
@@ -90,6 +91,7 @@ from scripts.bootstrap.state import (
     WorktreeContext,
 )
 from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
+from tests.factory import seed_repo
 from tests.fixtures import assert_err, assert_ok
 
 TARGET = target_identity(b"/work/example", device=1, inode=2)
@@ -971,31 +973,11 @@ class ObservationShellContractTests(unittest.TestCase):
 
     @staticmethod
     def _git_worktree(parent: str) -> ResolvedGitWorktree:
-        root = os.path.join(parent, "repo")
-        os.mkdir(root)
-        with open(os.path.join(root, "file.txt"), "w", encoding="utf-8") as handle:
-            _ = handle.write("hello\n")
-        _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
-        _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
-        _ = subprocess.run(
-            [
-                "git",
-                "-c",
-                "user.name=test",
-                "-c",
-                "user.email=test@example.com",
-                "commit",
-                "-q",
-                "-m",
-                "init",
-            ],
-            cwd=root,
-            check=True,
-        )
+        root = seed_repo(Path(parent), {"file.txt": "hello\n"})
         return ResolvedGitWorktree(
-            root_abs=os.fsencode(root),
-            git_dir_abs=os.fsencode(os.path.join(root, ".git")),
-            state_root_abs=os.fsencode(os.path.join(root, "rygor")),
+            root_abs=os.fsencode(os.fspath(root)),
+            git_dir_abs=os.fsencode(os.fspath(root / ".git")),
+            state_root_abs=os.fsencode(os.fspath(root / "rygor")),
             target=TARGET,
         )
 
@@ -1092,18 +1074,17 @@ class TemplateSourceWalkerTests(unittest.TestCase):
     def _repo(
         self, build: list[tuple[str, str]]
     ) -> tuple[str, tuple[LifecycleSourceEntry, ...]]:
-        tmp = tempfile.mkdtemp()
-        root = os.path.join(tmp, "template")
-        os.mkdir(root)
-        for relative, content in build:
-            target = os.path.join(root, relative)
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            with open(target, "w", encoding="utf-8") as handle:
-                _ = handle.write(content)
-        self._write_ownership(root, self._lifecycle_roots(build))
-        _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
-        _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
-        return root, ()
+        files: dict[str, str] = dict(build)
+        files[SOURCE_OWNERSHIP_PATH.value] = json.dumps(
+            {
+                "schema_version": 1,
+                "lifecycle_paths": list(self._lifecycle_roots(build)),
+                "snapshot_cleanup_paths": [],
+            },
+            sort_keys=True,
+        )
+        root = seed_repo(Path(tempfile.mkdtemp()), files, name="template")
+        return os.fspath(root), ()
 
     def _walk(
         self, root: str, managed_paths: tuple[str, ...] = ()

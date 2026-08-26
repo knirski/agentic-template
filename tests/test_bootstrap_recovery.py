@@ -133,6 +133,7 @@ from scripts.bootstrap.transaction import (
     restored_envelope,
 )
 from scripts.bootstrap.values import JournalPhase
+from tests.factory import seed_repo
 
 TARGET = target_identity(b"/work/example", device=1, inode=2)
 NEW = b"fresh content\n"
@@ -979,30 +980,7 @@ class TestFakeShellRollback(unittest.TestCase):
 
     def test_git_clean_survives_administrative_backups(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp) / "repo"
-            repo.mkdir()
-            _ = subprocess.run(
-                ["git", "init", "-q", str(repo)], check=True, capture_output=True
-            )
-            _ = (repo / "tracked.txt").write_text("tracked", encoding="utf-8")
-            _ = subprocess.run(
-                ["git", "add", "."], cwd=repo, check=True, capture_output=True
-            )
-            _ = subprocess.run(
-                [
-                    "git",
-                    "-c",
-                    "user.email=t@t",
-                    "-c",
-                    "user.name=t",
-                    "commit",
-                    "-qm",
-                    "init",
-                ],
-                cwd=repo,
-                check=True,
-                capture_output=True,
-            )
+            repo = seed_repo(Path(tmp), {"tracked.txt": "tracked"})
             state_root = repo / ".git" / "rygor"
             backup = state_root / "transactions" / TRANSACTION_ID / "backups" / "1"
             backup.parent.mkdir(parents=True)
