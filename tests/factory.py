@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -20,8 +21,12 @@ from scripts.bootstrap.scaffold import (
     cleanup_directory_digest,
 )
 from tests.fixtures import (
+    PRD,
+    README,
     SCAFFOLD_CONTRIBUTING,
     SCAFFOLD_SECURITY,
+    SUPPLIED_CONTRIBUTING,
+    SUPPLIED_SECURITY,
     scaffold_hook,
     tracked_files,
 )
@@ -333,3 +338,105 @@ def git(*args: str, cwd: Path) -> None:
         raise RuntimeError(
             detail or f"{command} failed with exit code {result.returncode}"
         )
+
+
+def seed_repo(
+    parent: Path,
+    files: Mapping[str, str | bytes],
+    *,
+    name: str = "repo",
+) -> Path:
+    """Create one committed Git worktree containing ``files``."""
+
+    root = parent / name
+    root.mkdir()
+    for relative, content in files.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(content, bytes):
+            _ = path.write_bytes(content)
+        else:
+            _ = path.write_text(content, encoding="utf-8")
+
+    git("init", "-q", "--initial-branch=main", cwd=root)
+    git("add", "-A", cwd=root)
+    git(
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "-m",
+        "init",
+        cwd=root,
+    )
+    return root
+
+
+def write_answer_bundle(
+    parent: Path,
+    *,
+    supplied: bool,
+    record: Path,
+    name: str = "bundle",
+    capabilities: Sequence[str] | None = None,
+    capability_settings: Mapping[str, Mapping[str, str | bool]] | None = None,
+) -> Path:
+    """Write a bootstrap answer bundle in either supplied or scaffold mode."""
+
+    bundle = parent / name
+    bundle.mkdir()
+    content_paths = {
+        "prd": "content/prd.md",
+        "readme": "content/readme.md",
+        "validation_hook": "content/validate-project",
+        "security_policy": "content/security.md",
+        "contributing": "content/contributing.md",
+    }
+    if supplied:
+        content_dir = bundle / "content"
+        content_dir.mkdir()
+        _ = (content_dir / "prd.md").write_text(PRD, encoding="utf-8")
+        _ = (content_dir / "readme.md").write_text(README, encoding="utf-8")
+        _ = (content_dir / "security.md").write_text(
+            SUPPLIED_SECURITY, encoding="utf-8"
+        )
+        _ = (content_dir / "contributing.md").write_text(
+            SUPPLIED_CONTRIBUTING, encoding="utf-8"
+        )
+        hook = content_dir / "validate-project"
+        _ = hook.write_text(
+            "#!/bin/sh\necho run >> " + str(record) + "\nexit 0\n",
+            encoding="utf-8",
+        )
+        hook.chmod(0o755)
+
+    content: dict[str, object] = {}
+    for slot, relative in content_paths.items():
+        content[slot] = (
+            {"mode": "file", "path": relative} if supplied else {"mode": "scaffold"}
+        )
+    profile: dict[str, object] = {"id": "portable"}
+    if capabilities is not None:
+        profile = {"id": "custom", "capabilities": list(capabilities)}
+    settings = (
+        {
+            capability: dict(capability_values)
+            for capability, capability_values in capability_settings.items()
+        }
+        if capability_settings is not None
+        else {}
+    )
+    document = {
+        "schema_version": 1,
+        "project": {"name": "example", "default_branch": "main"},
+        "profile": profile,
+        "content": content,
+        "licensing": {"mode": "retain-apache-2.0"},
+        "capability_settings": settings,
+    }
+    _ = (bundle / "bootstrap.json").write_text(
+        json.dumps(document, sort_keys=True), encoding="utf-8"
+    )
+    return bundle

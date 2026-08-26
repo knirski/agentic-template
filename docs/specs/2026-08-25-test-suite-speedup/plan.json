@@ -189,17 +189,35 @@
           "depends_on": ["T3"],
           "inputs": [
             "Inline git init/add sites in test_bootstrap_observation.py (~978, 1051), test_bootstrap_recovery.py (~985), test_bootstrap_state_root.py",
-            "Bundle writers: tests/fixtures.py::write_bundle and tests/test_bootstrap_cli.py::BundleDir (all_scaffold/supplied variants, record_path wiring, bootstrap.json schema_version 1 document)"
+            "Canonical latest bundle writer: tests/fixtures.py::write_bundle (all_scaffold/supplied variants, record wiring, bootstrap.json schema_version 1 document); obsolete CLI BundleDir variants are not preserved"
           ],
-          "description": "Add to tests/factory.py: seed_repo(parent, files: Mapping[str, str | bytes], *, name='repo') -> Path writing the given files and producing one committed repo via git(); the repo initializes with --initial-branch=main and commits with local identity (-c user.name -c user.email) because the session env fixture nulls global/system git config — clean runners must not depend on ambient configuration. Also write_answer_bundle(parent, *, supplied, record, name='bundle', capabilities=None, capability_settings=None) merging write_bundle and BundleDir behavior including the exact bootstrap.json field order/content and executable hook bits.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
-          "files": {"reuse": ["tests/fixtures.py::write_bundle", "tests/test_bootstrap_cli.py::BundleDir"], "create": [], "modify": ["tests/factory.py"], "delete": []},
+          "description": "Add to tests/factory.py: seed_repo(parent, files: Mapping[str, str | bytes], *, name='repo') -> Path writing the given files and producing one committed repo via git(); the repo initializes with --initial-branch=main and commits with local identity (-c user.name -c user.email) because the session env fixture nulls global/system git config — clean runners must not depend on ambient configuration. Also write_answer_bundle(parent, *, supplied, record, name='bundle', capabilities=None, capability_settings=None) adopting the latest tests/fixtures.py::write_bundle payload, schema, record wiring, and executable hook bits. Do not preserve the obsolete CLI BundleDir payload or no-record variant.",
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-26",
+              "commits": [],
+              "evidence": [
+                "Focused factory smoke passed for seed_repo and write_answer_bundle, including a clean main worktree, schema, and executable hook",
+                "Canonical bundle equivalence passed for scaffold and supplied modes, including file bytes and permission bits",
+                "uv run pytest -q passed: 1405 tests, 82 subtests",
+                "uv run pytest -n auto -q passed: 1405 tests, 82 subtests",
+                "uv run ruff check . passed with All checks passed",
+                "uv run ruff format --check . passed with 103 files already formatted",
+                "uv run basedpyright passed with 0 errors, 0 warnings, 0 notes",
+                "nix flake check passed all checks",
+                "Regenerated .rygor/maintenance-artifacts.json after the final plan and design updates"
+              ]
+            }
+          },
+          "files": {"reuse": ["tests/fixtures.py::write_bundle"], "create": [], "modify": ["tests/factory.py"], "delete": []},
           "new_abstractions": [
             {"name": "seed_repo", "requirement": "Tiny committed repos without scattered inline git subprocesses", "consumers": "observation/recovery/state-root suites (T9)"},
-            {"name": "write_answer_bundle", "requirement": "One answer-bundle writer ending two divergent implementations with silent drift risk", "consumers": "CLI suite (T7), readiness suites (T8, T13)"}
+            {"name": "write_answer_bundle", "requirement": "One answer-bundle writer adopting the latest shared contract", "consumers": "CLI suite (T7), readiness suites (T8, T13)"}
           ],
           "validation": {
-            "tests": ["seed_repo repo recognized as worktree by git status", "bundle documents byte-equal to both predecessors in T6"],
+            "tests": ["seed_repo repo recognized as worktree by git status", "bundle documents and supplied payloads byte-equal to tests/fixtures.py::write_bundle in T6"],
             "acceptance": ["hook files carry executable mode 0o755"]
           }
         },
@@ -208,9 +226,9 @@
           "name": "Factory fidelity tests",
           "depends_on": ["T4", "T5"],
           "inputs": [
-            "Baseline constructions available before any suite migrates: ScaffoldFixture/_make_fixture, _snapshot(), write_bundle, BundleDir"
+            "Baseline constructions available before any suite migrates: ScaffoldFixture/_make_fixture, _snapshot(), and the canonical write_bundle"
           ],
-          "description": "Create tests/test_factory.py covering: byte-digest and permission-bit equality between build_snapshot_project output and today's ScaffoldFixture/_snapshot constructions; write_answer_bundle equivalence against write_bundle and BundleDir for supplied and all-scaffold modes; seed_repo produces a valid worktree with expected files/modes; template dispatch exhaustiveness (unknown TemplateSource rejected); pristine_snapshot cache returns identical path within a process. These tests pin the engine before any consumer migrates.",
+          "description": "Create tests/test_factory.py covering: byte-digest and permission-bit equality between build_snapshot_project output and today's ScaffoldFixture/_snapshot constructions; write_answer_bundle equivalence against the canonical write_bundle for supplied and all-scaffold modes; seed_repo produces a valid worktree with expected files/modes; template dispatch exhaustiveness (unknown TemplateSource rejected); pristine_snapshot cache returns identical path within a process. These tests pin the engine before any consumer migrates.",
           "execution": {"mode": "inline", "status": "pending", "completion": null},
           "files": {"reuse": ["tests/fixtures.py", "tests/bootstrap_fixtures.py"], "create": ["tests/test_factory.py"], "modify": [], "delete": []},
           "new_abstractions": [],
