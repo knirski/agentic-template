@@ -14,7 +14,6 @@ import errno
 import io
 import json
 import os
-import shutil
 import stat
 import subprocess
 import sys
@@ -54,7 +53,6 @@ from scripts.bootstrap.journal import (
     new_transaction_id,
 )
 from scripts.bootstrap.manifest import CandidateManifest
-from scripts.bootstrap.paths import RepoPath
 from scripts.bootstrap.plan_digest import PlanReceipt, reconstruct_plan
 from scripts.bootstrap.planner import CreateFileOperation, ReplaceFileOperation
 from scripts.bootstrap.presentation import (
@@ -63,12 +61,15 @@ from scripts.bootstrap.presentation import (
     render_text,
 )
 from scripts.bootstrap.result import Err, Ok, Result
-from scripts.bootstrap.scaffold import (
-    PROJECT_VALIDATION_SCAFFOLD,
-    SCAFFOLD_SOURCE_PATHS,
-)
 from scripts.bootstrap.transaction import derive_preparation_specs, derive_preparations
 from scripts.bootstrap.values import JournalPhase
+from tests.factory import (
+    SnapshotConfig,
+    build_snapshot_project,
+    pristine_snapshot,
+    write_answer_bundle,
+)
+from tests.fixtures import PRD, README, SUPPLIED_CONTRIBUTING, SUPPLIED_SECURITY
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -81,31 +82,6 @@ def test_lifecycle_manifest_helpers_preserve_candidate_type() -> None:
     assert decode_annotations["return"] == Result[CandidateManifest, CommandError]
     assert recorded_annotations["manifest"] is CandidateManifest
     assert identity_annotations["manifest"] is CandidateManifest
-
-
-SCAFFOLD_README = "# Placeholder\n\n<!-- rygor:placeholder:readme -->\n"
-SCAFFOLD_PRD = "# Product\n\n<!-- rygor:placeholder:prd -->\n"
-SCAFFOLD_SECURITY = "# Security\n\n<!-- rygor:placeholder:security -->\n"
-SCAFFOLD_CONTRIBUTING = (
-    "# Contributing\n\n"
-    "<!-- rygor:placeholder:contributing -->\n\n"
-    "## Running tests\n\n"
-    "Run the test suite serially with `uv run pytest`. For faster feedback on a multi-core machine,\n"
-    "run `uv run pytest -n auto` to distribute tests across available workers.\n"
-)
-SCAFFOLD_HOOK = (
-    "#!/bin/sh\n# rygor:unconfigured:validate-project\necho unconfigured\nexit 0\n"
-)
-
-SUPPLIED_README = "# Product\n\n## Setup\nRun it.\n\n## Validation\nRun `uv run --python 3.14 scripts/validate_repository.py`.\n"
-SUPPLIED_PRD = (
-    "# Product\n## Problem\nP.\n## Goals\nG.\n## Non-goals\nN.\n"
-    "## Users and workflows\nU.\n## Requirements\n### REQ-001: Works\nBody.\n"
-    "## Quality attributes\nQ.\n## Release criteria\nR.\n## Open questions\nO.\n"
-)
-SUPPLIED_SECURITY = "# Security\n\nReport privately.\n"
-SUPPLIED_CONTRIBUTING = "# Contributing\n\nWelcome.\n"
-SUPPLIED_HOOK = "#!/bin/sh\necho ok\nexit 0\n"
 
 
 def _parse(argv: list[str]) -> ParsedCommand:
@@ -125,228 +101,37 @@ def _exit_code(result: CommandResult) -> int:
     return _family_exit_code(result.command, result.outcome)
 
 
-class TemplatePackage:
-    """A synthetic template root supplying the six scaffold slots plus legal files."""
-
-    root: Path
-
-    def __init__(self, parent: Path) -> None:
-        self.root = parent / "template"
-        self.root.mkdir()
-        for relative, content, mode in (
-            ("README.md", SCAFFOLD_README, 0o644),
-            ("docs/prd.md", SCAFFOLD_PRD, 0o644),
-            ("SECURITY.md", SCAFFOLD_SECURITY, 0o644),
-            ("CONTRIBUTING.md", SCAFFOLD_CONTRIBUTING, 0o644),
-            ("scripts/validate-project", SCAFFOLD_HOOK, 0o755),
-            ("LICENSE", "Apache-2.0\n", 0o644),
-            ("NOTICE.md", "Notice.\n", 0o644),
-            ("LICENSES/Apache-2.0.txt", "Apache text.\n", 0o644),
-            ("source-contract.txt", "template source.\n", 0o644),
-        ):
-            path = self.root / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            _ = path.write_text(content, encoding="utf-8")
-            path.chmod(mode)
-        project_validation = self.root / ".github/workflows/project-validation.yml"
-        project_validation.parent.mkdir(parents=True, exist_ok=True)
-        _ = project_validation.write_bytes(PROJECT_VALIDATION_SCAFFOLD)
-        project_validation.chmod(0o644)
-        for installed, source in SCAFFOLD_SOURCE_PATHS.items():
-            source_path = self.root / source.value
-            source_path.parent.mkdir(parents=True, exist_ok=True)
-            _ = shutil.copy2(self.root / installed.value, source_path)
-        ownership = self.root / ".rygor/source-ownership.json"
-        ownership.parent.mkdir(parents=True, exist_ok=True)
-        _ = ownership.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "lifecycle_paths": ["source-contract.txt"],
-                    "snapshot_cleanup_paths": [],
-                },
-                sort_keys=True,
-            ),
-            encoding="utf-8",
-        )
-
-    def install_recording_hook(self, hook_runs: Path) -> None:
-        """Make the template's scaffold hook record its own execution."""
-
-        hook = self.root / "scripts/validate-project"
-        _ = hook.write_text(
-            "#!/bin/sh\n"
-            + "# rygor:unconfigured:validate-project\n"
-            + "echo run >> "
-            + str(hook_runs)
-            + "\nexit 0\n",
-            encoding="utf-8",
-        )
-        hook.chmod(0o755)
-        source = (
-            self.root
-            / SCAFFOLD_SOURCE_PATHS[RepoPath("scripts/validate-project")].value
-        )
-        _ = shutil.copy2(hook, source)
-
-
 class ScaffoldFixture:
     """A full GitHub-style snapshot: source copy plus placeholder seed files."""
 
     root: Path
     hook_runs: Path
-
-    def __init__(self, parent: Path, template: TemplatePackage) -> None:
-        self.root = parent / "project"
-        self.root.mkdir()
-        tracked = (
-            subprocess.run(
-                ["git", "-C", str(ROOT), "ls-files", "-z"],
-                check=True,
-                capture_output=True,
-            )
-            .stdout.decode()
-            .split("\0")
-        )
-        for relative in sorted(set(filter(None, tracked))):
-            source = ROOT / relative
-            if not source.is_file():
-                continue
-            target = self.root / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            _ = shutil.copy2(source, target)
-        _ = shutil.copy2(
-            template.root / ".rygor/source-ownership.json",
-            self.root / ".rygor/source-ownership.json",
-        )
-        # The source's cleanup-control inventory is exercised by the
-        # real-snapshot fixtures (test_github_template_readiness.py); the CLI
-        # suite controls it explicitly through ``_make_fixture(maintenance=True)``
-        # so its cleanup cases stay independent of the live source tree's
-        # inventory.  The source-ownership declaration is generated-lifecycle
-        # source and stays in the fixture.
-        target = self.root / ".rygor/maintenance-artifacts.json"
-        if target.is_file():
-            _ = target.unlink()
-        self.hook_runs = parent / "hook-runs"
-        _ = self.hook_runs.write_text("", encoding="utf-8")
-        template.install_recording_hook(self.hook_runs)
-        for relative in (
-            "README.md",
-            "docs/prd.md",
-            "SECURITY.md",
-            "CONTRIBUTING.md",
-            "scripts/validate-project",
-            "LICENSE",
-            "NOTICE.md",
-            "LICENSES/Apache-2.0.txt",
-            "source-contract.txt",
-            ".github/workflows/project-validation.yml",
-        ):
-            target = self.root / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            _ = shutil.copy2(template.root / relative, target)
-        _ = subprocess.run(
-            ["git", "init", "-q", "-b", "main"], cwd=self.root, check=True
-        )
-        _ = subprocess.run(
-            ["git", "-C", str(self.root), "add", "-A"], check=True, capture_output=True
-        )
-        _ = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(self.root),
-                "-c",
-                "user.email=t@t",
-                "-c",
-                "user.name=t",
-                "commit",
-                "-q",
-                "-m",
-                "scaffold",
-            ],
-            check=True,
-            capture_output=True,
-        )
-
-    def run_count(self) -> int:
-        return len(self.hook_runs.read_text(encoding="utf-8").splitlines())
-
-
-class BundleDir:
-    """A bundle directory: bootstrap.json plus content files."""
-
-    root: Path
+    template_root: Path
 
     def __init__(
         self,
         parent: Path,
         *,
-        all_scaffold: bool,
-        record_path: Path | None = None,
+        copier_marker: bool = False,
+        maintenance: bool = False,
     ) -> None:
-        self.root = parent / "bundle"
-        self.root.mkdir()
-        content: dict[str, object] = {
-            "schema_version": 1,
-            "project": {"name": "example", "default_branch": "main"},
-            "profile": {"id": "portable"},
-            "content": {
-                "prd": (
-                    {"mode": "scaffold"}
-                    if all_scaffold
-                    else {"mode": "file", "path": "content/prd.md"}
-                ),
-                "readme": (
-                    {"mode": "scaffold"}
-                    if all_scaffold
-                    else {"mode": "file", "path": "content/readme.md"}
-                ),
-                "validation_hook": (
-                    {"mode": "scaffold"}
-                    if all_scaffold
-                    else {"mode": "file", "path": "content/validate-project"}
-                ),
-                "security_policy": (
-                    {"mode": "scaffold"}
-                    if all_scaffold
-                    else {"mode": "file", "path": "content/security.md"}
-                ),
-                "contributing": (
-                    {"mode": "scaffold"}
-                    if all_scaffold
-                    else {"mode": "file", "path": "content/contributing.md"}
-                ),
-            },
-            "licensing": {"mode": "retain-apache-2.0"},
-            "capability_settings": {},
-        }
-        if not all_scaffold:
-            content_dir = self.root / "content"
-            content_dir.mkdir()
-            _ = (content_dir / "prd.md").write_text(SUPPLIED_PRD, encoding="utf-8")
-            _ = (content_dir / "readme.md").write_text(
-                SUPPLIED_README, encoding="utf-8"
-            )
-            _ = (content_dir / "security.md").write_text(
-                SUPPLIED_SECURITY, encoding="utf-8"
-            )
-            _ = (content_dir / "contributing.md").write_text(
-                SUPPLIED_CONTRIBUTING, encoding="utf-8"
-            )
-            hook = content_dir / "validate-project"
-            if record_path is not None:
-                _ = hook.write_text(
-                    "#!/bin/sh\necho run >> " + str(record_path) + "\nexit 0\n",
-                    encoding="utf-8",
-                )
-            else:
-                _ = hook.write_text(SUPPLIED_HOOK, encoding="utf-8")
-            hook.chmod(0o755)
-        _ = (self.root / "bootstrap.json").write_text(
-            json.dumps(content, sort_keys=True), encoding="utf-8"
+        project = build_snapshot_project(
+            parent,
+            SnapshotConfig(
+                template="synthetic",
+                maintenance=maintenance,
+                copier_marker=copier_marker,
+            ),
+            pristine=pristine_snapshot(),
         )
+        self.root = project.root
+        self.hook_runs = project.hook_runs
+        template_root = project.template_root
+        assert template_root is not None
+        self.template_root = template_root
+
+    def run_count(self) -> int:
+        return len(self.hook_runs.read_text(encoding="utf-8").splitlines())
 
 
 def _make_fixture(
@@ -354,86 +139,22 @@ def _make_fixture(
     *,
     copier: bool = False,
     maintenance: bool = False,
-) -> tuple[TemplatePackage, ScaffoldFixture]:
-    template = TemplatePackage(tmp_path)
-    fixture = ScaffoldFixture(tmp_path, template)
-    if copier:
-        _ = (fixture.root / ".copier-answers.yml").write_text(
-            "_commit: 0.1.0\n", encoding="utf-8"
-        )
-    if maintenance:
-        ownership = fixture.root / ".rygor/source-ownership.json"
-        _ = ownership.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "lifecycle_paths": [],
-                    "snapshot_cleanup_paths": ["tests"],
-                },
-                sort_keys=True,
-            ),
-            encoding="utf-8",
-        )
-        inventory = fixture.root / ".rygor/maintenance-artifacts.json"
-        _ = inventory.write_text(
-            json.dumps(_inventory_document(fixture), sort_keys=True), encoding="utf-8"
-        )
-    return template, fixture
-
-
-def _inventory_document(fixture: ScaffoldFixture) -> dict[str, object]:
-    return {
-        "schema_version": 1,
-        "entries": [
-            {
-                "path": "tests",
-                "kind": "directory",
-                "sha256": _directory_digest(fixture),
-            },
-        ],
-    }
-
-
-def _directory_digest(fixture: ScaffoldFixture) -> str:
-    # The declared digest must equal what the shell observes over the fixture
-    # copy (tracked files only, canonical modes), never the live source tree
-    # with its untracked caches.  Modes mirror the observer: 0o644 plus the
-    # executable bit for files, 0o755 for directories.
-    from scripts.bootstrap.paths import RepoPath
-    from scripts.bootstrap.scaffold import cleanup_directory_digest
-
-    files: list[tuple[RepoPath, bytes, int]] = []
-    directories: list[tuple[RepoPath, int]] = []
-    root = fixture.root / "tests"
-    for current, dirs, names in os.walk(root):
-        for name in sorted(names):
-            path = Path(current) / name
-            relative = RepoPath(path.relative_to(fixture.root).as_posix())
-            files.append(
-                (relative, path.read_bytes(), 0o644 | (path.stat().st_mode & 0o100))
-            )
-        for name in sorted(dirs):
-            path = Path(current) / name
-            relative = RepoPath(path.relative_to(fixture.root).as_posix())
-            directories.append((relative, 0o755))
-    return cleanup_directory_digest(
-        RepoPath("tests"), files=tuple(files), directories=tuple(directories)
-    )
+) -> ScaffoldFixture:
+    return ScaffoldFixture(tmp_path, copier_marker=copier, maintenance=maintenance)
 
 
 class CliFamilyTests(unittest.TestCase):
     tmp: tempfile.TemporaryDirectory[str]  # pyright: ignore[reportUninitializedInstanceVariable]  assigned in setUp before every test
-    template: TemplatePackage  # pyright: ignore[reportUninitializedInstanceVariable]  assigned in setUp before every test
     fixture: ScaffoldFixture  # pyright: ignore[reportUninitializedInstanceVariable]  assigned in setUp before every test
-    bundle: BundleDir  # pyright: ignore[reportUninitializedInstanceVariable]  assigned in setUp before every test
+    bundle: Path  # pyright: ignore[reportUninitializedInstanceVariable]  assigned in setUp before every test
 
     @override
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         parent = Path(self.tmp.name)
-        self.template, self.fixture = _make_fixture(parent)
-        self.bundle = BundleDir(
-            parent, all_scaffold=True, record_path=self.fixture.hook_runs
+        self.fixture = _make_fixture(parent)
+        self.bundle = write_answer_bundle(
+            parent, supplied=False, record=self.fixture.hook_runs
         )
 
     @override
@@ -441,7 +162,9 @@ class CliFamilyTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def run_cli(self, argv: list[str]) -> CommandResult:
-        return execute_command(_parse(argv), template_root=str(self.template.root))
+        return execute_command(
+            _parse(argv), template_root=str(self.fixture.template_root)
+        )
 
     def target_arg(self) -> str:
         return str(self.fixture.root)
@@ -473,14 +196,14 @@ class CliFamilyTests(unittest.TestCase):
 
     def test_explain_adds_decision_trace(self) -> None:
         parsed = _parse(["--explain", "status", "--target", self.target_arg()])
-        result = execute_command(parsed, template_root=str(self.template.root))
+        result = execute_command(parsed, template_root=str(self.fixture.template_root))
         text = render_text(result, explain=True)
         self.assertIn("state: status", text)
         self.assertIn("decision: describe_status", text)
 
     def test_color_always_emits_ansi(self) -> None:
         parsed = _parse(["--color", "always", "status", "--target", self.target_arg()])
-        result = execute_command(parsed, template_root=str(self.template.root))
+        result = execute_command(parsed, template_root=str(self.fixture.template_root))
         self.assertIn("\x1b[", render_text(result, color=True))
         self.assertNotIn("\x1b[", render_text(result, color=False))
 
@@ -525,7 +248,7 @@ class CliFamilyTests(unittest.TestCase):
             [
                 "init",
                 "--from",
-                str(self.bundle.root / "bootstrap.json"),
+                str(self.bundle / "bootstrap.json"),
                 "--output",
                 str(output),
             ]
@@ -536,7 +259,7 @@ class CliFamilyTests(unittest.TestCase):
             [
                 "init",
                 "--from",
-                str(self.bundle.root / "bootstrap.json"),
+                str(self.bundle / "bootstrap.json"),
                 "--output",
                 str(output),
             ]
@@ -546,24 +269,27 @@ class CliFamilyTests(unittest.TestCase):
     def test_init_materializes_file_content(self) -> None:
         parent = Path(self.tmp.name) / "second"
         parent.mkdir()
-        bundle = BundleDir(parent, all_scaffold=False)
+        record = parent / "hook-runs"
+        bundle = write_answer_bundle(parent, supplied=True, record=record)
         output = Path(self.tmp.name) / "out-content"
         result = self.run_cli(
             [
                 "init",
                 "--from",
-                str(bundle.root / "bootstrap.json"),
+                str(bundle / "bootstrap.json"),
                 "--output",
                 str(output),
             ]
         )
         self.assertEqual(_exit_code(result), 0)
         expected = {
-            "README.md": SUPPLIED_README,
-            "docs/prd.md": SUPPLIED_PRD,
+            "README.md": README,
+            "docs/prd.md": PRD,
             "SECURITY.md": SUPPLIED_SECURITY,
             "CONTRIBUTING.md": SUPPLIED_CONTRIBUTING,
-            "scripts/validate-project": SUPPLIED_HOOK,
+            "scripts/validate-project": "#!/bin/sh\necho run >> "
+            + str(record)
+            + "\nexit 0\n",
         }
         for relative, content in expected.items():
             target = output / relative
@@ -584,7 +310,7 @@ class CliFamilyTests(unittest.TestCase):
     def test_init_maps_mkdir_failure_to_closed_outcome(self) -> None:
         parent = Path(self.tmp.name) / "third"
         parent.mkdir()
-        bundle = BundleDir(parent, all_scaffold=False)
+        bundle = write_answer_bundle(parent, supplied=True, record=parent / "hook-runs")
         output = Path(self.tmp.name) / "out-mkdir"
         error = TransactionError.primitive_failed(
             TransactionPrimitive.CREATE_DIRECTORY, ErrnoClass.NO_SPACE, "stage"
@@ -597,7 +323,7 @@ class CliFamilyTests(unittest.TestCase):
                 [
                     "init",
                     "--from",
-                    str(bundle.root / "bootstrap.json"),
+                    str(bundle / "bootstrap.json"),
                     "--output",
                     str(output),
                 ]
@@ -607,7 +333,7 @@ class CliFamilyTests(unittest.TestCase):
     def test_init_maps_rmdir_failure_to_closed_outcome(self) -> None:
         parent = Path(self.tmp.name) / "fourth"
         parent.mkdir()
-        bundle = BundleDir(parent, all_scaffold=False)
+        bundle = write_answer_bundle(parent, supplied=True, record=parent / "hook-runs")
         output = Path(self.tmp.name) / "out-rmdir"
         target = Path(self.tmp.name) / "out-rmdir-target"
         target.mkdir()
@@ -616,7 +342,7 @@ class CliFamilyTests(unittest.TestCase):
             [
                 "init",
                 "--from",
-                str(bundle.root / "bootstrap.json"),
+                str(bundle / "bootstrap.json"),
                 "--output",
                 str(output),
             ]
@@ -626,7 +352,7 @@ class CliFamilyTests(unittest.TestCase):
     def test_init_maps_rename_failure_to_closed_outcome(self) -> None:
         parent = Path(self.tmp.name) / "fifth"
         parent.mkdir()
-        bundle = BundleDir(parent, all_scaffold=False)
+        bundle = write_answer_bundle(parent, supplied=True, record=parent / "hook-runs")
         output = Path(self.tmp.name) / "out-rename"
         with patch(
             "scripts.bootstrap.cli.os.rename",
@@ -636,7 +362,7 @@ class CliFamilyTests(unittest.TestCase):
                 [
                     "init",
                     "--from",
-                    str(bundle.root / "bootstrap.json"),
+                    str(bundle / "bootstrap.json"),
                     "--output",
                     str(output),
                 ]
@@ -705,7 +431,7 @@ class CliFamilyTests(unittest.TestCase):
                 "plan",
                 "apply",
                 "--bundle",
-                str(self.bundle.root),
+                str(self.bundle),
                 "--target",
                 self.target_arg(),
             ]
@@ -723,7 +449,7 @@ class CliFamilyTests(unittest.TestCase):
             "plan",
             "apply",
             "--bundle",
-            str(self.bundle.root),
+            str(self.bundle),
             "--target",
             self.target_arg(),
             "--out",
@@ -739,7 +465,7 @@ class CliFamilyTests(unittest.TestCase):
 
     def test_all_scaffold_apply_installs_and_exits_one(self) -> None:
         result = self.run_cli(
-            ["apply", "--bundle", str(self.bundle.root), "--target", self.target_arg()]
+            ["apply", "--bundle", str(self.bundle), "--target", self.target_arg()]
         )
         self.assertEqual(_exit_code(result), 1)
         self.assertTrue((self.fixture.root / ".rygor/project.json").is_file())
@@ -784,7 +510,7 @@ class CliFamilyTests(unittest.TestCase):
                 [
                     "apply",
                     "--bundle",
-                    str(self.bundle.root),
+                    str(self.bundle),
                     "--target",
                     self.target_arg(),
                 ]
@@ -798,7 +524,7 @@ class CliFamilyTests(unittest.TestCase):
 
     def test_restore_retains_existing_readiness_findings(self) -> None:
         applied = self.run_cli(
-            ["apply", "--bundle", str(self.bundle.root), "--target", self.target_arg()]
+            ["apply", "--bundle", str(self.bundle), "--target", self.target_arg()]
         )
         self.assertEqual(_exit_code(applied), 1)
         restored = self.run_cli(["restore", "--target", self.target_arg()])
@@ -808,21 +534,21 @@ class CliFamilyTests(unittest.TestCase):
     def test_supplied_apply_exits_zero(self) -> None:
         parent = Path(self.tmp.name) / "supplied"
         parent.mkdir()
-        supplied = BundleDir(
-            parent, all_scaffold=False, record_path=self.fixture.hook_runs
+        supplied = write_answer_bundle(
+            parent, supplied=True, record=self.fixture.hook_runs
         )
         result = self.run_cli(
-            ["apply", "--bundle", str(supplied.root), "--target", self.target_arg()]
+            ["apply", "--bundle", str(supplied), "--target", self.target_arg()]
         )
         self.assertEqual(_exit_code(result), 0)
         self.assertEqual(self.fixture.run_count(), 1)
 
     def test_apply_already_installed_refuses(self) -> None:
         _ = self.run_cli(
-            ["apply", "--bundle", str(self.bundle.root), "--target", self.target_arg()]
+            ["apply", "--bundle", str(self.bundle), "--target", self.target_arg()]
         )
         second = self.run_cli(
-            ["apply", "--bundle", str(self.bundle.root), "--target", self.target_arg()]
+            ["apply", "--bundle", str(self.bundle), "--target", self.target_arg()]
         )
         self.assertEqual(_exit_code(second), 1)
         self.assertIn(
@@ -833,18 +559,18 @@ class CliFamilyTests(unittest.TestCase):
     def test_valid_cleanup_apply_removes_declared_paths(self) -> None:
         parent = Path(self.tmp.name) / "clean-valid"
         parent.mkdir()
-        template, fixture = _make_fixture(parent, maintenance=True)
+        fixture = _make_fixture(parent, maintenance=True)
         result = execute_command(
             _parse(
                 [
                     "apply",
                     "--bundle",
-                    str(self.bundle.root),
+                    str(self.bundle),
                     "--target",
                     str(fixture.root),
                 ]
             ),
-            template_root=str(template.root),
+            template_root=str(fixture.template_root),
         )
         self.assertEqual(_exit_code(result), 1)  # scaffold slots remain unready
         self.assertFalse((fixture.root / "tests").exists())
@@ -862,7 +588,7 @@ class CliFamilyTests(unittest.TestCase):
     def test_cleanup_mismatch_and_leave_override(self) -> None:
         parent = Path(self.tmp.name) / "cleanup"
         parent.mkdir()
-        template, fixture = _make_fixture(parent, maintenance=True)
+        fixture = _make_fixture(parent, maintenance=True)
         # Damage one declared cleanup path so the inventory no longer matches.
         _ = (fixture.root / "tests/test_script_cores.py").write_text(
             "drift\n", encoding="utf-8"
@@ -872,12 +598,12 @@ class CliFamilyTests(unittest.TestCase):
                 [
                     "apply",
                     "--bundle",
-                    str(self.bundle.root),
+                    str(self.bundle),
                     "--target",
                     str(fixture.root),
                 ]
             ),
-            template_root=str(template.root),
+            template_root=str(fixture.template_root),
         )
         self.assertEqual(_exit_code(refused), 1)
         self.assertIn("CLEANUP_CONTRACT_INVALID", render_text(refused))
@@ -889,13 +615,13 @@ class CliFamilyTests(unittest.TestCase):
                 [
                     "apply",
                     "--bundle",
-                    str(self.bundle.root),
+                    str(self.bundle),
                     "--target",
                     str(fixture.root),
                     "--leave-maintenance-artifacts",
                 ]
             ),
-            template_root=str(template.root),
+            template_root=str(fixture.template_root),
         )
         self.assertEqual(_exit_code(leave), 1)  # scaffold slots remain unready
         self.assertTrue((fixture.root / ".rygor/maintenance-artifacts.json").is_file())
@@ -904,7 +630,7 @@ class CliFamilyTests(unittest.TestCase):
     def test_protected_target_refuses(self) -> None:
         parent = Path(self.tmp.name) / "protected"
         parent.mkdir()
-        template, fixture = _make_fixture(parent)
+        fixture = _make_fixture(parent)
         _ = subprocess.run(
             [
                 "git",
@@ -923,12 +649,12 @@ class CliFamilyTests(unittest.TestCase):
                 [
                     "apply",
                     "--bundle",
-                    str(self.bundle.root),
+                    str(self.bundle),
                     "--target",
                     str(fixture.root),
                 ]
             ),
-            template_root=str(template.root),
+            template_root=str(fixture.template_root),
         )
         self.assertEqual(_exit_code(result), 1)
 
@@ -979,7 +705,7 @@ class CliFamilyTests(unittest.TestCase):
                 "plan",
                 "apply",
                 "--bundle",
-                str(self.bundle.root),
+                str(self.bundle),
                 "--target",
                 self.target_arg(),
             ]
@@ -1020,7 +746,7 @@ class CliFamilyTests(unittest.TestCase):
                 "plan",
                 "apply",
                 "--bundle",
-                str(self.bundle.root),
+                str(self.bundle),
                 "--target",
                 self.target_arg(),
             ]
@@ -1031,7 +757,7 @@ class CliFamilyTests(unittest.TestCase):
             [
                 "apply",
                 "--bundle",
-                str(self.bundle.root),
+                str(self.bundle),
                 "--target",
                 self.target_arg(),
             ]
@@ -1101,7 +827,7 @@ class CliFamilyTests(unittest.TestCase):
                 "plan",
                 "apply",
                 "--bundle",
-                str(self.bundle.root),
+                str(self.bundle),
                 "--target",
                 self.target_arg(),
             ],
@@ -1109,7 +835,9 @@ class CliFamilyTests(unittest.TestCase):
         ):
             with self.subTest(argv=argv):
                 parsed = _parse(argv)
-                result = execute_command(parsed, template_root=str(self.template.root))
+                result = execute_command(
+                    parsed, template_root=str(self.fixture.template_root)
+                )
                 text = render_text(result)
                 envelope = cast(dict[str, object], json.loads(render_json(result)))
                 self.assertEqual(envelope["exit_code"], _exit_code(result))

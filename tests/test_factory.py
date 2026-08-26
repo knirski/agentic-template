@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import stat
 import subprocess
 from pathlib import Path
@@ -35,7 +36,6 @@ from tests.fixtures import (
     tracked_files,
     write_bundle,
 )
-from tests.test_bootstrap_cli import ScaffoldFixture, TemplatePackage
 
 
 def _digest_entry(path: Path, records: tuple[Path, ...]) -> tuple[int, str]:
@@ -98,11 +98,143 @@ def _git_text(root: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
+_BASELINE_TEMPLATE_FILES = (
+    ("README.md", "# Placeholder\n\n<!-- rygor:placeholder:readme -->\n", 0o644),
+    ("docs/prd.md", "# Product\n\n<!-- rygor:placeholder:prd -->\n", 0o644),
+    ("SECURITY.md", "# Security\n\n<!-- rygor:placeholder:security -->\n", 0o644),
+    (
+        "CONTRIBUTING.md",
+        "# Contributing\n\n"
+        + "<!-- rygor:placeholder:contributing -->\n\n"
+        + "## Running tests\n\n"
+        + "Run the test suite serially with `uv run pytest`. For faster feedback on a multi-core machine,\n"
+        + "run `uv run pytest -n auto` to distribute tests across available workers.\n",
+        0o644,
+    ),
+    (
+        "scripts/validate-project",
+        "#!/bin/sh\n# rygor:unconfigured:validate-project\necho unconfigured\nexit 0\n",
+        0o755,
+    ),
+    ("LICENSE", "Apache-2.0\n", 0o644),
+    ("NOTICE.md", "Notice.\n", 0o644),
+    ("LICENSES/Apache-2.0.txt", "Apache text.\n", 0o644),
+    ("source-contract.txt", "template source.\n", 0o644),
+)
+
+
+def _baseline_synthetic_fixture(parent: Path) -> tuple[Path, Path]:
+    """Independent replication of the pre-factory CLI fixture construction."""
+    import json
+
+    from scripts.bootstrap.paths import RepoPath
+    from scripts.bootstrap.scaffold import (
+        PROJECT_VALIDATION_SCAFFOLD,
+        SCAFFOLD_SOURCE_PATHS,
+    )
+
+    template = parent / "template"
+    template.mkdir()
+    for relative, content, mode in _BASELINE_TEMPLATE_FILES:
+        path = template / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_text(content, encoding="utf-8")
+        path.chmod(mode)
+    project_validation = template / ".github/workflows/project-validation.yml"
+    project_validation.parent.mkdir(parents=True, exist_ok=True)
+    _ = project_validation.write_bytes(PROJECT_VALIDATION_SCAFFOLD)
+    project_validation.chmod(0o644)
+    for installed, source in SCAFFOLD_SOURCE_PATHS.items():
+        source_path = template / source.value
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        _ = shutil.copy2(template / installed.value, source_path)
+    ownership = template / ".rygor/source-ownership.json"
+    ownership.parent.mkdir(parents=True, exist_ok=True)
+    _ = ownership.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "lifecycle_paths": ["source-contract.txt"],
+                "snapshot_cleanup_paths": [],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    root = parent / "project"
+    root.mkdir()
+    listed = subprocess.run(
+        ["git", "-C", str(factory.REPO_ROOT), "ls-files", "-z"],
+        check=True,
+        capture_output=True,
+    ).stdout.decode()
+    hook_runs = parent / "hook-runs"
+    _ = hook_runs.write_text("", encoding="utf-8")
+    hook_text = (
+        "#!/bin/sh\n# rygor:unconfigured:validate-project\necho run >> "
+        + str(hook_runs)
+        + "\nexit 0\n"
+    )
+    for relative in sorted({entry for entry in listed.split("\0") if entry}):
+        source = factory.REPO_ROOT / relative
+        if not source.is_file():
+            continue
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _ = shutil.copy2(source, target)
+    _ = shutil.copy2(
+        ownership,
+        root / ".rygor/source-ownership.json",
+    )
+    inventory = root / ".rygor/maintenance-artifacts.json"
+    if inventory.is_file():
+        _ = inventory.unlink()
+    hook = template / "scripts/validate-project"
+    _ = hook.write_text(hook_text, encoding="utf-8")
+    hook.chmod(0o755)
+    mirror = (
+        template / SCAFFOLD_SOURCE_PATHS[RepoPath("scripts/validate-project")].value
+    )
+    _ = shutil.copy2(hook, mirror)
+    for relative in (
+        "README.md",
+        "docs/prd.md",
+        "SECURITY.md",
+        "CONTRIBUTING.md",
+        "scripts/validate-project",
+        "LICENSE",
+        "NOTICE.md",
+        "LICENSES/Apache-2.0.txt",
+        "source-contract.txt",
+        ".github/workflows/project-validation.yml",
+    ):
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _ = shutil.copy2(template / relative, target)
+    for args in (
+        ("init", "-q", "-b", "main"),
+        ("add", "-A"),
+        (
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "-m",
+            "scaffold",
+        ),
+    ):
+        factory.git(*args, cwd=root)
+    return root, hook_runs
+
+
 def test_synthetic_project_matches_cli_baseline(tmp_path: Path) -> None:
-    """build_snapshot_project(synthetic) equals ScaffoldFixture construction."""
+    """build_snapshot_project(synthetic) equals the pre-factory CLI construction."""
     baseline_parent = tmp_path / "baseline"
     baseline_parent.mkdir()
-    baseline = ScaffoldFixture(baseline_parent, TemplatePackage(baseline_parent))
+    baseline_root, baseline_record = _baseline_synthetic_fixture(baseline_parent)
 
     parent = tmp_path / "factory"
     parent.mkdir()
@@ -112,9 +244,9 @@ def test_synthetic_project_matches_cli_baseline(tmp_path: Path) -> None:
         pristine=_pristine(tmp_path),
     )
 
-    records = (baseline.hook_runs, project.hook_runs)
+    records = (baseline_record, project.hook_runs)
     _assert_same_tree(
-        _tree(baseline.root, records),
+        _tree(baseline_root, records),
         _tree(project.root, records),
         _untracked_source_extras(),
     )
@@ -123,13 +255,16 @@ def test_synthetic_project_matches_cli_baseline(tmp_path: Path) -> None:
     assert _git_text(project.root, "rev-list", "--count", "HEAD") == "1"
     assert _git_text(project.root, "symbolic-ref", "--short", "HEAD") == "main"
 
-    assert project.run_count() == 0
-    assert baseline.run_count() == 0
-    for root in (project.root, baseline.root):
+    def run_count(record: Path) -> int:
+        return len(record.read_text(encoding="utf-8").splitlines())
+
+    assert run_count(project.hook_runs) == 0
+    assert run_count(baseline_record) == 0
+    for root in (project.root, baseline_root):
         executed = run([str(root / "scripts/validate-project")])
         assert executed.returncode == 0, executed.stderr
-    assert project.run_count() == 1
-    assert baseline.run_count() == 1
+    assert run_count(project.hook_runs) == 1
+    assert run_count(baseline_record) == 1
 
 
 def test_live_project_matches_readiness_baseline(tmp_path: Path) -> None:

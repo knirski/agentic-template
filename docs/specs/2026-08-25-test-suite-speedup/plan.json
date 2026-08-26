@@ -268,7 +268,24 @@
             "~40 test methods reference self.template/self.fixture/self.bundle/self.tmp"
           ],
           "description": "Rewrite tests/test_bootstrap_cli.py fixture layer: ScaffoldFixture.__init__ body becomes a call to build_snapshot_project; delete TemplatePackage and BundleDir classes (factory owns them now); BundleDir call sites use write_answer_bundle; keep attribute names (self.fixture.root, self.hook_runs access patterns, self.template.root equivalent via returned handle) so test methods need no edits. Suites remain unittest.TestCase at this stage. Parse-only tests keep paying setUp cost for now (laziness lands with native conversion in T16).",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-26",
+              "commits": [],
+              "evidence": [
+                "tests/test_bootstrap_cli.py fixture layer rewritten onto tests/factory.py: ScaffoldFixture.__init__ now delegates to build_snapshot_project(SnapshotConfig(template='synthetic', maintenance=..., copier_marker=...), pristine=pristine_snapshot()) exposing root/hook_runs/template_root/run_count; TemplatePackage and BundleDir classes deleted; _make_fixture returns ScaffoldFixture alone with copier/maintenance flags mapped onto SnapshotConfig",
+                "BundleDir call sites use write_answer_bundle; the obsolete no-record supplied variant is gone, so test_init_materializes_file_content now asserts the canonical fixtures.py payloads (README/PRD) and the recording hook text for its record path",
+                "Deviation recorded: CLI-local _inventory_document/_directory_digest removed instead of staying local because build_snapshot_project(maintenance=True) already generates the identical inventory; the two maintenance=True cleanup tests pass end-to-end through the factory path",
+                "test_factory.py synthetic baseline reworked into an independent literal-constant replication of the deleted pre-factory construction, keeping the fidelity pin independent of the engine under test",
+                "uv run pytest tests/test_bootstrap_cli.py -q green serial (40 passed, 16 subtests) and -n auto",
+                "uv run pytest -q passed: 1413 tests, 82 subtests, 5 skipped; uv run pytest -n auto -q passed: 1413 tests, 82 subtests",
+                "uv run ruff check . / ruff format --check . clean; basedpyright 0 errors, 0 warnings, 0 notes",
+                "Regenerated .rygor/maintenance-artifacts.json for the changed test sources"
+              ]
+            }
+          },
           "files": {"reuse": ["tests/factory.py"], "create": [], "modify": ["tests/test_bootstrap_cli.py"], "delete": []},
           "new_abstractions": [],
           "validation": {
