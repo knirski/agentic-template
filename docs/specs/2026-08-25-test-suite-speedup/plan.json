@@ -375,9 +375,11 @@
               "completed_at": "2026-08-26",
               "commits": [],
               "evidence": [
-                "All three partial-tree copies now route through factory.copy_tree: test_repository_validation.py and test_project_readiness.py copy scripts/bootstrap, test_capability_matrix.py copies scripts/; rendered-output writes stay local as planned",
-                "Observation recorded: the three sites were already plain shutil.copytree calls without bespoke ignore lists (the plan-input line references predate earlier cleanup); the remaining shutil.ignore_patterns literals live only in the out-of-scope copier files, so the acceptance grep holds and the change's value is CANONICAL_IGNORE centralization plus excluding untracked __pycache__ caches from fixtures",
+                "test_capability_matrix.py now routes its scripts/ copy through factory.copy_tree; rendered-output writes stay local as planned",
+                "Observation recorded: the three sites were already plain shutil.copytree calls without bespoke ignore lists (the plan-input line references predate earlier cleanup); the remaining shutil.ignore_patterns literals live only in the out-of-scope copier files, so the acceptance grep holds",
+                "test_project_readiness.py and test_repository_validation.py keep direct shutil.copytree calls: they execute in the dependency-free portable source-fixture lane (uv run --no-project), where importing tests.factory transitively pulls tests.fixtures -> scripts.bootstrap.render -> yaml and fails; first attempt migrating them was reverted after Template CI 'Source fixture checks' caught ModuleNotFoundError",
                 "uv run pytest tests/test_repository_validation.py tests/test_project_readiness.py tests/test_capability_matrix.py -q: 51 passed serial and -n auto",
+                "Portable lane verified locally: uv run --no-project --python 3.14 for both portable fixtures green",
                 "uv run pytest -q passed: 1413 tests, 82 subtests, 5 skipped; uv run pytest -n auto -q passed: 1413 tests, 82 subtests",
                 "uv run ruff check . / ruff format --check . clean; basedpyright 0 errors, 0 warnings, 0 notes",
                 "Regenerated .rygor/maintenance-artifacts.json for the changed test sources"

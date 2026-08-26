@@ -6,17 +6,12 @@ from __future__ import annotations
 import shutil
 import stat
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from typing import override
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-
-from tests.factory import copy_tree  # noqa: E402
-
 CHECKER = ROOT / "scripts/check_project_readiness.py"
 HOOK_SENTINEL = "rygor:unconfigured:validate-project"
 
@@ -67,7 +62,7 @@ class ReadinessFixtures(unittest.TestCase):
         (self.root / "docs").mkdir()
         (self.root / "scripts").mkdir()
         _ = shutil.copy2(CHECKER, self.root / "scripts/check_project_readiness.py")
-        copy_tree(ROOT / "scripts/bootstrap", self.root / "scripts/bootstrap")
+        _ = shutil.copytree(ROOT / "scripts/bootstrap", self.root / "scripts/bootstrap")
         self.write("docs/prd.md", VALID_PRD)
         self.write("README.md", VALID_README)
         self.write("SECURITY.md", VALID_SECURITY)

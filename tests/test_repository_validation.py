@@ -26,7 +26,6 @@ from scripts.bootstrap.validation_program import (  # noqa: E402
 from scripts.bootstrap.validation_program import (  # noqa: E402
     ValidationProgram as CoreValidationProgram,
 )
-from tests.factory import copy_tree  # noqa: E402
 
 AGGREGATE = ROOT / "scripts/validate_repository.py"
 
@@ -41,7 +40,7 @@ class AggregateFixtures(unittest.TestCase):
         self.root = Path(self.tmp.name)
         (self.root / "scripts").mkdir()
         _ = shutil.copy2(AGGREGATE, self.root / "scripts/validate_repository.py")
-        copy_tree(ROOT / "scripts/bootstrap", self.root / "scripts/bootstrap")
+        _ = shutil.copytree(ROOT / "scripts/bootstrap", self.root / "scripts/bootstrap")
 
     @override
     def tearDown(self) -> None:
