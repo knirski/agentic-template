@@ -305,9 +305,10 @@ Decisions:
   so it outlives every consumer in the process and never leaks beyond it.
   Under xdist each worker builds its own copy (~15ms, accepted — see
   Framework facts); the cache is a pure accessor to an immutable tree.
-- `write_answer_bundle` merges `fixtures.write_bundle` and CLI `BundleDir`;
-  `CANONICAL_IGNORE` centralizes four bespoke ignore lists; `seed_repo`
-  replaces every inline git site.
+- `write_answer_bundle` adopts the latest shared `fixtures.write_bundle`
+  contract; the obsolete CLI `BundleDir` variants are deliberately not
+  preserved. `CANONICAL_IGNORE` centralizes four bespoke ignore lists;
+  `seed_repo` replaces every inline git site.
 - Error style: fail loud with captured stderr (today's `_snapshot` behavior).
 - Deterministic repo identity: because the session environment nulls global and
   system git config, every seeded repository is initialized with
