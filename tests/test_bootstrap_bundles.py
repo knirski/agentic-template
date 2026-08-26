@@ -47,7 +47,7 @@ _DEFAULT_FILES: dict[str, bytes] = {
 }
 
 
-def _write_bundle(
+def _materialize_bundle(
     document: dict[str, object],
     files: dict[str, bytes] | None = None,
     *,
@@ -72,7 +72,7 @@ def _write_bundle(
 
 class DecodeBundleInputTests(unittest.TestCase):
     def test_decode_accepts_a_complete_bundle(self) -> None:
-        json_path = _write_bundle(_valid_bundle())
+        json_path = _materialize_bundle(_valid_bundle())
         decoded = assert_ok(decode_bundle_input(json_path))
         self.assertIsInstance(decoded, DecodedBundle)
         self.assertEqual(decoded.bundle.project.name, "example")
@@ -113,32 +113,36 @@ class DecodeBundleInputTests(unittest.TestCase):
             self.assertEqual(stdout.strip(), InputErrorKind.WRONG_KIND.name)
 
     def test_decode_rejects_an_oversized_bundle(self) -> None:
-        json_path = _write_bundle(_valid_bundle(), payload=b"x" * (_MAX_FILE_BYTES + 1))
+        json_path = _materialize_bundle(
+            _valid_bundle(), payload=b"x" * (_MAX_FILE_BYTES + 1)
+        )
         error = assert_err(
             decode_bundle_input(json_path), "expected INPUT_LIMIT_EXCEEDED"
         )
         self.assertEqual(error.kind, InputErrorKind.INPUT_LIMIT_EXCEEDED)
 
     def test_decode_rejects_invalid_json(self) -> None:
-        json_path = _write_bundle(_valid_bundle(), payload=b"{not json")
+        json_path = _materialize_bundle(_valid_bundle(), payload=b"{not json")
         error = assert_err(decode_bundle_input(json_path), "expected INVALID_JSON")
         self.assertEqual(error.kind, InputErrorKind.INVALID_JSON)
 
     def test_decode_rejects_non_dict_json(self) -> None:
-        json_path = _write_bundle(_valid_bundle(), payload=b"[1, 2]")
+        json_path = _materialize_bundle(_valid_bundle(), payload=b"[1, 2]")
         error = assert_err(decode_bundle_input(json_path), "expected SCHEMA_VIOLATION")
         self.assertEqual(error.kind, InputErrorKind.SCHEMA_VIOLATION)
 
     def test_decode_rejects_schema_violations(self) -> None:
         document = _valid_bundle()
         document["schema_version"] = 2
-        json_path = _write_bundle(document)
+        json_path = _materialize_bundle(document)
         error = assert_err(decode_bundle_input(json_path), "expected SCHEMA_VIOLATION")
         self.assertEqual(error.kind, InputErrorKind.SCHEMA_VIOLATION)
         self.assertIn("unsupported bootstrap schema version", error.subject)
 
     def test_decode_rejects_missing_content_files(self) -> None:
-        json_path = _write_bundle(_valid_bundle(), files={"content/readme.md": b"x"})
+        json_path = _materialize_bundle(
+            _valid_bundle(), files={"content/readme.md": b"x"}
+        )
         error = assert_err(decode_bundle_input(json_path), "expected MISSING_INPUT")
         self.assertEqual(error.kind, InputErrorKind.MISSING_INPUT)
 
@@ -186,7 +190,7 @@ class DecodeBundleInputTests(unittest.TestCase):
     def test_decode_rejects_invalid_utf8_content(self) -> None:
         files = dict(_DEFAULT_FILES)
         files["content/prd.md"] = b"\xff\xfe\x00"
-        json_path = _write_bundle(_valid_bundle(), files=files)
+        json_path = _materialize_bundle(_valid_bundle(), files=files)
         error = assert_err(decode_bundle_input(json_path), "expected INVALID_ENCODING")
         self.assertEqual(error.kind, InputErrorKind.INVALID_ENCODING)
 
@@ -194,7 +198,7 @@ class DecodeBundleInputTests(unittest.TestCase):
         document = _valid_bundle()
         content = cast(dict[str, object], document["content"])
         content["readme"] = {"mode": "file", "path": "content/prd.md"}
-        json_path = _write_bundle(document)
+        json_path = _materialize_bundle(document)
         error = assert_err(decode_bundle_input(json_path), "expected MARKER_COLLISION")
         self.assertEqual(error.kind, InputErrorKind.MARKER_COLLISION)
 
@@ -204,7 +208,7 @@ class DecodeBundleInputTests(unittest.TestCase):
             "mode": "private",
             "path": "content/license.txt",
         }
-        json_path = _write_bundle(document)
+        json_path = _materialize_bundle(document)
         error = assert_err(decode_bundle_input(json_path), "expected MISSING_INPUT")
         self.assertEqual(error.kind, InputErrorKind.MISSING_INPUT)
 
@@ -214,7 +218,7 @@ class DecodeBundleInputTests(unittest.TestCase):
             "mode": "private",
             "path": "content/prd.md",
         }
-        json_path = _write_bundle(document)
+        json_path = _materialize_bundle(document)
         error = assert_err(decode_bundle_input(json_path), "expected MARKER_COLLISION")
         self.assertEqual(error.kind, InputErrorKind.MARKER_COLLISION)
 
@@ -224,7 +228,7 @@ class DecodeBundleInputTests(unittest.TestCase):
             "id": "custom",
             "capabilities": ["no-such-capability"],
         }
-        json_path = _write_bundle(document)
+        json_path = _materialize_bundle(document)
         error = assert_err(decode_bundle_input(json_path), "expected SCHEMA_VIOLATION")
         self.assertEqual(error.kind, InputErrorKind.SCHEMA_VIOLATION)
         self.assertIn("unknown_capability", error.subject)

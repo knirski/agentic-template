@@ -405,7 +405,25 @@
           "depends_on": ["T7", "T8", "T9", "T10"],
           "inputs": ["Symbols made redundant: fixtures.copy_tracked, fixtures.write_bundle, residual duplicate helpers/ignore lists"],
           "description": "Delete copy_tracked and write_bundle from tests/fixtures.py and any residual duplicated builders or ignore-list literals. Record the pre-stage-7 baselines here: full --collect-only output (ids and count) and serial wall time, so T19 can compare against them. Run repository searches proving consolidation, then full serial and parallel suites plus ruff/basedpyright. This checkpoint is the Approach-A complete fallback boundary.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-26",
+              "commits": [],
+              "evidence": [
+                "Deleted fixtures.copy_tracked and fixtures.write_bundle from tests/fixtures.py along with their now-orphaned json/shutil imports; shared constants and helpers consumed by other suites (tracked_files, PRD/README/SUPPLIED_*, scaffold_hook, CLEANUP_PATHS, render_for, assert_ok/assert_err, run) remain",
+                "Consumers reworked: test_factory.py live-baseline inlines the tracked copy over fixtures.tracked_files; transitional pin test_answer_bundle_matches_canonical_writer retired because its reference writer was the deleted symbol (bundle contract stays covered by CLI/readiness/copier end-to-end suites); standalone test_copier_bootstrap.py gained a local _make_bundle replicating the identical bundle document, keeping the copier path outside factory scope per design.md",
+                "Renamed unrelated local helper test_bootstrap_bundles._write_bundle to _materialize_bundle so the acceptance grep is unambiguous",
+                "Acceptance grep 'copy_tracked|write_bundle': sole remaining hit is the production decision-document kind string at scripts/bootstrap/cli.py:1230 - domain vocabulary, not a fixture reference",
+                "Deviation on acceptance grep '\"git\", ?\"init\"': three hits remain in tests/test_bootstrap_observation.py (lines 1033/1197/1216); they build unborn-HEAD or selectively-staged repos that intentionally never commit, so seed_repo's always-commit contract cannot replace them without changing tested behavior - recorded here for T19 awareness",
+                "Pre-stage-7 baselines for T19: collection count 1410 tests (+82 unittest subtests at runtime); sorted collected node ids sha256 prefix 182a99c8a61bbf80; serial wall time ~44s (44.32s measured)",
+                "uv run pytest -q green twice consecutively: 1410 passed, 82 subtests (conditional actionlint/uv skips vary with local tool availability); uv run pytest -n auto -q green: 1410 passed in 17.6s; first post-edit serial run showed a 19-failure cascade that did not reproduce across two subsequent clean full runs nor on the captured failure isolated (reported as flake occurrence for T19 watchfulness)",
+                "uv run ruff check . / ruff format --check . clean; basedpyright 0 errors, 0 warnings, 0 notes",
+                "Regenerated .rygor/maintenance-artifacts.json"
+              ]
+            }
+          },
           "files": {"reuse": [], "create": [], "modify": ["tests/fixtures.py"], "delete": []},
           "new_abstractions": [],
           "validation": {

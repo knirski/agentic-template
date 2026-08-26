@@ -10,6 +10,7 @@ bootstrap, and checked for preservation during a Copier update.
 
 from __future__ import annotations
 
+import json
 import shutil
 import sys
 import tempfile
@@ -21,11 +22,14 @@ sys.path.insert(0, str(ROOT))
 
 from tests.fixtures import (  # noqa: E402
     CLEANUP_PATHS,
+    PRD,
+    README,
     SCAFFOLD_CONTRIBUTING,
     SCAFFOLD_SECURITY,
+    SUPPLIED_CONTRIBUTING,
+    SUPPLIED_SECURITY,
     run,
     scaffold_hook,
-    write_bundle,
 )
 from tests.git_config import configure_deterministic_git_environment  # noqa: E402
 
@@ -39,6 +43,58 @@ RETAINED_COPIER_PATHS = (
     "scripts/check-release-eligibility.py",
     "scripts/validate_repository.py",
 )
+
+
+def _make_bundle(
+    parent: Path,
+    *,
+    supplied: bool,
+    record: Path,
+    name: str = "bundle",
+) -> Path:
+    """Write an answer bundle for this out-of-factory script."""
+    bundle = parent / name
+    bundle.mkdir()
+    content_paths = {
+        "prd": "content/prd.md",
+        "readme": "content/readme.md",
+        "validation_hook": "content/validate-project",
+        "security_policy": "content/security.md",
+        "contributing": "content/contributing.md",
+    }
+    if supplied:
+        content_dir = bundle / "content"
+        content_dir.mkdir()
+        _ = (content_dir / "prd.md").write_text(PRD, encoding="utf-8")
+        _ = (content_dir / "readme.md").write_text(README, encoding="utf-8")
+        _ = (content_dir / "security.md").write_text(
+            SUPPLIED_SECURITY, encoding="utf-8"
+        )
+        _ = (content_dir / "contributing.md").write_text(
+            SUPPLIED_CONTRIBUTING, encoding="utf-8"
+        )
+        hook = content_dir / "validate-project"
+        _ = hook.write_text(
+            "#!/bin/sh\necho run >> " + str(record) + "\nexit 0\n", encoding="utf-8"
+        )
+        hook.chmod(0o755)
+    content: dict[str, object] = {}
+    for slot, relative in content_paths.items():
+        content[slot] = (
+            {"mode": "scaffold"} if not supplied else {"mode": "file", "path": relative}
+        )
+    document = {
+        "schema_version": 1,
+        "project": {"name": "example", "default_branch": "main"},
+        "profile": {"id": "portable"},
+        "content": content,
+        "licensing": {"mode": "retain-apache-2.0"},
+        "capability_settings": {},
+    }
+    _ = (bundle / "bootstrap.json").write_text(
+        json.dumps(document, sort_keys=True), encoding="utf-8"
+    )
+    return bundle
 
 
 def copier_command() -> list[str] | None:
@@ -146,7 +202,7 @@ def main() -> int:
             ("commit", "-m", "generated project"),
         ):
             _ = run(["git", "-C", str(project), *list(args)])
-        bundle = write_bundle(workspace, supplied=True, record=record)
+        bundle = _make_bundle(workspace, supplied=True, record=record)
         applied = run(
             [
                 sys.executable,
@@ -244,7 +300,7 @@ def main() -> int:
             ("commit", "-m", "generated project"),
         ):
             _ = run(["git", "-C", str(second), *list(args)])
-        scaffold_bundle = write_bundle(
+        scaffold_bundle = _make_bundle(
             workspace, supplied=False, record=record, name="bundle-scaffold"
         )
         scaffolded = run(
