@@ -62,7 +62,7 @@ def scaffolded_project(tmp_path: Path, pristine_source: str) -> str:
     and the session-scoped pristine source. Returns the project root path.
     """
     project = build_snapshot_project(
-        tmp_path, SnapshotConfig(), pristine=pristine_snapshot()
+        tmp_path, SnapshotConfig(), pristine=Path(pristine_source)
     )
     return str(project.root)
 
@@ -113,5 +113,5 @@ def materialized_tree(tmp_path: Path, pristine_source: str) -> str:
     plain directory tree under the test's tmp dir.
     """
     target = tmp_path / "materialized"
-    copy_tree(pristine_snapshot(), target)
+    copy_tree(Path(pristine_source), target)
     return str(target)
