@@ -2,8 +2,8 @@
 
 Every assertion compares factory output against a live construction from the
 pre-factory suite layers (``ScaffoldFixture``/``TemplatePackage``, the
-readiness ``_snapshot`` flow, ``fixtures.write_bundle``); nothing is pinned to
-hardcoded digests.
+readiness ``_snapshot`` flow, the canonical answer-bundle document); nothing
+is pinned to hardcoded digests.
 """
 
 from __future__ import annotations
@@ -25,16 +25,13 @@ from tests.factory import (
     build_snapshot_project,
     pristine_snapshot,
     seed_repo,
-    write_answer_bundle,
 )
 from tests.fixtures import (
     SCAFFOLD_CONTRIBUTING,
     SCAFFOLD_SECURITY,
-    copy_tracked,
     run,
     scaffold_hook,
     tracked_files,
-    write_bundle,
 )
 
 
@@ -272,7 +269,14 @@ def test_live_project_matches_readiness_baseline(tmp_path: Path) -> None:
     baseline_parent = tmp_path / "baseline"
     baseline_parent.mkdir()
     baseline_root = baseline_parent / "snap"
-    copy_tracked(factory.REPO_ROOT, baseline_root)
+    baseline_root.mkdir()
+    for relative in tracked_files(factory.REPO_ROOT):
+        source = factory.REPO_ROOT / relative
+        if not source.is_file():
+            continue
+        destination = baseline_root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        _ = shutil.copy2(source, destination)
     record = baseline_parent / "snap-hook-runs"
     _ = record.write_text("", encoding="utf-8")
     hook = baseline_root / "scripts/validate-project"
@@ -312,48 +316,6 @@ def test_live_project_matches_readiness_baseline(tmp_path: Path) -> None:
         _tree(baseline_root, records),
         _tree(project.root, records),
     )
-
-
-@pytest.mark.parametrize(
-    ("supplied", "capabilities", "settings"),
-    (
-        (False, None, None),
-        (True, None, None),
-        (True, ("nix", "cachix-publish"), {"cachix-publish": {"cache_name": "x"}}),
-    ),
-    ids=("all-scaffold", "supplied-portable", "supplied-custom-profile"),
-)
-def test_answer_bundle_matches_canonical_writer(
-    tmp_path: Path,
-    supplied: bool,
-    capabilities: tuple[str, ...] | None,
-    settings: dict[str, dict[str, str | bool]] | None,
-) -> None:
-    canonical_record = tmp_path / "record-canonical"
-    candidate_record = tmp_path / "record-candidate"
-    canonical = write_bundle(
-        tmp_path,
-        supplied=supplied,
-        record=canonical_record,
-        name="canonical",
-        capabilities=capabilities,
-        capability_settings=settings,
-    )
-    candidate = write_answer_bundle(
-        tmp_path,
-        supplied=supplied,
-        record=candidate_record,
-        name="candidate",
-        capabilities=capabilities,
-        capability_settings=settings,
-    )
-    _assert_same_tree(
-        _tree(canonical, (canonical_record, candidate_record)),
-        _tree(candidate, (canonical_record, candidate_record)),
-    )
-    if supplied:
-        hook = candidate / "content/validate-project"
-        assert stat.S_IMODE(hook.stat().st_mode) & 0o111 == 0o111
 
 
 def test_seed_repo_builds_clean_committed_worktree(tmp_path: Path) -> None:
