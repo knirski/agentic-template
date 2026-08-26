@@ -429,7 +429,7 @@
           "validation": {
             "tests": [
               "rg 'copy_tracked|write_bundle' tests/ scripts/ returns no code references (spec/doc mentions aside)",
-              "rg '\"git\", ?\"init\"' tests/ shows hits only in tests/factory.py",
+              "rg '\"git\", ?\"init\"' tests/ shows hits only in tests/factory.py plus three intentional harness sites in tests/test_bootstrap_observation.py (lines ~1033/1197/1216) that build unborn-HEAD or selectively-staged repos and never commit, outside seed_repo's always-commit contract",
               "uv run pytest -q green; uv run pytest -n auto -q green",
               "uv run ruff check . clean; basedpyright clean"
             ],
