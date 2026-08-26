@@ -368,7 +368,22 @@
             "Bespoke ignores: test_repository_validation.py (~43), test_project_readiness.py (~65) copy scripts/bootstrap subset; test_capability_matrix.py (~420) copies scripts/"
           ],
           "description": "Replace the bespoke shutil.copytree calls with factory.copy_tree one-liners using the centralized CANONICAL_IGNORE. Rendered-output writes in capability_matrix stay local.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-26",
+              "commits": [],
+              "evidence": [
+                "All three partial-tree copies now route through factory.copy_tree: test_repository_validation.py and test_project_readiness.py copy scripts/bootstrap, test_capability_matrix.py copies scripts/; rendered-output writes stay local as planned",
+                "Observation recorded: the three sites were already plain shutil.copytree calls without bespoke ignore lists (the plan-input line references predate earlier cleanup); the remaining shutil.ignore_patterns literals live only in the out-of-scope copier files, so the acceptance grep holds and the change's value is CANONICAL_IGNORE centralization plus excluding untracked __pycache__ caches from fixtures",
+                "uv run pytest tests/test_repository_validation.py tests/test_project_readiness.py tests/test_capability_matrix.py -q: 51 passed serial and -n auto",
+                "uv run pytest -q passed: 1413 tests, 82 subtests, 5 skipped; uv run pytest -n auto -q passed: 1413 tests, 82 subtests",
+                "uv run ruff check . / ruff format --check . clean; basedpyright 0 errors, 0 warnings, 0 notes",
+                "Regenerated .rygor/maintenance-artifacts.json for the changed test sources"
+              ]
+            }
+          },
           "files": {"reuse": ["tests/factory.py::copy_tree"], "create": [], "modify": ["tests/test_repository_validation.py", "tests/test_project_readiness.py", "tests/test_capability_matrix.py"], "delete": []},
           "new_abstractions": [],
           "validation": {

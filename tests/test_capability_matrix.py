@@ -28,6 +28,7 @@ from scripts.bootstrap.catalog import CATALOG, catalog_surface
 from scripts.bootstrap.contributions import render_source_fixture
 from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.template_contract import SOURCE_WORKFLOW_SELECTIONS
+from tests.factory import copy_tree
 from tests.fixtures import ALL_CAPABILITIES, render_for
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -417,7 +418,7 @@ def test_adopter_fixture_installs_and_runs_capability_commands() -> None:
         project = Path(raw)
         rendered = render_for(ALL_CAPABILITIES)
         _ = (project / "pyproject.toml").write_bytes(rendered["pyproject.toml"])
-        _ = shutil.copytree(ROOT / "scripts", project / "scripts")
+        copy_tree(ROOT / "scripts", project / "scripts")
         locked = subprocess.run(
             [uv, "lock"],
             cwd=project,
