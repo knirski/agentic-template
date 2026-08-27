@@ -551,7 +551,26 @@
             "Four of these are mutmut-pinned in pyproject.toml; preserve paths and the -k target name test_canonical_json_round_trips_arbitrary_strict_values"
           ],
           "description": "Same mechanical conversion as T14 across nine files. Verify mutmut constraint immediately after conversion: pinned files collect cleanly and the -k filter still selects its complement correctly.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-27",
+              "commits": [],
+              "evidence": [
+                "Nine files converted from unittest.TestCase to module-level functions: test_bootstrap_decisions.py (3 classes, 19 tests), test_bootstrap_determinism.py (3 classes, 15 tests), test_bootstrap_foundations.py (4 classes, 13 tests including Hypothesis @given), test_script_cores.py (1 class, 18 tests), test_bootstrap_readiness.py (1 class, 3 tests), test_bootstrap_readiness_rules.py (9 classes, 33 tests), test_bootstrap_scaffold.py (4 classes, 34 tests with subTest->parametrize), test_bootstrap_stateful.py (removed unittest cast pattern), test_bootstrap_transaction.py (already native, no changes needed)",
+                "All self.assert* calls replaced with bare asserts; self.assertRaises replaced with try/except AssertionError; self.subTest replaced with @pytest.mark.parametrize with explicit ids",
+                "setUp/tearDown dissolved into module-level helpers or inline context managers",
+                "Mutmut pinned-file collection verified: 71/72 tests collected (1 deselected by -k filter); -k target test_canonical_json_round_trips_arbitrary_strict_values still exists",
+                "uv run pytest -q passed: 1427 tests, 24 subtests",
+                "uv run pytest -n auto -q passed: 1427 tests",
+                "uv run ruff check . passed with All checks passed",
+                "uv run ruff format --check . passed with all files formatted",
+                "uv run basedpyright passed with 0 errors, 43 warnings (all pre-existing)",
+                "Regenerated .rygor/maintenance-artifacts.json for the changed test sources"
+              ]
+            }
+          },
           "files": {"reuse": ["exemplar pattern from T13"], "create": [], "modify": ["tests/test_bootstrap_decisions.py", "tests/test_bootstrap_determinism.py", "tests/test_bootstrap_foundations.py", "tests/test_script_cores.py", "tests/test_bootstrap_readiness.py", "tests/test_bootstrap_readiness_rules.py", "tests/test_bootstrap_scaffold.py", "tests/test_bootstrap_stateful.py", "tests/test_bootstrap_transaction.py"], "delete": []},
           "new_abstractions": [],
           "validation": {

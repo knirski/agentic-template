@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import unittest
-from typing import cast
-
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
@@ -78,6 +75,4 @@ class BlobStoreStateMachine(RuleBasedStateMachine):
             assert unique_bytes == sum(len(record.content) for record in records)
 
 
-TestBlobStoreStateMachine = cast(
-    type[unittest.TestCase], BlobStoreStateMachine.TestCase
-)
+TestBlobStoreStateMachine = BlobStoreStateMachine.TestCase
