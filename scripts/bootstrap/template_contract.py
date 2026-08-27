@@ -16,7 +16,7 @@ REQUIRED_FILES: tuple[str, ...] = (
     "docs/agents/issue-tracker.md",
     ".github/ISSUE_TEMPLATE/bug.yml",
     ".github/ISSUE_TEMPLATE/feature.yml",
-    ".github/pull_request_template.md",
+    ".github/PULL_REQUEST_TEMPLATE.md",
     ".github/workflows/ci.yml",
     ".github/workflows/project-validation.yml",
     "scripts/check_project_readiness.py",
