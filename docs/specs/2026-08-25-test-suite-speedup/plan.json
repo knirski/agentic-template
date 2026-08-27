@@ -527,6 +527,7 @@
             "completion": {
               "completed_at": "2026-08-27",
               "commits": [],
+              "github_prs": ["https://github.com/knirski/rygor/pull/117"],
               "evidence": [
                 "Six files converted from unittest.TestCase to module-level functions: test_bootstrap_bundles.py, test_bootstrap_presentation.py, test_vocabulary.py, test_plan_contract.py, test_mutation_contract.py, test_template_contract.py",
                 "All self.assert* calls replaced with bare asserts; self.assertRaises replaced with pytest.raises; self.subTest replaced with parametrize where applicable",
