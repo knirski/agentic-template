@@ -70,6 +70,35 @@ MAIN_BRANCH_SHA = "ab" * 20
 STALE_COMMIT_SHA = "cd" * 20
 
 
+def _snapshot_project(tmp_path: Path, name: str) -> tuple[Path, Path]:
+    """Materialize a live snapshot project and its recording-hook record."""
+    parent = tmp_path / name
+    parent.mkdir()
+    snapshot = build_snapshot_project(
+        parent, SnapshotConfig(), pristine=pristine_snapshot()
+    )
+    return snapshot.root, snapshot.hook_runs
+
+
+def _apply_bootstrap(project: Path, bundle: Path, *, leave: bool = False) -> int:
+    """Run bootstrap apply and return exit code. Fail if unexpected exit code."""
+    argv = [
+        sys.executable,
+        str(project / "scripts/bootstrap_project.py"),
+        "apply",
+        "--bundle",
+        str(bundle),
+        "--target",
+        str(project),
+    ]
+    if leave:
+        argv.append("--leave-maintenance-artifacts")
+    result = run(argv)
+    if result.returncode not in (0, 1):
+        raise AssertionError(result.stdout + result.stderr)
+    return result.returncode
+
+
 class GitHubSnapshot(unittest.TestCase):
     tmp: tempfile.TemporaryDirectory[str]  # pyright: ignore[reportUninitializedInstanceVariable]  initialized in unittest setUp lifecycle
     project: Path  # pyright: ignore[reportUninitializedInstanceVariable]  initialized in unittest setUp lifecycle
@@ -128,47 +157,83 @@ class GitHubSnapshot(unittest.TestCase):
         self.assertEqual(configured.returncode, 0, configured.stderr)
 
 
-class GitHubBootstrapTests(unittest.TestCase):
+def test_source_exposes_only_the_canonical_validation_hook() -> None:
     """A recognized GitHub snapshot installs through the shared compiler."""
+    legacy_hook = ROOT / "scripts" / ("validate" + "_project.py")
+    hook = ROOT / "scripts/validate-project"
+    assert hook.is_file()
+    assert hook.stat().st_mode & 0o111 != 0
+    configured = run([str(hook)], cwd=ROOT)
+    assert configured.returncode == 1
+    assert "rygor:unconfigured:validate-project" in configured.stderr
+    usage = run([str(hook), "unexpected"], cwd=ROOT)
+    assert usage.returncode == 2
+    assert "usage: scripts/validate-project" in usage.stderr
+    assert not legacy_hook.exists()
+    assert legacy_hook.relative_to(ROOT).as_posix() not in (
+        ROOT / "scripts/check_project_readiness.py"
+    ).read_text(encoding="utf-8")
 
-    tmp: tempfile.TemporaryDirectory[str]  # pyright: ignore[reportUninitializedInstanceVariable]  initialized in unittest setUp lifecycle
 
-    @override
-    def setUp(self) -> None:
-        self.tmp = tempfile.TemporaryDirectory()
+def _assert_cleanup_paths_absent(project: Path) -> None:
+    """Assert all cleanup paths (except exemptions) are absent."""
+    for relative in CLEANUP_PATHS:
+        if relative in CLEANUP_PATH_EXEMPTIONS:
+            continue
+        assert not (project / relative).exists(), relative
 
-    @override
-    def tearDown(self) -> None:
-        self.tmp.cleanup()
 
-    def test_source_exposes_only_the_canonical_validation_hook(self) -> None:
-        legacy_hook = ROOT / "scripts" / ("validate" + "_project.py")
-        hook = ROOT / "scripts/validate-project"
-        self.assertTrue(hook.is_file())
-        self.assertNotEqual(hook.stat().st_mode & 0o111, 0)
-        configured = run([str(hook)], cwd=ROOT)
-        self.assertEqual(configured.returncode, 1)
-        self.assertIn("rygor:unconfigured:validate-project", configured.stderr)
-        usage = run([str(hook), "unexpected"], cwd=ROOT)
-        self.assertEqual(usage.returncode, 2)
-        self.assertIn("usage: scripts/validate-project", usage.stderr)
-        self.assertFalse(legacy_hook.exists())
-        self.assertNotIn(
-            legacy_hook.relative_to(ROOT).as_posix(),
-            (ROOT / "scripts/check_project_readiness.py").read_text(encoding="utf-8"),
-        )
+def _assert_retained_paths_present(project: Path) -> None:
+    """Assert all retained paths are present."""
+    for relative in RETAINED_PATHS:
+        assert (project / relative).exists(), relative
 
-    def _snapshot(self, name: str) -> tuple[Path, Path]:
-        """Materialize a live snapshot project and its recording-hook record."""
-        parent = Path(self.tmp.name) / name
-        parent.mkdir()
-        snapshot = build_snapshot_project(
-            parent, SnapshotConfig(), pristine=pristine_snapshot()
-        )
-        return snapshot.root, snapshot.hook_runs
 
-    def _apply(self, project: Path, bundle: Path, *, leave: bool = False) -> int:
-        argv = [
+def test_supplied_apply_installs_and_cleans_the_snapshot(tmp_path: Path) -> None:
+    """The supplied bundle apply installs and cleans the snapshot."""
+    project, record = _snapshot_project(tmp_path, "supplied")
+    bundle = write_answer_bundle(tmp_path, supplied=True, record=record)
+    exit_code = _apply_bootstrap(project, bundle)
+    assert exit_code == 0
+    assert len(record.read_text(encoding="utf-8").splitlines()) == 1
+    assert (project / ".rygor/project.json").is_file()
+    assert (project / "docs/prd.md").read_text(encoding="utf-8") == PRD
+    assert (project / "README.md").read_text(encoding="utf-8") == README
+    _assert_cleanup_paths_absent(project)
+    assert not (project / ".rygor/maintenance-artifacts.json").exists()
+    assert (project / "pyproject.toml").read_text(
+        encoding="utf-8"
+    ) == GENERATED_PYPROJECT
+    _assert_retained_paths_present(project)
+    assert not (project / ".copier-answers.yml").exists()
+    assert (project / "SECURITY.md").is_file()
+    assert (project / "CONTRIBUTING.md").is_file()
+
+
+def test_all_scaffold_apply_installs_exits_one_and_cleans(tmp_path: Path) -> None:
+    """The scaffold bundle apply installs, exits 1, and cleans."""
+    project, record = _snapshot_project(tmp_path, "scaffold")
+    bundle = write_answer_bundle(tmp_path, supplied=False, record=record)
+    # Scaffold slots remain unready: the install completes and the hook
+    # runs once, but the command reports not-ready at exit 1.
+    assert _apply_bootstrap(project, bundle) == 1
+    assert (project / ".rygor/project.json").is_file()
+    assert len(record.read_text(encoding="utf-8").splitlines()) == 1
+    _assert_cleanup_paths_absent(project)
+    assert (project / "pyproject.toml").read_text(
+        encoding="utf-8"
+    ) == GENERATED_PYPROJECT
+
+
+def test_cleanup_mismatch_refuses_then_leave_retains(tmp_path: Path) -> None:
+    """A cleanup mismatch refuses apply; --leave retains artifacts."""
+    project, record = _snapshot_project(tmp_path, "mismatch")
+    bundle = write_answer_bundle(tmp_path, supplied=False, record=record)
+    damaged = project / "pyproject.toml"
+    with damaged.open("a", encoding="utf-8") as handle:
+        _ = handle.write("\n# local drift\n")
+    refused = run(
+        [
             sys.executable,
             str(project / "scripts/bootstrap_project.py"),
             "apply",
@@ -177,108 +242,40 @@ class GitHubBootstrapTests(unittest.TestCase):
             "--target",
             str(project),
         ]
-        if leave:
-            argv.append("--leave-maintenance-artifacts")
-        result = run(argv)
-        if result.returncode not in (0, 1):
-            self.fail(result.stdout + result.stderr)
-        return result.returncode
+    )
+    assert refused.returncode == 1, refused.stdout + refused.stderr
+    assert "CLEANUP_CONTRACT_INVALID" in refused.stdout + refused.stderr
+    assert "pyproject.toml" in refused.stdout + refused.stderr
+    assert "--leave-maintenance-artifacts" in refused.stdout + refused.stderr
+    assert (project / ".rygor/maintenance-artifacts.json").is_file()
+    assert len(record.read_text(encoding="utf-8").splitlines()) == 0
+    assert _apply_bootstrap(project, bundle, leave=True) == 1
+    assert (project / ".rygor/project.json").is_file()
+    assert damaged.is_file()
+    assert (project / ".rygor/maintenance-artifacts.json").is_file()
+    assert len(record.read_text(encoding="utf-8").splitlines()) == 1
 
-    def test_supplied_apply_installs_and_cleans_the_snapshot(self) -> None:
-        project, record = self._snapshot("supplied")
-        bundle = write_answer_bundle(Path(self.tmp.name), supplied=True, record=record)
-        exit_code = self._apply(project, bundle)
-        self.assertEqual(exit_code, 0)
-        self.assertEqual(len(record.read_text(encoding="utf-8").splitlines()), 1)
-        self.assertTrue((project / ".rygor/project.json").is_file())
-        self.assertEqual((project / "docs/prd.md").read_text(encoding="utf-8"), PRD)
-        self.assertEqual((project / "README.md").read_text(encoding="utf-8"), README)
-        for relative in CLEANUP_PATHS:
-            if relative in CLEANUP_PATH_EXEMPTIONS:
-                # The generated pyproject replaces the source one as
-                # bootstrap-managed output; cleanup removes everything else.
-                continue
-            with self.subTest(path=relative):
-                self.assertFalse((project / relative).exists(), relative)
-        self.assertFalse((project / ".rygor/maintenance-artifacts.json").exists())
-        self.assertEqual(
-            (project / "pyproject.toml").read_text(encoding="utf-8"),
-            GENERATED_PYPROJECT,
-        )
-        for relative in RETAINED_PATHS:
-            with self.subTest(path=relative):
-                self.assertTrue((project / relative).exists(), relative)
-        self.assertFalse((project / ".copier-answers.yml").exists())
-        self.assertTrue((project / "SECURITY.md").is_file())
-        self.assertTrue((project / "CONTRIBUTING.md").is_file())
 
-    def test_all_scaffold_apply_installs_exits_one_and_cleans(self) -> None:
-        project, record = self._snapshot("scaffold")
-        bundle = write_answer_bundle(Path(self.tmp.name), supplied=False, record=record)
-        # Scaffold slots remain unready: the install completes and the hook
-        # runs once, but the command reports not-ready at exit 1.
-        self.assertEqual(self._apply(project, bundle), 1)
-        self.assertTrue((project / ".rygor/project.json").is_file())
-        self.assertEqual(len(record.read_text(encoding="utf-8").splitlines()), 1)
-        for relative in CLEANUP_PATHS:
-            if relative in CLEANUP_PATH_EXEMPTIONS:
-                continue
-            with self.subTest(path=relative):
-                self.assertFalse((project / relative).exists(), relative)
-        self.assertEqual(
-            (project / "pyproject.toml").read_text(encoding="utf-8"),
-            GENERATED_PYPROJECT,
-        )
-
-    def test_cleanup_mismatch_refuses_then_leave_retains(self) -> None:
-        project, record = self._snapshot("mismatch")
-        bundle = write_answer_bundle(Path(self.tmp.name), supplied=False, record=record)
-        damaged = project / "pyproject.toml"
-        with damaged.open("a", encoding="utf-8") as handle:
-            _ = handle.write("\n# local drift\n")
-        refused = run(
-            [
-                sys.executable,
-                str(project / "scripts/bootstrap_project.py"),
-                "apply",
-                "--bundle",
-                str(bundle),
-                "--target",
-                str(project),
-            ]
-        )
-        self.assertEqual(refused.returncode, 1, refused.stdout + refused.stderr)
-        self.assertIn("CLEANUP_CONTRACT_INVALID", refused.stdout + refused.stderr)
-        self.assertIn("pyproject.toml", refused.stdout + refused.stderr)
-        self.assertIn("--leave-maintenance-artifacts", refused.stdout + refused.stderr)
-        self.assertTrue((project / ".rygor/maintenance-artifacts.json").is_file())
-        self.assertEqual(len(record.read_text(encoding="utf-8").splitlines()), 0)
-        self.assertEqual(self._apply(project, bundle, leave=True), 1)
-        self.assertTrue((project / ".rygor/project.json").is_file())
-        self.assertTrue(damaged.is_file())
-        self.assertTrue((project / ".rygor/maintenance-artifacts.json").is_file())
-        self.assertEqual(len(record.read_text(encoding="utf-8").splitlines()), 1)
-
-    def test_apply_refuses_without_a_git_working_tree(self) -> None:
-        parent = Path(self.tmp.name)
-        project = parent / "plain"
-        copy_tree(pristine_snapshot(), project)
-        bundle = write_answer_bundle(
-            parent, supplied=True, record=parent / "plain-runs"
-        )
-        result = run(
-            [
-                sys.executable,
-                str(project / "scripts/bootstrap_project.py"),
-                "apply",
-                "--bundle",
-                str(bundle),
-                "--target",
-                str(project),
-            ]
-        )
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertFalse((project / ".rygor/project.json").exists())
+def test_apply_refuses_without_a_git_working_tree(tmp_path: Path) -> None:
+    """Apply refuses when the project is not a git working tree."""
+    project = tmp_path / "plain"
+    copy_tree(pristine_snapshot(), project)
+    bundle = write_answer_bundle(
+        tmp_path, supplied=True, record=tmp_path / "plain-runs"
+    )
+    result = run(
+        [
+            sys.executable,
+            str(project / "scripts/bootstrap_project.py"),
+            "apply",
+            "--bundle",
+            str(bundle),
+            "--target",
+            str(project),
+        ]
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert not (project / ".rygor/project.json").exists()
 
 
 class _InventoryEntry(TypedDict):
