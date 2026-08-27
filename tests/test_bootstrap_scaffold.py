@@ -7,9 +7,10 @@ for absent manifests, strict ``decode_cleanup_inventory`` decoding, and
 
 from __future__ import annotations
 
-import unittest
 from pathlib import Path
 from typing import cast
+
+import pytest
 
 from scripts.bootstrap.canonical_json import StrictJsonValue, canonical_json
 from scripts.bootstrap.intents import GenerationPath
@@ -70,339 +71,366 @@ def _entry(
     return {"path": path, "kind": kind, "sha256": digest, **extra}
 
 
-class ScaffoldRecognitionTests(unittest.TestCase):
-    def test_tracked_source_is_a_recognizable_github_scaffold(self) -> None:
-        root = Path(__file__).resolve().parent.parent
-        seed_once = {
-            path: (
-                (root / path.value).read_bytes()
-                if (root / path.value).is_file()
-                else None
-            )
-            for path in SEED_ONCE_PATHS
+def _source_payload(
+    *,
+    lifecycle_paths: object | None = None,
+    snapshot_cleanup_paths: object | None = None,
+) -> bytes:
+    return canonical_json(
+        {
+            "schema_version": SOURCE_OWNERSHIP_SCHEMA_VERSION,
+            "lifecycle_paths": cast(
+                StrictJsonValue, [] if lifecycle_paths is None else lifecycle_paths
+            ),
+            "snapshot_cleanup_paths": cast(
+                StrictJsonValue,
+                [] if snapshot_cleanup_paths is None else snapshot_cleanup_paths,
+            ),
         }
-        self.assertIs(
-            recognize_generation(
-                copier_answers=None,
-                seed_once=seed_once,
-                scaffold=_scaffold_bytes(str(root)),
-            ),
-            GenerationPath.GITHUB,
+    )
+
+
+def test_tracked_source_is_a_recognizable_github_scaffold() -> None:
+    root = Path(__file__).resolve().parent.parent
+    seed_once = {
+        path: (
+            (root / path.value).read_bytes() if (root / path.value).is_file() else None
         )
-
-    def test_seed_once_observations_require_exact_slot_paths(self) -> None:
-        with self.assertRaises(ValueError):
-            _ = recognize_generation(copier_answers=None, seed_once={}, scaffold={})
-
-    def test_scaffold_missing_a_seed_path_is_not_recognized(self) -> None:
-        scaffold = _scaffold()
-        _ = scaffold.pop(next(iter(scaffold)))
-        self.assertIsNone(
-            recognize_generation(
-                copier_answers=None,
-                seed_once=_seed_once(),
-                scaffold=scaffold,
-            )
+        for path in SEED_ONCE_PATHS
+    }
+    assert (
+        recognize_generation(
+            copier_answers=None,
+            seed_once=seed_once,
+            scaffold=_scaffold_bytes(str(root)),
         )
+        is GenerationPath.GITHUB
+    )
 
-    def test_copier_scaffold_is_recognized_when_seeds_match(self) -> None:
-        self.assertIs(
-            recognize_generation(
-                copier_answers=b"answers",
-                seed_once=_seed_once(missing=RepoPath("README.md")),
-                scaffold=_scaffold(),
-            ),
-            GenerationPath.COPIER,
+
+def test_seed_once_observations_require_exact_slot_paths() -> None:
+    with pytest.raises(ValueError):
+        _ = recognize_generation(copier_answers=None, seed_once={}, scaffold={})
+
+
+def test_scaffold_missing_a_seed_path_is_not_recognized() -> None:
+    scaffold = _scaffold()
+    _ = scaffold.pop(next(iter(scaffold)))
+    assert (
+        recognize_generation(
+            copier_answers=None,
+            seed_once=_seed_once(),
+            scaffold=scaffold,
         )
+        is None
+    )
 
-    def test_copier_scaffold_is_rejected_when_a_seed_differs(self) -> None:
-        self.assertIsNone(
-            recognize_generation(
-                copier_answers=b"answers",
-                seed_once=_seed_once(changed=RepoPath("README.md")),
-                scaffold=_scaffold(),
-            )
+
+def test_copier_scaffold_is_recognized_when_seeds_match() -> None:
+    assert (
+        recognize_generation(
+            copier_answers=b"answers",
+            seed_once=_seed_once(missing=RepoPath("README.md")),
+            scaffold=_scaffold(),
         )
+        is GenerationPath.COPIER
+    )
 
-    def test_github_scaffold_is_recognized_when_all_seeds_match(self) -> None:
-        self.assertIs(
-            recognize_generation(
-                copier_answers=None,
-                seed_once=_seed_once(),
-                scaffold=_scaffold(),
-            ),
-            GenerationPath.GITHUB,
+
+def test_copier_scaffold_is_rejected_when_a_seed_differs() -> None:
+    assert (
+        recognize_generation(
+            copier_answers=b"answers",
+            seed_once=_seed_once(changed=RepoPath("README.md")),
+            scaffold=_scaffold(),
         )
+        is None
+    )
 
-    def test_github_scaffold_is_rejected_when_a_seed_is_absent(self) -> None:
-        self.assertIsNone(
-            recognize_generation(
-                copier_answers=None,
-                seed_once=_seed_once(missing=RepoPath("README.md")),
-                scaffold=_scaffold(),
-            )
+
+def test_github_scaffold_is_recognized_when_all_seeds_match() -> None:
+    assert (
+        recognize_generation(
+            copier_answers=None,
+            seed_once=_seed_once(),
+            scaffold=_scaffold(),
         )
+        is GenerationPath.GITHUB
+    )
 
 
-class CleanupInventoryTests(unittest.TestCase):
-    def test_invalid_json_is_rejected(self) -> None:
-        error = assert_err(
-            decode_cleanup_inventory(b"{not json"), "invalid JSON inventory decoded"
+def test_github_scaffold_is_rejected_when_a_seed_is_absent() -> None:
+    assert (
+        recognize_generation(
+            copier_answers=None,
+            seed_once=_seed_once(missing=RepoPath("README.md")),
+            scaffold=_scaffold(),
         )
-        self.assertIsInstance(error, CleanupContractMismatch)
+        is None
+    )
 
-    def test_deeply_nested_inventory_is_rejected(self) -> None:
-        payload = b"[" * 10000 + b"0" + b"]" * 10000
-        error = assert_err(
-            decode_cleanup_inventory(payload), "deeply nested inventory decoded"
-        )
-        self.assertIsInstance(error, CleanupContractMismatch)
 
-    def test_wrong_document_shape_is_rejected(self) -> None:
-        error = assert_err(
-            decode_cleanup_inventory(canonical_json({"schema_version": 1})),
-            "wrong-shape inventory decoded",
-        )
-        self.assertIsInstance(error, CleanupContractMismatch)
+def test_invalid_json_is_rejected() -> None:
+    error = assert_err(
+        decode_cleanup_inventory(b"{not json"), "invalid JSON inventory decoded"
+    )
+    assert isinstance(error, CleanupContractMismatch)
 
-    def test_wrong_schema_version_is_rejected(self) -> None:
-        payload = canonical_json({"schema_version": 2, "entries": []})
-        error = assert_err(
-            decode_cleanup_inventory(payload), "future schema version decoded"
-        )
-        self.assertIsInstance(error, CleanupContractMismatch)
 
-    def test_entries_not_a_list_is_rejected(self) -> None:
-        payload = canonical_json({"schema_version": 1, "entries": {}})
-        error = assert_err(
-            decode_cleanup_inventory(payload), "non-list entries decoded"
-        )
-        self.assertIsInstance(error, CleanupContractMismatch)
+def test_deeply_nested_inventory_is_rejected() -> None:
+    payload = b"[" * 10000 + b"0" + b"]" * 10000
+    error = assert_err(
+        decode_cleanup_inventory(payload), "deeply nested inventory decoded"
+    )
+    assert isinstance(error, CleanupContractMismatch)
 
-    def test_entry_with_extra_keys_is_rejected(self) -> None:
-        payload = _inventory([_entry(extra=1)])
-        error = assert_err(decode_cleanup_inventory(payload), "extra-key entry decoded")
-        self.assertIsInstance(error, CleanupContractMismatch)
 
-    def test_entry_field_violations_are_rejected(self) -> None:
-        bad_path_entry: dict[str, object] = {
-            "path": 5,
-            "kind": "file",
-            "sha256": DIGEST,
+def test_wrong_document_shape_is_rejected() -> None:
+    error = assert_err(
+        decode_cleanup_inventory(canonical_json({"schema_version": 1})),
+        "wrong-shape inventory decoded",
+    )
+    assert isinstance(error, CleanupContractMismatch)
+
+
+def test_wrong_schema_version_is_rejected() -> None:
+    payload = canonical_json({"schema_version": 2, "entries": []})
+    error = assert_err(
+        decode_cleanup_inventory(payload), "future schema version decoded"
+    )
+    assert isinstance(error, CleanupContractMismatch)
+
+
+def test_entries_not_a_list_is_rejected() -> None:
+    payload = canonical_json({"schema_version": 1, "entries": {}})
+    error = assert_err(decode_cleanup_inventory(payload), "non-list entries decoded")
+    assert isinstance(error, CleanupContractMismatch)
+
+
+def test_entry_with_extra_keys_is_rejected() -> None:
+    payload = _inventory([_entry(extra=1)])
+    error = assert_err(decode_cleanup_inventory(payload), "extra-key entry decoded")
+    assert isinstance(error, CleanupContractMismatch)
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        _entry(kind="symlink"),
+        _entry(digest="zzz"),
+        {"path": 5, "kind": "file", "sha256": DIGEST},
+    ],
+    ids=["bad-kind", "bad-digest", "bad-path"],
+)
+def test_entry_field_violations_are_rejected(entry: dict[str, object]) -> None:
+    error = assert_err(
+        decode_cleanup_inventory(_inventory([entry])),
+        f"invalid entry decoded: {entry}",
+    )
+    assert isinstance(error, CleanupContractMismatch)
+
+
+def test_unsafe_entry_path_is_rejected() -> None:
+    error = assert_err(
+        decode_cleanup_inventory(_inventory([_entry(path="..")])),
+        "unsafe entry path decoded",
+    )
+    assert isinstance(error, CleanupContractMismatch)
+
+
+def test_duplicate_entry_paths_are_rejected() -> None:
+    payload = _inventory([_entry(), _entry()])
+    error = assert_err(
+        decode_cleanup_inventory(payload), "duplicate entry paths decoded"
+    )
+    assert isinstance(error, CleanupContractMismatch)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [MANIFEST_PATH.value, MAINTENANCE_INVENTORY_PATH.value],
+    ids=["manifest", "maintenance"],
+)
+def test_administrative_paths_are_rejected(path: str) -> None:
+    error = assert_err(
+        decode_cleanup_inventory(_inventory([_entry(path=path)])),
+        f"administrative path decoded: {path}",
+    )
+    assert isinstance(error, CleanupContractMismatch)
+
+
+def test_valid_inventory_decodes_sorted() -> None:
+    payload = _inventory([_entry(path="z.txt"), _entry(path="a.txt")])
+    inventory = assert_ok(decode_cleanup_inventory(payload))
+    assert tuple(entry[0].value for entry in inventory.entries) == ("a.txt", "z.txt")
+
+
+def test_wrong_document_shape_is_rejected_ownership() -> None:
+    error = assert_err(
+        decode_source_ownership(canonical_json({"schema_version": 1})),
+        "wrong-shape ownership decoded",
+    )
+    assert isinstance(error, CleanupContractMismatch)
+
+
+def test_wrong_schema_version_is_rejected_ownership() -> None:
+    payload = canonical_json(
+        {
+            "schema_version": 2,
+            "lifecycle_paths": [],
+            "snapshot_cleanup_paths": [],
         }
-        for entry in (
-            _entry(kind="symlink"),
-            _entry(digest="zzz"),
-            bad_path_entry,
-        ):
-            with self.subTest(entry=entry):
-                error = assert_err(
-                    decode_cleanup_inventory(_inventory([entry])),
-                    f"invalid entry decoded: {entry}",
-                )
-                self.assertIsInstance(error, CleanupContractMismatch)
-
-    def test_unsafe_entry_path_is_rejected(self) -> None:
-        error = assert_err(
-            decode_cleanup_inventory(_inventory([_entry(path="..")])),
-            "unsafe entry path decoded",
-        )
-        self.assertIsInstance(error, CleanupContractMismatch)
-
-    def test_duplicate_entry_paths_are_rejected(self) -> None:
-        payload = _inventory([_entry(), _entry()])
-        error = assert_err(
-            decode_cleanup_inventory(payload), "duplicate entry paths decoded"
-        )
-        self.assertIsInstance(error, CleanupContractMismatch)
-
-    def test_administrative_paths_are_rejected(self) -> None:
-        for path in (MANIFEST_PATH.value, MAINTENANCE_INVENTORY_PATH.value):
-            with self.subTest(path=path):
-                error = assert_err(
-                    decode_cleanup_inventory(_inventory([_entry(path=path)])),
-                    f"administrative path decoded: {path}",
-                )
-                self.assertIsInstance(error, CleanupContractMismatch)
-
-    def test_valid_inventory_decodes_sorted(self) -> None:
-        payload = _inventory([_entry(path="z.txt"), _entry(path="a.txt")])
-        inventory = assert_ok(decode_cleanup_inventory(payload))
-        self.assertEqual(
-            tuple(entry[0].value for entry in inventory.entries),
-            ("a.txt", "z.txt"),
-        )
+    )
+    error = assert_err(
+        decode_source_ownership(payload), "future schema version decoded"
+    )
+    assert isinstance(error, CleanupContractMismatch)
 
 
-class SourceOwnershipTests(unittest.TestCase):
-    @staticmethod
-    def _payload(
-        *,
-        lifecycle_paths: object | None = None,
-        snapshot_cleanup_paths: object | None = None,
-    ) -> bytes:
-        return canonical_json(
-            {
-                "schema_version": SOURCE_OWNERSHIP_SCHEMA_VERSION,
-                "lifecycle_paths": cast(
-                    StrictJsonValue, [] if lifecycle_paths is None else lifecycle_paths
-                ),
-                "snapshot_cleanup_paths": cast(
-                    StrictJsonValue,
-                    [] if snapshot_cleanup_paths is None else snapshot_cleanup_paths,
-                ),
-            }
-        )
-
-    def test_wrong_document_shape_is_rejected(self) -> None:
-        error = assert_err(
-            decode_source_ownership(canonical_json({"schema_version": 1})),
-            "wrong-shape ownership decoded",
-        )
-        self.assertIsInstance(error, CleanupContractMismatch)
-
-    def test_wrong_schema_version_is_rejected(self) -> None:
-        payload = canonical_json(
-            {
-                "schema_version": 2,
-                "lifecycle_paths": [],
-                "snapshot_cleanup_paths": [],
-            }
-        )
-        error = assert_err(
-            decode_source_ownership(payload), "future schema version decoded"
-        )
-        self.assertIsInstance(error, CleanupContractMismatch)
-
-    def test_non_list_paths_are_rejected(self) -> None:
-        payload = self._payload(  # type: ignore[arg-type]
-            lifecycle_paths="tests"
-        )
-        error = assert_err(decode_source_ownership(payload), "non-list paths decoded")
-        self.assertIsInstance(error, CleanupContractMismatch)
-
-    def test_invalid_path_entries_are_rejected(self) -> None:
-        for paths in (["tests", 5], [".."], ["tests", "tests"]):
-            with self.subTest(paths=paths):
-                payload = self._payload(lifecycle_paths=paths)  # type: ignore[arg-type]
-                error = assert_err(
-                    decode_source_ownership(payload),
-                    f"invalid paths decoded: {paths}",
-                )
-                self.assertIsInstance(error, CleanupContractMismatch)
-
-    def test_administrative_paths_are_rejected(self) -> None:
-        for path in (
-            MANIFEST_PATH.value,
-            MAINTENANCE_INVENTORY_PATH.value,
-            ".rygor/state.json",
-            ".git/config",
-        ):
-            with self.subTest(path=path):
-                payload = self._payload(lifecycle_paths=[path])
-                error = assert_err(
-                    decode_source_ownership(payload),
-                    f"administrative path decoded: {path}",
-                )
-                self.assertIsInstance(error, CleanupContractMismatch)
-
-    def test_valid_ownership_decodes_sorted(self) -> None:
-        payload = self._payload(lifecycle_paths=["z.txt", "a.txt"])
-        ownership = assert_ok(decode_source_ownership(payload))
-        self.assertEqual(
-            tuple(path.value for path in ownership.lifecycle_paths),
-            ("a.txt", "z.txt"),
-        )
-
-    def test_overlapping_ownership_sets_are_rejected(self) -> None:
-        payload = self._payload(
-            lifecycle_paths=["docs/api"], snapshot_cleanup_paths=["docs/api"]
-        )
-        error = assert_err(
-            decode_source_ownership(payload), "overlapping ownership decoded"
-        )
-        self.assertIsInstance(error, CleanupContractMismatch)
-
-    def test_nested_ownership_sets_are_rejected(self) -> None:
-        payload = self._payload(
-            lifecycle_paths=["docs"], snapshot_cleanup_paths=["docs/api"]
-        )
-        error = assert_err(decode_source_ownership(payload), "nested ownership decoded")
-        self.assertIsInstance(error, CleanupContractMismatch)
-
-    def test_case_colliding_paths_are_rejected(self) -> None:
-        payload = self._payload(lifecycle_paths=["Docs/API", "docs/api"])
-        error = assert_err(
-            decode_source_ownership(payload), "case-colliding ownership decoded"
-        )
-        self.assertIsInstance(error, CleanupContractMismatch)
-
-    def test_seed_and_legal_paths_are_rejected(self) -> None:
-        for path in (
-            *SEED_ONCE_PATHS,
-            RepoPath("LICENSE"),
-            RepoPath("NOTICE.md"),
-            RepoPath("LICENSES/Apache-2.0.txt"),
-        ):
-            with self.subTest(path=path):
-                payload = self._payload(lifecycle_paths=[path.value])
-                error = assert_err(
-                    decode_source_ownership(payload),
-                    f"seed or legal path decoded: {path.value}",
-                )
-                self.assertIsInstance(error, CleanupContractMismatch)
-
-    def test_case_variant_nested_paths_are_rejected_across_namespaces(self) -> None:
-        payload = self._payload(
-            lifecycle_paths=["Docs"], snapshot_cleanup_paths=["docs/api"]
-        )
-        error = assert_err(
-            decode_source_ownership(payload), "case-variant nested ownership decoded"
-        )
-        self.assertIsInstance(error, CleanupContractMismatch)
+def test_non_list_paths_are_rejected() -> None:
+    payload = _source_payload(  # type: ignore[arg-type]
+        lifecycle_paths="tests"
+    )
+    error = assert_err(decode_source_ownership(payload), "non-list paths decoded")
+    assert isinstance(error, CleanupContractMismatch)
 
 
-class CleanupClassificationTests(unittest.TestCase):
-    def test_absent_inventory_is_no_cleanup(self) -> None:
-        self.assertIsInstance(
-            classify_cleanup(inventory=None, observed={}, declared_cleanup_paths=()),
-            NoSnapshotCleanup,
-        )
-
-    def test_invalid_inventory_is_a_mismatch(self) -> None:
-        self.assertIsInstance(
-            classify_cleanup(inventory=b"{", observed={}, declared_cleanup_paths=()),
-            CleanupContractMismatch,
-        )
-
-    def test_matching_inventory_is_a_valid_contract(self) -> None:
-        path = RepoPath("docs/api")
-        inventory = _inventory([_entry(path=path.value, digest=DIGEST)])
-        observed = {path: CleanupEntryObservation(path, True, "directory", DIGEST)}
-        result = classify_cleanup(
-            inventory=inventory,
-            observed=observed,
-            declared_cleanup_paths=(path,),
-        )
-        self.assertIsInstance(result, CleanupContractValid)
-        if isinstance(result, CleanupContractValid):
-            self.assertEqual(result.contract.cleanup_paths, (path,))
-
-    def test_declared_set_disagreement_is_a_mismatch(self) -> None:
-        path = RepoPath("docs/api")
-        inventory = _inventory([_entry(path=path.value, digest=DIGEST)])
-        observed = {path: CleanupEntryObservation(path, True, "directory", DIGEST)}
-        for declared in ((RepoPath("tests"),), (path, RepoPath("tests"))):
-            with self.subTest(declared=declared):
-                result = classify_cleanup(
-                    inventory=inventory,
-                    observed=observed,
-                    declared_cleanup_paths=declared,
-                )
-                self.assertIsInstance(result, CleanupContractMismatch)
-                if isinstance(result, CleanupContractMismatch):
-                    self.assertIn(RepoPath("tests"), result.paths)
+@pytest.mark.parametrize(
+    "paths",
+    [["tests", 5], [".."], ["tests", "tests"]],
+    ids=["non-list-entry", "unsafe", "duplicate"],
+)
+def test_invalid_path_entries_are_rejected(paths: list[object]) -> None:
+    payload = _source_payload(lifecycle_paths=paths)  # type: ignore[arg-type]
+    error = assert_err(
+        decode_source_ownership(payload),
+        f"invalid paths decoded: {paths}",
+    )
+    assert isinstance(error, CleanupContractMismatch)
 
 
-if __name__ == "__main__":
-    _ = unittest.main()
+@pytest.mark.parametrize(
+    "path",
+    [
+        MANIFEST_PATH.value,
+        MAINTENANCE_INVENTORY_PATH.value,
+        ".rygor/state.json",
+        ".git/config",
+    ],
+    ids=["manifest", "maintenance", "state-root", "git-config"],
+)
+def test_administrative_paths_are_rejected_ownership(path: str) -> None:
+    payload = _source_payload(lifecycle_paths=[path])
+    error = assert_err(
+        decode_source_ownership(payload),
+        f"administrative path decoded: {path}",
+    )
+    assert isinstance(error, CleanupContractMismatch)
+
+
+def test_valid_ownership_decodes_sorted() -> None:
+    payload = _source_payload(lifecycle_paths=["z.txt", "a.txt"])
+    ownership = assert_ok(decode_source_ownership(payload))
+    assert tuple(path.value for path in ownership.lifecycle_paths) == ("a.txt", "z.txt")
+
+
+def test_overlapping_ownership_sets_are_rejected() -> None:
+    payload = _source_payload(
+        lifecycle_paths=["docs/api"], snapshot_cleanup_paths=["docs/api"]
+    )
+    error = assert_err(
+        decode_source_ownership(payload), "overlapping ownership decoded"
+    )
+    assert isinstance(error, CleanupContractMismatch)
+
+
+def test_nested_ownership_sets_are_rejected() -> None:
+    payload = _source_payload(
+        lifecycle_paths=["docs"], snapshot_cleanup_paths=["docs/api"]
+    )
+    error = assert_err(decode_source_ownership(payload), "nested ownership decoded")
+    assert isinstance(error, CleanupContractMismatch)
+
+
+def test_case_colliding_paths_are_rejected() -> None:
+    payload = _source_payload(lifecycle_paths=["Docs/API", "docs/api"])
+    error = assert_err(
+        decode_source_ownership(payload), "case-colliding ownership decoded"
+    )
+    assert isinstance(error, CleanupContractMismatch)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        *SEED_ONCE_PATHS,
+        RepoPath("LICENSE"),
+        RepoPath("NOTICE.md"),
+        RepoPath("LICENSES/Apache-2.0.txt"),
+    ],
+    ids=lambda p: p.value if isinstance(p, RepoPath) else str(p),  # pyright: ignore[reportAny]
+)
+def test_seed_and_legal_paths_are_rejected(path: RepoPath) -> None:
+    payload = _source_payload(lifecycle_paths=[path.value])
+    error = assert_err(
+        decode_source_ownership(payload),
+        f"seed or legal path decoded: {path.value}",
+    )
+    assert isinstance(error, CleanupContractMismatch)
+
+
+def test_case_variant_nested_paths_are_rejected_across_namespaces() -> None:
+    payload = _source_payload(
+        lifecycle_paths=["Docs"], snapshot_cleanup_paths=["docs/api"]
+    )
+    error = assert_err(
+        decode_source_ownership(payload), "case-variant nested ownership decoded"
+    )
+    assert isinstance(error, CleanupContractMismatch)
+
+
+def test_absent_inventory_is_no_cleanup() -> None:
+    assert isinstance(
+        classify_cleanup(inventory=None, observed={}, declared_cleanup_paths=()),
+        NoSnapshotCleanup,
+    )
+
+
+def test_invalid_inventory_is_a_mismatch() -> None:
+    assert isinstance(
+        classify_cleanup(inventory=b"{", observed={}, declared_cleanup_paths=()),
+        CleanupContractMismatch,
+    )
+
+
+def test_matching_inventory_is_a_valid_contract() -> None:
+    path = RepoPath("docs/api")
+    inventory = _inventory([_entry(path=path.value, digest=DIGEST)])
+    observed = {path: CleanupEntryObservation(path, True, "directory", DIGEST)}
+    result = classify_cleanup(
+        inventory=inventory,
+        observed=observed,
+        declared_cleanup_paths=(path,),
+    )
+    assert isinstance(result, CleanupContractValid)
+    assert result.contract.cleanup_paths == (path,)
+
+
+@pytest.mark.parametrize(
+    "declared",
+    [(RepoPath("tests"),), (RepoPath("docs/api"), RepoPath("tests"))],
+    ids=["missing-extra", "extra-missing"],
+)
+def test_declared_set_disagreement_is_a_mismatch(
+    declared: tuple[RepoPath, ...],
+) -> None:
+    path = RepoPath("docs/api")
+    inventory = _inventory([_entry(path=path.value, digest=DIGEST)])
+    observed = {path: CleanupEntryObservation(path, True, "directory", DIGEST)}
+    result = classify_cleanup(
+        inventory=inventory,
+        observed=observed,
+        declared_cleanup_paths=declared,
+    )
+    assert isinstance(result, CleanupContractMismatch)
+    assert RepoPath("tests") in result.paths
