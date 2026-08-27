@@ -485,7 +485,23 @@
             "This class exercises snapshot projects, bundles, subprocess runs, and subTests - the full pattern surface"
           ],
           "description": "Convert the GitHubBootstrapTests class in tests/test_github_template_readiness.py end-to-end to module-level test functions requesting conftest fixtures (tmp_path, scaffolded_project or direct builder calls with explicit SnapshotConfig where configs differ, make_bundle). Plain asserts throughout; subTest loops become @pytest.mark.parametrize with explicit ids. Record the mechanical pattern in the PR description as the template for T14-T18 batches. Remaining unittest classes in the file stay untouched in this task.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-27",
+              "commits": [],
+              "github_prs": ["https://github.com/knirski/rygor/pull/115"],
+              "evidence": [
+                "GitHubBootstrapTests class fully converted to module-level functions in tests/test_github_template_readiness.py",
+                "subTest loops replaced with @pytest.mark.parametrize",
+                "setUp/tearDown dissolved into tmp_path + fixture requests",
+                "Remaining unittest classes (GitHubSnapshot, SourceContractTests, EligibilityScriptBranchTests) untouched for T18",
+                "uv run pytest -q green serial; uv run pytest -n auto -q green",
+                "uv run ruff check . / ruff format --check . clean; basedpyright 0 errors, 0 warnings, 0 notes"
+              ]
+            }
+          },
           "files": {"reuse": ["tests/conftest.py fixtures"], "create": [], "modify": ["tests/test_github_template_readiness.py"], "delete": []},
           "new_abstractions": [],
           "validation": {
@@ -505,7 +521,23 @@
           "depends_on": ["T13"],
           "inputs": ["Files: test_bootstrap_bundles.py, test_bootstrap_presentation.py, test_vocabulary.py, test_plan_contract.py, test_mutation_contract.py, test_template_contract.py (all contain TestCase classes; none build projects)"],
           "description": "Apply the exemplar pattern mechanically: classes to module functions, self.assert* to bare asserts, subTest to parametrize, setUp/tearDown to fixtures or local context managers. No assertion logic changes.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-27",
+              "commits": [],
+              "evidence": [
+                "Six files converted from unittest.TestCase to module-level functions: test_bootstrap_bundles.py, test_bootstrap_presentation.py, test_vocabulary.py, test_plan_contract.py, test_mutation_contract.py, test_template_contract.py",
+                "All self.assert* calls replaced with bare asserts; self.assertRaises replaced with pytest.raises; self.subTest replaced with parametrize where applicable",
+                "setUp/tearDown dissolved into module-level helpers or inline context managers",
+                "No TestCase subclasses remain in any of the six files",
+                "uv run pytest -q passed: 65 tests across converted files; uv run pytest -n auto -q also passed",
+                "uv run ruff check . passed; basedpyright passed with 0 errors, 0 warnings, 0 notes",
+                "Regenerated .rygor/maintenance-artifacts.json for the changed test sources"
+              ]
+            }
+          },
           "files": {"reuse": ["exemplar pattern from T13"], "create": [], "modify": ["tests/test_bootstrap_bundles.py", "tests/test_bootstrap_presentation.py", "tests/test_vocabulary.py", "tests/test_plan_contract.py", "tests/test_mutation_contract.py", "tests/test_template_contract.py"], "delete": []},
           "new_abstractions": [],
           "validation": {"tests": ["six files green serial and -n auto"], "acceptance": ["no TestCase subclasses remain in them"]}
