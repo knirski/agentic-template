@@ -212,18 +212,14 @@ def test_real_plan_json_satisfies_execution_contract() -> None:
 
 def test_spec_plan_documents_the_full_execution_contract() -> None:
     guidance = SPEC_PLAN.read_text(encoding="utf-8")
-    assert (
-        "Each task carries its own `execution` discriminated union" in guidance
-    )
+    assert "Each task carries its own `execution` discriminated union" in guidance
     assert (
         "Keep task keys in this order: `id`, `name`, `depends_on`, `inputs`, `description`, `execution`"
         in guidance
     )
     assert '"mode": "inline", "status": "pending"' in guidance
     assert '"mode": "tracker", "tracker": {"provider": "github"' in guidance
-    assert (
-        "Every task has execution metadata in the selected mode" in guidance
-    )
+    assert "Every task has execution metadata in the selected mode" in guidance
     assert (
         "Every non-pending task has a `github_prs` list, and pending tasks omit it"
         in guidance
@@ -260,16 +256,14 @@ def test_execution_status_vocabulary_is_consistent_across_skills() -> None:
     for status in INLINE_STATUSES:
         assert status in spec_plan, f"spec-plan missing status {status}"
     for status in ("in_progress", "completed", "blocked"):
-        assert (
-            status in spec_implement
-        ), f"spec-implement missing status {status}"
+        assert status in spec_implement, f"spec-implement missing status {status}"
 
 
 def _assert_failure(task: dict[str, object], fragment: str) -> None:
     failures = execution_invariant_failures(task)
-    assert any(
-        fragment in failure for failure in failures
-    ), f"expected {fragment!r} in {failures}"
+    assert any(fragment in failure for failure in failures), (
+        f"expected {fragment!r} in {failures}"
+    )
 
 
 def test_inline_pending_shape_is_valid() -> None:

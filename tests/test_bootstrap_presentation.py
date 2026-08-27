@@ -85,17 +85,14 @@ def test_envelope_renders_every_outcome_class() -> None:
         )
         envelope = render_json(result)
         assert f'"outcome_class":"{expected}"' in envelope
-    assert (
-        "BOOTSTRAP_INPUT_LIMIT_USAGE"
-        in render_json(
-            CommandResult(
-                command="apply",
-                outcome=InvalidRequest((_diagnostic(),)),
-                state_document=None,
-                decision_document=None,
-                changes=(),
-                findings=(),
-            )
+    assert "BOOTSTRAP_INPUT_LIMIT_USAGE" in render_json(
+        CommandResult(
+            command="apply",
+            outcome=InvalidRequest((_diagnostic(),)),
+            state_document=None,
+            decision_document=None,
+            changes=(),
+            findings=(),
         )
     )
 
@@ -250,9 +247,7 @@ def test_finding_path_and_render_cover_both_subject_shapes() -> None:
         message="info",
         next_action="inspect",
     )
-    path_finding = Finding(
-        "R", SubjectPath("a"), "a", "rule", "blocking", "bad", "fix"
-    )
+    path_finding = Finding("R", SubjectPath("a"), "a", "rule", "blocking", "bad", "fix")
     assert repository_finding.path == Path(".")
     assert path_finding.path == Path("a")
     assert "repository" in repository_finding.render()
@@ -315,10 +310,7 @@ def test_text_presenter_renders_complete_diagnostics() -> None:
             }
         ]
     }
-    assert (
-        render_text(value)
-        == "R1: docs/prd.md: fill in the PRD; next: edit the file"
-    )
+    assert render_text(value) == "R1: docs/prd.md: fill in the PRD; next: edit the file"
 
 
 def test_readiness_constructor_and_gate_variants() -> None:
@@ -331,9 +323,7 @@ def test_readiness_constructor_and_gate_variants() -> None:
         message="info",
         next_action="inspect",
     )
-    path_finding = Finding(
-        "R", SubjectPath("a"), "a", "rule", "blocking", "bad", "fix"
-    )
+    path_finding = Finding("R", SubjectPath("a"), "a", "rule", "blocking", "bad", "fix")
     baseline = MechanicalReadinessResult(1, (repository_finding, path_finding))
     assert "repository" in repository_finding.render()
     assert not gate_readiness("unknown", baseline, baseline, baseline).allowed

@@ -25,9 +25,10 @@ def test_schema_licensing_literal_matches_vocabulary() -> None:
 
 
 def test_path_bearing_modes_are_the_supplied_license_modes() -> None:
-    assert frozenset(
-        {"provided-project-license", "private"}
-    ) == PATH_BEARING_LICENSING_MODES
+    assert (
+        frozenset({"provided-project-license", "private"})
+        == PATH_BEARING_LICENSING_MODES
+    )
     assert PATH_BEARING_LICENSING_MODES <= LICENSING_MODES
 
 

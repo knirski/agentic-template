@@ -25,9 +25,7 @@ def test_mutation_scope_targets_deterministic_source_and_direct_tests() -> None:
         "tests/test_bootstrap_foundations.py"
         in config["pytest_add_cli_args_test_selection"]
     )
-    assert (
-        "tests/test_script_cores.py" in config["pytest_add_cli_args_test_selection"]
-    )
+    assert "tests/test_script_cores.py" in config["pytest_add_cli_args_test_selection"]
     assert (
         "not test_canonical_json_round_trips_arbitrary_strict_values"
         in config["pytest_add_cli_args_test_selection"]

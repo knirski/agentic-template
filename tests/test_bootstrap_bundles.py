@@ -119,9 +119,7 @@ def test_decode_rejects_an_oversized_bundle() -> None:
     json_path = _materialize_bundle(
         _valid_bundle(), payload=b"x" * (_MAX_FILE_BYTES + 1)
     )
-    error = assert_err(
-        decode_bundle_input(json_path), "expected INPUT_LIMIT_EXCEEDED"
-    )
+    error = assert_err(decode_bundle_input(json_path), "expected INPUT_LIMIT_EXCEEDED")
     assert error.kind == InputErrorKind.INPUT_LIMIT_EXCEEDED
 
 
@@ -147,9 +145,7 @@ def test_decode_rejects_schema_violations() -> None:
 
 
 def test_decode_rejects_missing_content_files() -> None:
-    json_path = _materialize_bundle(
-        _valid_bundle(), files={"content/readme.md": b"x"}
-    )
+    json_path = _materialize_bundle(_valid_bundle(), files={"content/readme.md": b"x"})
     error = assert_err(decode_bundle_input(json_path), "expected MISSING_INPUT")
     assert error.kind == InputErrorKind.MISSING_INPUT
 
