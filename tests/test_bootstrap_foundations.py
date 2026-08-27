@@ -136,8 +136,7 @@ def test_every_resource_limit_accepts_exact_and_rejects_one_over() -> None:
         assert isinstance(check_limit(kind, limit, limits), Ok)
         over = check_limit(kind, limit + 1, limits)
         assert isinstance(over, Err)
-        if isinstance(over, Err):
-            assert over.error.observed == limit + 1
+        assert over.error.observed == limit + 1
 
 
 def test_signal_number_accepts_only_process_signal_range() -> None:

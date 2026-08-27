@@ -314,7 +314,7 @@ def test_repository_core_stops_after_nonzero_stage() -> None:
 
 def test_captured_stream_rejects_negative_prefix_limits() -> None:
     try:
-        CapturedStream.from_bytes(b"data", prefix_limit=-1)
+        _ = CapturedStream.from_bytes(b"data", prefix_limit=-1)
         raise AssertionError("expected ValueError for negative prefix limit")
     except ValueError:
         pass

@@ -34,12 +34,12 @@ def test_serializes_only_the_strict_json_value_domain() -> None:
     assert canonical_json(1.5) == b"1.5"
     for value in (float("nan"), 2**53 + 1, "\ud800"):
         try:
-            canonical_json(value)
+            _ = canonical_json(value)
             raise AssertionError(f"expected ValueError for {value!r}")
         except ValueError:
             pass
     try:
-        decode_json(b"NaN")
+        _ = decode_json(b"NaN")
         raise AssertionError("expected ValueError for NaN")
     except ValueError:
         pass
@@ -48,7 +48,7 @@ def test_serializes_only_the_strict_json_value_domain() -> None:
 def test_rejects_duplicate_keys_and_non_utf8() -> None:
     for payload in (b'{"a":1,"a":2}', b"\xff"):
         try:
-            decode_json(payload)
+            _ = decode_json(payload)
             raise AssertionError(f"expected ValueError for {payload!r}")
         except ValueError:
             pass
@@ -57,7 +57,7 @@ def test_rejects_duplicate_keys_and_non_utf8() -> None:
 def test_rejects_documents_beyond_the_maximum_nesting_depth() -> None:
     deep = b"[" * 200 + b"0" + b"]" * 200
     try:
-        decode_json(deep)
+        _ = decode_json(deep)
         raise AssertionError("expected ValueError for deep nesting")
     except ValueError:
         pass
@@ -65,7 +65,7 @@ def test_rejects_documents_beyond_the_maximum_nesting_depth() -> None:
     for _ in range(200):
         nested = [nested]
     try:
-        canonical_json(nested)
+        _ = canonical_json(nested)
         raise AssertionError("expected ValueError for deep nested canonical")
     except ValueError:
         pass
@@ -93,7 +93,7 @@ def test_rejects_noncanonical_path_shapes() -> None:
 def test_normalizes_mixed_line_endings_to_one_trailing_lf() -> None:
     assert normalize_text(b"a\r\nb\rc\n\n") == b"a\nb\nc\n"
     try:
-        normalize_text(b"\xff")
+        _ = normalize_text(b"\xff")
         raise AssertionError("expected ValueError for \\xff")
     except ValueError:
         pass
@@ -135,7 +135,7 @@ def test_tree_hash_is_sorted_and_mode_sensitive() -> None:
 
 def test_tree_hash_rejects_duplicate_paths() -> None:
     try:
-        tree_hash(
+        _ = tree_hash(
             b"tree",
             (
                 (RepoPath("a"), b"1", PosixMode.FILE),
@@ -196,7 +196,7 @@ def test_file_identity_distinguishes_absent_and_empty_files() -> None:
     assert empty.present
     assert file_state_hash(b"file", absent) != file_state_hash(b"file", empty)
     try:
-        file_state_identity(None, text=True, mode=PosixMode.FILE)
+        _ = file_state_identity(None, text=True, mode=PosixMode.FILE)
         raise AssertionError("expected ValueError for mismatched present/mode")
     except ValueError:
         pass
@@ -218,7 +218,7 @@ def test_target_source_and_manifest_identities_are_tagged_and_immutable() -> Non
     assert isinstance(manifest, ManifestIdentity)
     assert manifest.digest == tagged_digest(b"manifest", manifest.payload)
     try:
-        target_identity(b"/workspace/project", device=-1, inode=42)
+        _ = target_identity(b"/workspace/project", device=-1, inode=42)
         raise AssertionError("expected ValueError for negative device")
     except ValueError:
         pass

@@ -75,4 +75,4 @@ class BlobStoreStateMachine(RuleBasedStateMachine):
             assert unique_bytes == sum(len(record.content) for record in records)
 
 
-TestBlobStoreStateMachine = BlobStoreStateMachine.TestCase
+TestBlobStoreStateMachine: type = BlobStoreStateMachine.TestCase  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]

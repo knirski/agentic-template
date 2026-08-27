@@ -110,7 +110,7 @@ def test_tracked_source_is_a_recognizable_github_scaffold() -> None:
 
 def test_seed_once_observations_require_exact_slot_paths() -> None:
     with pytest.raises(ValueError):
-        recognize_generation(copier_answers=None, seed_once={}, scaffold={})
+        _ = recognize_generation(copier_answers=None, seed_once={}, scaffold={})
 
 
 def test_scaffold_missing_a_seed_path_is_not_recognized() -> None:
@@ -368,7 +368,7 @@ def test_case_colliding_paths_are_rejected() -> None:
         RepoPath("NOTICE.md"),
         RepoPath("LICENSES/Apache-2.0.txt"),
     ],
-    ids=lambda p: p.value if isinstance(p, RepoPath) else str(p),
+    ids=lambda p: p.value if isinstance(p, RepoPath) else str(p),  # pyright: ignore[reportAny]
 )
 def test_seed_and_legal_paths_are_rejected(path: RepoPath) -> None:
     payload = _source_payload(lifecycle_paths=[path.value])
@@ -413,8 +413,7 @@ def test_matching_inventory_is_a_valid_contract() -> None:
         declared_cleanup_paths=(path,),
     )
     assert isinstance(result, CleanupContractValid)
-    if isinstance(result, CleanupContractValid):
-        assert result.contract.cleanup_paths == (path,)
+    assert result.contract.cleanup_paths == (path,)
 
 
 @pytest.mark.parametrize(
@@ -434,5 +433,4 @@ def test_declared_set_disagreement_is_a_mismatch(
         declared_cleanup_paths=declared,
     )
     assert isinstance(result, CleanupContractMismatch)
-    if isinstance(result, CleanupContractMismatch):
-        assert RepoPath("tests") in result.paths
+    assert RepoPath("tests") in result.paths

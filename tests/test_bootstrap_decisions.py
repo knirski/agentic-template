@@ -138,10 +138,8 @@ def test_init_writes_available_bundle_and_refuses_occupied_output() -> None:
 
     refused = decide_bundle(intent, OutputLocationOccupied())
     assert isinstance(refused, RefusePlan)
-    if isinstance(refused, RefusePlan):
-        assert isinstance(refused.error, TransitionError)
-        if isinstance(refused.error, TransitionError):
-            assert refused.error.kind == TransitionErrorKind.OUTPUT_LOCATION_OCCUPIED
+    assert isinstance(refused.error, TransitionError)
+    assert refused.error.kind == TransitionErrorKind.OUTPUT_LOCATION_OCCUPIED
 
 
 def test_status_describes_supported_project_without_mutation() -> None:
@@ -164,10 +162,8 @@ def test_protected_target_refuses_mutation_but_allows_status() -> None:
     )
     mutation = decide_project(Apply(ApplyOptions()), state)
     assert isinstance(mutation, RefuseMutation)
-    if isinstance(mutation, RefuseMutation):
-        assert isinstance(mutation.error, TransitionError)
-        if isinstance(mutation.error, TransitionError):
-            assert mutation.error.kind == TransitionErrorKind.UNSUPPORTED_TARGET
+    assert isinstance(mutation.error, TransitionError)
+    assert mutation.error.kind == TransitionErrorKind.UNSUPPORTED_TARGET
     assert isinstance(
         decide_project(InspectStatus(StatusOptions()), state), DescribeStatus
     )
@@ -188,10 +184,8 @@ def test_unsupported_target_is_refused_and_recovery_is_noop() -> None:
     state = TargetUnavailable(UnsupportedGitTarget(TargetReason.NOT_WORKTREE))
     mutation = decide_project(Apply(ApplyOptions()), state)
     assert isinstance(mutation, RefuseMutation)
-    if isinstance(mutation, RefuseMutation):
-        assert isinstance(mutation.error, TransitionError)
-        if isinstance(mutation.error, TransitionError):
-            assert mutation.error.kind == TransitionErrorKind.UNSUPPORTED_TARGET
+    assert isinstance(mutation.error, TransitionError)
+    assert mutation.error.kind == TransitionErrorKind.UNSUPPORTED_TARGET
     assert isinstance(decide_project(Recover(RecoverOptions()), state), RefuseRecovery)
 
 
@@ -203,10 +197,8 @@ def test_scaffold_cleanup_mismatch_is_only_installable_with_leave_option() -> No
     )
     refused = decide_project(Apply(ApplyOptions()), state)
     assert isinstance(refused, RefuseMutation)
-    if isinstance(refused, RefuseMutation):
-        assert isinstance(refused.error, TransitionError)
-        if isinstance(refused.error, TransitionError):
-            assert refused.error.kind == TransitionErrorKind.OUTPUT_LOCATION_OCCUPIED
+    assert isinstance(refused.error, TransitionError)
+    assert refused.error.kind == TransitionErrorKind.OUTPUT_LOCATION_OCCUPIED
     installed = decide_project(
         Apply(ApplyOptions(leave_maintenance_artifacts=True)), state
     )
@@ -242,17 +234,13 @@ def test_apply_refuses_unrecoverable_snapshot_and_copier_conflicts() -> None:
 
     refused_snapshot = decide_project(Apply(ApplyOptions()), snapshot)
     assert isinstance(refused_snapshot, RefuseMutation)
-    if isinstance(refused_snapshot, RefuseMutation):
-        assert isinstance(refused_snapshot.error, TransitionError)
-        if isinstance(refused_snapshot.error, TransitionError):
-            assert refused_snapshot.error.kind == TransitionErrorKind.TEMPLATE_CHANGED
+    assert isinstance(refused_snapshot.error, TransitionError)
+    assert refused_snapshot.error.kind == TransitionErrorKind.TEMPLATE_CHANGED
 
     refused_copier = decide_project(Apply(ApplyOptions()), copier)
     assert isinstance(refused_copier, RefuseMutation)
-    if isinstance(refused_copier, RefuseMutation):
-        assert isinstance(refused_copier.error, TransitionError)
-        if isinstance(refused_copier.error, TransitionError):
-            assert refused_copier.error.kind == TransitionErrorKind.COPIER_CONFLICTS
+    assert isinstance(refused_copier.error, TransitionError)
+    assert refused_copier.error.kind == TransitionErrorKind.COPIER_CONFLICTS
 
     for state in (snapshot, copier):
         planned = decide_project(PlanApply(ApplyPlanOptions()), state)
@@ -277,10 +265,8 @@ def test_source_change_takes_precedence_over_managed_drift() -> None:
     )
     decision = decide_project(Apply(ApplyOptions()), snapshot)
     assert isinstance(decision, RefuseMutation)
-    if isinstance(decision, RefuseMutation):
-        assert isinstance(decision.error, TransitionError)
-        if isinstance(decision.error, TransitionError):
-            assert decision.error.kind == TransitionErrorKind.TEMPLATE_CHANGED
+    assert isinstance(decision.error, TransitionError)
+    assert decision.error.kind == TransitionErrorKind.TEMPLATE_CHANGED
 
 
 def test_planning_refusal_stays_in_the_planning_decision_family() -> None:
@@ -399,11 +385,10 @@ def test_recovery_dispatches_all_journal_phases_and_blockers() -> None:
         StateRootInvalid(worktree().context, OrphanTransactionState("orphan")),
     )
     assert isinstance(state_root_decision, RefuseRecovery)
-    if isinstance(state_root_decision, RefuseRecovery):
-        assert state_root_decision.error == TransactionError(
-            TransactionErrorKind.INVALID_STATE_ROOT,
-            subject="state root evidence",
-        )
+    assert state_root_decision.error == TransactionError(
+        TransactionErrorKind.INVALID_STATE_ROOT,
+        subject="state root evidence",
+    )
 
     # A canonical template source needs no recovery: the design maps it
     # to ``NoRecoveryNeeded`` rather than a refusal.
@@ -474,10 +459,9 @@ def test_apply_decision_handles_all_existing_state_families() -> None:
         ProjectAvailable(worktree(), InvalidManifest("invalid", ())),
     )
     assert isinstance(invalid_manifest_decision, RefuseMutation)
-    if isinstance(invalid_manifest_decision, RefuseMutation):
-        assert invalid_manifest_decision.error == ContractError(
-            ContractErrorKind.INVALID_MANIFEST, "invalid"
-        )
+    assert invalid_manifest_decision.error == ContractError(
+        ContractErrorKind.INVALID_MANIFEST, "invalid"
+    )
 
     for existing, expected_kind in (
         (
@@ -502,10 +486,8 @@ def test_apply_decision_handles_all_existing_state_families() -> None:
             ProjectAvailable(worktree(), ExistingProject(existing)),
         )
         assert isinstance(decision, RefuseMutation)
-        if isinstance(decision, RefuseMutation):
-            assert isinstance(decision.error, TransitionError)
-            if isinstance(decision.error, TransitionError):
-                assert decision.error.kind == expected_kind
+        assert isinstance(decision.error, TransitionError)
+        assert decision.error.kind == expected_kind
 
     verified_snapshot = ProjectAvailable(
         worktree(),
@@ -519,10 +501,8 @@ def test_apply_decision_handles_all_existing_state_families() -> None:
     )
     decision = decide_project(Apply(ApplyOptions()), verified_snapshot)
     assert isinstance(decision, RefuseMutation)
-    if isinstance(decision, RefuseMutation):
-        assert isinstance(decision.error, TransitionError)
-        if isinstance(decision.error, TransitionError):
-            assert decision.error.kind == TransitionErrorKind.OPERATION_UNAVAILABLE
+    assert isinstance(decision.error, TransitionError)
+    assert decision.error.kind == TransitionErrorKind.OPERATION_UNAVAILABLE
 
     drifted_snapshot = ProjectAvailable(
         worktree(),
@@ -677,10 +657,8 @@ def test_add_and_restore_cover_every_copier_condition_branch() -> None:
     )
     drift_decision = decide_project(Add(AddOptions()), drift_state)
     assert isinstance(drift_decision, RefuseMutation)
-    if isinstance(drift_decision, RefuseMutation):
-        assert isinstance(drift_decision.error, TransitionError)
-        if isinstance(drift_decision.error, TransitionError):
-            assert drift_decision.error.kind == TransitionErrorKind.MANAGED_DRIFT
+    assert isinstance(drift_decision.error, TransitionError)
+    assert drift_decision.error.kind == TransitionErrorKind.MANAGED_DRIFT
 
     for condition in (
         CopierConflicted(PathDelta((RepoPath(".rej"),))),
@@ -698,10 +676,8 @@ def test_add_and_restore_cover_every_copier_condition_branch() -> None:
         )
         decision = decide_project(Add(AddOptions()), state)
         assert isinstance(decision, RefuseMutation)
-        if isinstance(decision, RefuseMutation):
-            assert isinstance(decision.error, TransitionError)
-            if isinstance(decision.error, TransitionError):
-                assert decision.error.kind == TransitionErrorKind.OPERATION_UNAVAILABLE
+        assert isinstance(decision.error, TransitionError)
+        assert decision.error.kind == TransitionErrorKind.OPERATION_UNAVAILABLE
 
 
 def test_context_of_and_is_protected_cover_every_state_family() -> None:
@@ -749,8 +725,7 @@ def test_three_unstable_pairs_return_concurrent_target_change() -> None:
     )
     result = collect_coherent_observation(lambda: next(values))
     assert isinstance(result, Err)
-    if isinstance(result, Err):
-        assert result.error.kind == ObservationErrorKind.CONCURRENT_TARGET_CHANGE
+    assert result.error.kind == ObservationErrorKind.CONCURRENT_TARGET_CHANGE
 
 
 def test_remote_normalization_matches_supported_github_forms() -> None:
