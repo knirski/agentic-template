@@ -915,7 +915,7 @@ class TestPreparationOwnership:
         assert isinstance(cleanup_step(identity, observed), CleanupThirdState)
 
 
-class TestFakeShellRollback(unittest.TestCase):
+class TestFakeShellRollback:
     def test_rollback_restores_exact_bytes_modes_and_topology(self) -> None:
         plan, _, _ = _fixture_plan()
         fs = FakeFs.pre_state()
@@ -989,8 +989,8 @@ class TestFakeShellRollback(unittest.TestCase):
             _ = subprocess.run(
                 ["git", "clean", "-fdx"], cwd=repo, check=True, capture_output=True
             )
-            self.assertEqual(backup.read_bytes(), b"backup-bytes")
-            self.assertFalse((repo / "scratch.txt").exists())
+            assert backup.read_bytes() == b"backup-bytes"
+            assert not (repo / "scratch.txt").exists()
 
 
 @settings(max_examples=30, deadline=None)

@@ -13,8 +13,9 @@ import json
 import os
 import subprocess
 import tempfile
-import unittest
 from pathlib import Path
+
+import pytest
 
 from scripts.bootstrap.errors import ContractErrorKind
 from scripts.bootstrap.git_state import ResolvedGitWorktree
@@ -257,17 +258,16 @@ def _classify(
     )
 
 
-class ProjectClassificationTests(unittest.TestCase):
+class TestProjectClassification:
     def test_github_matching_observation_classifies_source_same(self) -> None:
         result = _classify(
             _manifest(),
             files=_observed_files(),
             directories=_observed_directories(),
         )
-        self.assertIsInstance(result, SnapshotExistingProject)
-        if isinstance(result, SnapshotExistingProject):
-            self.assertIsInstance(result.condition, SnapshotSourceSame)
-            self.assertIsInstance(result.condition.managed, ManagedVerified)
+        assert isinstance(result, SnapshotExistingProject)
+        assert isinstance(result.condition, SnapshotSourceSame)
+        assert isinstance(result.condition.managed, ManagedVerified)
 
     def test_adopted_matching_observation_classifies_source_same(self) -> None:
         result = _classify(
@@ -275,10 +275,9 @@ class ProjectClassificationTests(unittest.TestCase):
             files=_observed_files(),
             directories=_observed_directories(),
         )
-        self.assertIsInstance(result, SnapshotExistingProject)
-        if isinstance(result, SnapshotExistingProject):
-            self.assertIsInstance(result.condition, SnapshotSourceSame)
-            self.assertIsInstance(result.condition.managed, ManagedVerified)
+        assert isinstance(result, SnapshotExistingProject)
+        assert isinstance(result.condition, SnapshotSourceSame)
+        assert isinstance(result.condition.managed, ManagedVerified)
 
     def test_adopted_manifest_rejects_mismatched_baseline_kind(self) -> None:
         error = assert_err(
@@ -294,14 +293,13 @@ class ProjectClassificationTests(unittest.TestCase):
             ),
             "expected a baseline/generation mismatch failure",
         )
-        self.assertEqual(error.kind, ManifestErrorKind.SCHEMA_VIOLATION)
-        self.assertEqual(error.subject, "source_baseline")
+        assert error.kind == ManifestErrorKind.SCHEMA_VIOLATION
+        assert error.subject == "source_baseline"
 
     def test_unreachable_snapshot_commit_is_unrecoverable(self) -> None:
         result = _classify(_manifest(), files={}, commit_reachable=False)
-        self.assertIsInstance(result, SnapshotExistingProject)
-        if isinstance(result, SnapshotExistingProject):
-            self.assertIsInstance(result.condition, SnapshotSourceUnrecoverable)
+        assert isinstance(result, SnapshotExistingProject)
+        assert isinstance(result.condition, SnapshotSourceUnrecoverable)
 
     def test_directory_source_repair_is_unavailable(self) -> None:
         # The manifest builder rejects duplicate baseline paths, so this
@@ -337,21 +335,17 @@ class ProjectClassificationTests(unittest.TestCase):
             managed=(),
         )
         result = _classify(manifest, files={})
-        self.assertIsInstance(result, SnapshotExistingProject)
-        if isinstance(result, SnapshotExistingProject):
-            self.assertIsInstance(result.condition, SnapshotSourceUnrecoverable)
-            if isinstance(result.condition, SnapshotSourceUnrecoverable):
-                self.assertIn(
-                    "directory source repair is unavailable", result.condition.reason
-                )
+        assert isinstance(result, SnapshotExistingProject)
+        assert isinstance(result.condition, SnapshotSourceUnrecoverable)
+        assert isinstance(result.condition, SnapshotSourceUnrecoverable)
+        assert "directory source repair is unavailable" in result.condition.reason
 
     def test_content_differing_at_commit_is_unrecoverable(self) -> None:
         result = _classify(_manifest(), files={}, at_commit=b"wrong bytes")
-        self.assertIsInstance(result, SnapshotExistingProject)
-        if isinstance(result, SnapshotExistingProject):
-            self.assertIsInstance(result.condition, SnapshotSourceUnrecoverable)
-            if isinstance(result.condition, SnapshotSourceUnrecoverable):
-                self.assertIn("differs at commit", result.condition.reason)
+        assert isinstance(result, SnapshotExistingProject)
+        assert isinstance(result.condition, SnapshotSourceUnrecoverable)
+        assert isinstance(result.condition, SnapshotSourceUnrecoverable)
+        assert "differs at commit" in result.condition.reason
 
     def test_changed_file_repairs_from_the_recorded_commit(self) -> None:
         result = _classify(
@@ -360,15 +354,11 @@ class ProjectClassificationTests(unittest.TestCase):
             directories=_observed_directories(),
             at_commit=b"present\n",
         )
-        self.assertIsInstance(result, SnapshotExistingProject)
-        if isinstance(result, SnapshotExistingProject):
-            self.assertIsInstance(result.condition, SnapshotSourceChanged)
-            if isinstance(result.condition, SnapshotSourceChanged):
-                self.assertEqual(result.condition.repair.commit, "0" * 40)
-                self.assertEqual(
-                    result.condition.repair.paths,
-                    (RepoPath("src/lib.py"),),
-                )
+        assert isinstance(result, SnapshotExistingProject)
+        assert isinstance(result.condition, SnapshotSourceChanged)
+        assert isinstance(result.condition, SnapshotSourceChanged)
+        assert result.condition.repair.commit == "0" * 40
+        assert result.condition.repair.paths == (RepoPath("src/lib.py"),)
 
     def test_adopted_changed_file_repairs_from_the_recorded_commit(self) -> None:
         result = _classify(
@@ -377,15 +367,11 @@ class ProjectClassificationTests(unittest.TestCase):
             directories=_observed_directories(),
             at_commit=b"present\n",
         )
-        self.assertIsInstance(result, SnapshotExistingProject)
-        if isinstance(result, SnapshotExistingProject):
-            self.assertIsInstance(result.condition, SnapshotSourceChanged)
-            if isinstance(result.condition, SnapshotSourceChanged):
-                self.assertEqual(result.condition.repair.commit, "0" * 40)
-                self.assertEqual(
-                    result.condition.repair.paths,
-                    (RepoPath("src/lib.py"),),
-                )
+        assert isinstance(result, SnapshotExistingProject)
+        assert isinstance(result.condition, SnapshotSourceChanged)
+        assert isinstance(result.condition, SnapshotSourceChanged)
+        assert result.condition.repair.commit == "0" * 40
+        assert result.condition.repair.paths == (RepoPath("src/lib.py"),)
 
     def test_new_declared_source_file_is_source_drift(self) -> None:
         ownership = CapturedFile(
@@ -406,11 +392,10 @@ class ProjectClassificationTests(unittest.TestCase):
             files=files,
             directories=_observed_directories(),
         )
-        self.assertIsInstance(result, CopierExistingProject)
-        if isinstance(result, CopierExistingProject):
-            self.assertIsInstance(result.condition, CopierSourceChanged)
-            if isinstance(result.condition, CopierSourceChanged):
-                self.assertIn(RepoPath("src/new.py"), result.condition.delta.paths)
+        assert isinstance(result, CopierExistingProject)
+        assert isinstance(result.condition, CopierSourceChanged)
+        assert isinstance(result.condition, CopierSourceChanged)
+        assert RepoPath("src/new.py") in result.condition.delta.paths
 
     def test_snapshot_does_not_reclassify_new_adopter_file_from_changed_ownership(
         self,
@@ -446,28 +431,18 @@ class ProjectClassificationTests(unittest.TestCase):
             directories=_observed_directories(),
             at_commit=original_ownership,
         )
-        self.assertIsInstance(result, SnapshotExistingProject)
-        if isinstance(result, SnapshotExistingProject):
-            self.assertIsInstance(result.condition, SnapshotSourceChanged)
-            if isinstance(result.condition, SnapshotSourceChanged):
-                self.assertEqual(
-                    result.condition.delta.paths,
-                    (SOURCE_OWNERSHIP_PATH,),
-                )
-                self.assertEqual(
-                    result.condition.repair.paths,
-                    (SOURCE_OWNERSHIP_PATH,),
-                )
+        assert isinstance(result, SnapshotExistingProject)
+        assert isinstance(result.condition, SnapshotSourceChanged)
+        assert isinstance(result.condition, SnapshotSourceChanged)
+        assert result.condition.delta.paths == (SOURCE_OWNERSHIP_PATH,)
+        assert result.condition.repair.paths == (SOURCE_OWNERSHIP_PATH,)
 
     def test_absent_directory_is_source_drift(self) -> None:
         result = _classify(_manifest(), files=_observed_files(), directories={})
-        self.assertIsInstance(result, SnapshotExistingProject)
-        if isinstance(result, SnapshotExistingProject):
-            self.assertIsInstance(result.condition, SnapshotSourceUnrecoverable)
-            if isinstance(result.condition, SnapshotSourceUnrecoverable):
-                self.assertIn(
-                    "directory source repair is unavailable", result.condition.reason
-                )
+        assert isinstance(result, SnapshotExistingProject)
+        assert isinstance(result.condition, SnapshotSourceUnrecoverable)
+        assert isinstance(result.condition, SnapshotSourceUnrecoverable)
+        assert "directory source repair is unavailable" in result.condition.reason
 
     def test_changed_directory_mode_is_source_drift(self) -> None:
         result = _classify(
@@ -479,19 +454,15 @@ class ProjectClassificationTests(unittest.TestCase):
                 )
             },
         )
-        self.assertIsInstance(result, SnapshotExistingProject)
-        if isinstance(result, SnapshotExistingProject):
-            self.assertIsInstance(result.condition, SnapshotSourceUnrecoverable)
-            if isinstance(result.condition, SnapshotSourceUnrecoverable):
-                self.assertIn(
-                    "directory source repair is unavailable", result.condition.reason
-                )
+        assert isinstance(result, SnapshotExistingProject)
+        assert isinstance(result.condition, SnapshotSourceUnrecoverable)
+        assert isinstance(result.condition, SnapshotSourceUnrecoverable)
+        assert "directory source repair is unavailable" in result.condition.reason
 
     def test_missing_copier_answers_is_conflicted(self) -> None:
         result = _classify(_manifest(copier=True), copier_answers_present=False)
-        self.assertIsInstance(result, CopierExistingProject)
-        if isinstance(result, CopierExistingProject):
-            self.assertIsInstance(result.condition, CopierConflicted)
+        assert isinstance(result, CopierExistingProject)
+        assert isinstance(result.condition, CopierConflicted)
 
     def test_copier_matching_observation_is_source_same(self) -> None:
         result = _classify(
@@ -500,9 +471,8 @@ class ProjectClassificationTests(unittest.TestCase):
             files=_observed_files(),
             directories=_observed_directories(),
         )
-        self.assertIsInstance(result, CopierExistingProject)
-        if isinstance(result, CopierExistingProject):
-            self.assertIsInstance(result.condition, CopierSourceSame)
+        assert isinstance(result, CopierExistingProject)
+        assert isinstance(result.condition, CopierSourceSame)
 
     def test_copier_source_change_is_reported(self) -> None:
         result = _classify(
@@ -511,14 +481,10 @@ class ProjectClassificationTests(unittest.TestCase):
             files={},
             directories=_observed_directories(),
         )
-        self.assertIsInstance(result, CopierExistingProject)
-        if isinstance(result, CopierExistingProject):
-            self.assertIsInstance(result.condition, CopierSourceChanged)
-            if isinstance(result.condition, CopierSourceChanged):
-                self.assertEqual(
-                    result.condition.delta.paths,
-                    (RepoPath("src/lib.py"),),
-                )
+        assert isinstance(result, CopierExistingProject)
+        assert isinstance(result.condition, CopierSourceChanged)
+        assert isinstance(result.condition, CopierSourceChanged)
+        assert result.condition.delta.paths == (RepoPath("src/lib.py"),)
 
     def test_missing_managed_file_is_drift(self) -> None:
         managed = (
@@ -535,16 +501,12 @@ class ProjectClassificationTests(unittest.TestCase):
             files=_observed_files(),
             directories=_observed_directories(),
         )
-        self.assertIsInstance(result, CopierExistingProject)
-        if isinstance(result, CopierExistingProject):
-            self.assertIsInstance(result.condition, CopierSourceSame)
-            if isinstance(result.condition, CopierSourceSame):
-                self.assertIsInstance(result.condition.managed, ManagedDrift)
-                if isinstance(result.condition.managed, ManagedDrift):
-                    self.assertEqual(
-                        result.condition.managed.delta.paths,
-                        (RepoPath("docs/api.md"),),
-                    )
+        assert isinstance(result, CopierExistingProject)
+        assert isinstance(result.condition, CopierSourceSame)
+        assert isinstance(result.condition, CopierSourceSame)
+        assert isinstance(result.condition.managed, ManagedDrift)
+        assert isinstance(result.condition.managed, ManagedDrift)
+        assert result.condition.managed.delta.paths == (RepoPath("docs/api.md"),)
 
     def test_changed_managed_mode_is_drift(self) -> None:
         managed = (
@@ -565,11 +527,10 @@ class ProjectClassificationTests(unittest.TestCase):
             files=files,
             directories=_observed_directories(),
         )
-        self.assertIsInstance(result, CopierExistingProject)
-        if isinstance(result, CopierExistingProject):
-            self.assertIsInstance(result.condition, CopierSourceSame)
-            if isinstance(result.condition, CopierSourceSame):
-                self.assertIsInstance(result.condition.managed, ManagedDrift)
+        assert isinstance(result, CopierExistingProject)
+        assert isinstance(result.condition, CopierSourceSame)
+        assert isinstance(result.condition, CopierSourceSame)
+        assert isinstance(result.condition.managed, ManagedDrift)
 
     def test_matching_managed_inventory_is_verified(self) -> None:
         managed = (
@@ -590,11 +551,10 @@ class ProjectClassificationTests(unittest.TestCase):
             files=files,
             directories=_observed_directories(),
         )
-        self.assertIsInstance(result, CopierExistingProject)
-        if isinstance(result, CopierExistingProject):
-            self.assertIsInstance(result.condition, CopierSourceSame)
-            if isinstance(result.condition, CopierSourceSame):
-                self.assertIsInstance(result.condition.managed, ManagedVerified)
+        assert isinstance(result, CopierExistingProject)
+        assert isinstance(result.condition, CopierSourceSame)
+        assert isinstance(result.condition, CopierSourceSame)
+        assert isinstance(result.condition.managed, ManagedVerified)
 
     def test_managed_path_observed_as_directory_is_unsafe(self) -> None:
         managed = (
@@ -614,9 +574,8 @@ class ProjectClassificationTests(unittest.TestCase):
                 )
             },
         )
-        self.assertIsInstance(result, UnsafeExistingProject)
-        if isinstance(result, UnsafeExistingProject):
-            self.assertIsInstance(result.error, TopologyError)
+        assert isinstance(result, UnsafeExistingProject)
+        assert isinstance(result.error, TopologyError)
 
     def test_baseline_shape_mismatch_is_unsafe(self) -> None:
         files = _observed_files()
@@ -630,7 +589,7 @@ class ProjectClassificationTests(unittest.TestCase):
                 )
             },
         )
-        self.assertIsInstance(result, UnsafeExistingProject)
+        assert isinstance(result, UnsafeExistingProject)
 
     def test_overlapping_unsafe_path_is_named_once(self) -> None:
         path = RepoPath("docs/agents/domain.md")
@@ -657,9 +616,9 @@ class ProjectClassificationTests(unittest.TestCase):
             files={},
             directories={path: CapturedDirectory(path, PosixMode.DIRECTORY)},
         )
-        self.assertIsInstance(result, UnsafeExistingProject)
-        if isinstance(result, UnsafeExistingProject):
-            self.assertEqual(result.error.paths, (path,))
+        assert isinstance(result, UnsafeExistingProject)
+        assert isinstance(result, UnsafeExistingProject)
+        assert result.error.paths == (path,)
 
     def test_duplicate_recorded_addition_is_incompatible(self) -> None:
         result = _classify(
@@ -669,34 +628,34 @@ class ProjectClassificationTests(unittest.TestCase):
             ),
             files=_observed_files(),
         )
-        self.assertIsInstance(result, IncompatibleExistingProject)
-        if isinstance(result, IncompatibleExistingProject):
-            self.assertEqual(result.error.reason, "duplicate_addition")
+        assert isinstance(result, IncompatibleExistingProject)
+        assert isinstance(result, IncompatibleExistingProject)
+        assert result.error.reason == "duplicate_addition"
 
     def test_unknown_recorded_capability_is_incompatible(self) -> None:
         result = _classify(
             _manifest(additions=ManifestAdditions(requested=("bogus",))),
             files=_observed_files(),
         )
-        self.assertIsInstance(result, IncompatibleExistingProject)
-        if isinstance(result, IncompatibleExistingProject):
-            self.assertEqual(result.error.reason, "unknown_capability:bogus")
+        assert isinstance(result, IncompatibleExistingProject)
+        assert isinstance(result, IncompatibleExistingProject)
+        assert result.error.reason == "unknown_capability:bogus"
 
     def test_unselected_recorded_settings_are_incompatible(self) -> None:
         result = _classify(
             _manifest(answers=_answers(settings={"bogus": {}})),
             files=_observed_files(),
         )
-        self.assertIsInstance(result, IncompatibleExistingProject)
-        if isinstance(result, IncompatibleExistingProject):
-            self.assertEqual(result.error.reason, "unselected_settings:bogus")
+        assert isinstance(result, IncompatibleExistingProject)
+        assert isinstance(result, IncompatibleExistingProject)
+        assert result.error.reason == "unselected_settings:bogus"
 
 
 def _state_root_snapshot() -> StateRootSnapshot:
     return StateRootSnapshot(TARGET, (), None, False, None, False)
 
 
-class SystemStateAssemblyTests(unittest.TestCase):
+class TestSystemStateAssembly:
     def test_unsupported_target_is_unavailable(self) -> None:
         result = build_system_state(
             environment=UnsupportedGitTarget(TargetReason.NOT_WORKTREE),
@@ -704,7 +663,7 @@ class SystemStateAssemblyTests(unittest.TestCase):
             project=None,
             state_root=RepoPath("x"),
         )
-        self.assertIsInstance(result, TargetUnavailable)
+        assert isinstance(result, TargetUnavailable)
 
     def test_no_journal_requires_project_facts(self) -> None:
         context = WorktreeContext(
@@ -712,7 +671,7 @@ class SystemStateAssemblyTests(unittest.TestCase):
             state_root=RepoPath(".git/rygor"),
             protection=OrdinaryProject(),
         )
-        with self.assertRaises(TypeError):
+        with pytest.raises(TypeError):
             _ = build_system_state(
                 environment=SupportedWorktree(context),
                 journal=NoJournal(),
@@ -725,7 +684,7 @@ class SystemStateAssemblyTests(unittest.TestCase):
             CapturedFile(RepoPath("b.txt"), b"", PosixMode.FILE),
             CapturedFile(RepoPath("a.txt"), b"", PosixMode.FILE),
         )
-        with self.assertRaises(TypeError):
+        with pytest.raises(TypeError):
             _ = ProjectObservationPass(TARGET, (), _state_root_snapshot(), files, ())
 
     def test_observation_pass_requires_sorted_directories(self) -> None:
@@ -733,7 +692,7 @@ class SystemStateAssemblyTests(unittest.TestCase):
             CapturedDirectory(RepoPath("z"), PosixMode.DIRECTORY),
             CapturedDirectory(RepoPath("a"), PosixMode.DIRECTORY),
         )
-        with self.assertRaises(TypeError):
+        with pytest.raises(TypeError):
             _ = ProjectObservationPass(
                 TARGET, (), _state_root_snapshot(), (), directories
             )
@@ -773,21 +732,31 @@ def _ownership_bytes(
     ).encode("utf-8")
 
 
-class ObservationShellContractTests(unittest.TestCase):
+def _observation_pass(
+    files: tuple[CapturedFile, ...] = (),
+    directories: tuple[CapturedDirectory, ...] = (),
+) -> ProjectObservationPass:
+    return ProjectObservationPass(
+        TARGET, (), _state_root_snapshot(), files, directories
+    )
+
+
+def _git_worktree(parent: str) -> ResolvedGitWorktree:
+    root = seed_repo(Path(parent), {"file.txt": "hello\n"})
+    return ResolvedGitWorktree(
+        root_abs=os.fsencode(os.fspath(root)),
+        git_dir_abs=os.fsencode(os.fspath(root / ".git")),
+        state_root_abs=os.fsencode(os.fspath(root / "rygor")),
+        target=TARGET,
+    )
+
+
+class TestObservationShellContract:
     """In-process contracts for the shell-side cleanup and git-evidence helpers.
 
     The CLI end-to-end suite reaches these helpers only through success paths;
     these tests pin the bounded rejection and repair branches directly.
     """
-
-    @staticmethod
-    def _pass(
-        files: tuple[CapturedFile, ...] = (),
-        directories: tuple[CapturedDirectory, ...] = (),
-    ) -> ProjectObservationPass:
-        return ProjectObservationPass(
-            TARGET, (), _state_root_snapshot(), files, directories
-        )
 
     def test_repository_claude_aliases_are_outside_project_observation(self) -> None:
         root = tempfile.mkdtemp()
@@ -801,20 +770,15 @@ class ObservationShellContractTests(unittest.TestCase):
             DEFAULT_LIMITS,
         )
         files, directories = assert_ok(result, "non-project aliases should be ignored")
-        self.assertEqual(
-            tuple(entry.path for entry in files),
-            (RepoPath("keep.txt"),),
-        )
-        self.assertNotIn(
-            RepoPath(".claude"), tuple(entry.path for entry in directories)
-        )
+        assert tuple(entry.path for entry in files) == (RepoPath("keep.txt"),)
+        assert RepoPath(".claude") not in tuple(entry.path for entry in directories)
 
     def test_cleanup_observation_rejects_invalid_inventories(self) -> None:
         inventory = CapturedFile(
             MAINTENANCE_INVENTORY_PATH, b"not json", PosixMode.FILE
         )
         result = _cleanup_observation({inventory.path: inventory}, {})
-        self.assertIsInstance(result, CleanupContractMismatch)
+        assert isinstance(result, CleanupContractMismatch)
 
     def test_cleanup_observation_requires_the_source_ownership(self) -> None:
         inventory = CapturedFile(
@@ -823,9 +787,9 @@ class ObservationShellContractTests(unittest.TestCase):
             PosixMode.FILE,
         )
         result = _cleanup_observation({inventory.path: inventory}, {})
-        self.assertIsInstance(result, CleanupContractMismatch)
-        if isinstance(result, CleanupContractMismatch):
-            self.assertEqual(result.paths, (SOURCE_OWNERSHIP_PATH,))
+        assert isinstance(result, CleanupContractMismatch)
+        assert isinstance(result, CleanupContractMismatch)
+        assert result.paths == (SOURCE_OWNERSHIP_PATH,)
 
     def test_cleanup_observation_rejects_corrupt_source_ownership(self) -> None:
         inventory = CapturedFile(
@@ -837,7 +801,7 @@ class ObservationShellContractTests(unittest.TestCase):
         result = _cleanup_observation(
             {inventory.path: inventory, ownership.path: ownership}, {}
         )
-        self.assertIsInstance(result, CleanupContractMismatch)
+        assert isinstance(result, CleanupContractMismatch)
 
     def test_cleanup_observation_rejects_declared_set_disagreement(self) -> None:
         inventory = CapturedFile(
@@ -853,9 +817,9 @@ class ObservationShellContractTests(unittest.TestCase):
         result = _cleanup_observation(
             {inventory.path: inventory, ownership.path: ownership}, {}
         )
-        self.assertIsInstance(result, CleanupContractMismatch)
-        if isinstance(result, CleanupContractMismatch):
-            self.assertIn(RepoPath("pyproject.toml"), result.paths)
+        assert isinstance(result, CleanupContractMismatch)
+        assert isinstance(result, CleanupContractMismatch)
+        assert RepoPath("pyproject.toml") in result.paths
 
     def test_cleanup_observation_verifies_present_file_entries(self) -> None:
         content = b"tests content"
@@ -881,7 +845,7 @@ class ObservationShellContractTests(unittest.TestCase):
             },
             {},
         )
-        self.assertIsInstance(observed, CleanupContractValid)
+        assert isinstance(observed, CleanupContractValid)
 
     def test_cleanup_observation_reports_missing_directory_entries(self) -> None:
         inventory = CapturedFile(
@@ -897,19 +861,19 @@ class ObservationShellContractTests(unittest.TestCase):
         observed = _cleanup_observation(
             {inventory.path: inventory, ownership.path: ownership}, {}
         )
-        self.assertIsInstance(observed, CleanupContractMismatch)
+        assert isinstance(observed, CleanupContractMismatch)
 
     def test_retained_cleanup_contract_requires_an_inventory(self) -> None:
         error = assert_err(
-            _retained_cleanup_contract(self._pass()),
+            _retained_cleanup_contract(_observation_pass()),
             "expected CLEANUP_CONTRACT_INVALID",
         )
-        self.assertEqual(error.kind.value, "cleanup_contract_invalid")
+        assert error.kind.value == "cleanup_contract_invalid"
 
     def test_retained_cleanup_contract_falls_back_to_inventory_when_ownership_is_corrupt(
         self,
     ) -> None:
-        pass_ = self._pass(
+        pass_ = _observation_pass(
             (
                 CapturedFile(
                     MAINTENANCE_INVENTORY_PATH,
@@ -920,13 +884,13 @@ class ObservationShellContractTests(unittest.TestCase):
             )
         )
         contract = assert_ok(_retained_cleanup_contract(pass_), "expected retention")
-        self.assertEqual(
-            contract.cleanup_paths,
-            (MAINTENANCE_INVENTORY_PATH, RepoPath("tests")),
+        assert contract.cleanup_paths == (
+            MAINTENANCE_INVENTORY_PATH,
+            RepoPath("tests"),
         )
 
     def test_retained_cleanup_contract_prefers_the_source_ownership(self) -> None:
-        pass_ = self._pass(
+        pass_ = _observation_pass(
             (
                 CapturedFile(
                     MAINTENANCE_INVENTORY_PATH,
@@ -941,13 +905,13 @@ class ObservationShellContractTests(unittest.TestCase):
             )
         )
         contract = assert_ok(_retained_cleanup_contract(pass_), "expected retention")
-        self.assertEqual(
-            contract.cleanup_paths,
-            (MAINTENANCE_INVENTORY_PATH, RepoPath("a.txt")),
+        assert contract.cleanup_paths == (
+            MAINTENANCE_INVENTORY_PATH,
+            RepoPath("a.txt"),
         )
 
     def test_retained_cleanup_contract_honors_a_valid_empty_declaration(self) -> None:
-        pass_ = self._pass(
+        pass_ = _observation_pass(
             (
                 CapturedFile(
                     MAINTENANCE_INVENTORY_PATH,
@@ -962,35 +926,25 @@ class ObservationShellContractTests(unittest.TestCase):
             )
         )
         contract = assert_ok(_retained_cleanup_contract(pass_), "expected retention")
-        self.assertEqual(contract.cleanup_paths, (MAINTENANCE_INVENTORY_PATH,))
+        assert contract.cleanup_paths == (MAINTENANCE_INVENTORY_PATH,)
 
     def test_retained_cleanup_contract_tolerates_invalid_inventories(self) -> None:
-        pass_ = self._pass(
+        pass_ = _observation_pass(
             (CapturedFile(MAINTENANCE_INVENTORY_PATH, b"not json", PosixMode.FILE),)
         )
         contract = assert_ok(_retained_cleanup_contract(pass_), "expected retention")
-        self.assertEqual(contract.cleanup_paths, (MAINTENANCE_INVENTORY_PATH,))
-
-    @staticmethod
-    def _git_worktree(parent: str) -> ResolvedGitWorktree:
-        root = seed_repo(Path(parent), {"file.txt": "hello\n"})
-        return ResolvedGitWorktree(
-            root_abs=os.fsencode(os.fspath(root)),
-            git_dir_abs=os.fsencode(os.fspath(root / ".git")),
-            state_root_abs=os.fsencode(os.fspath(root / "rygor")),
-            target=TARGET,
-        )
+        assert contract.cleanup_paths == (MAINTENANCE_INVENTORY_PATH,)
 
     def test_snapshot_evidence_reads_committed_content(self) -> None:
         tmp = tempfile.mkdtemp()
-        reachable, path_bytes = _snapshot_evidence(self._git_worktree(tmp))
-        self.assertTrue(reachable())
-        self.assertEqual(path_bytes(RepoPath("file.txt")), b"hello\n")
-        self.assertIsNone(path_bytes(RepoPath("missing.txt")))
+        reachable, path_bytes = _snapshot_evidence(_git_worktree(tmp))
+        assert reachable()
+        assert path_bytes(RepoPath("file.txt")) == b"hello\n"
+        assert path_bytes(RepoPath("missing.txt")) is None
 
     def test_snapshot_evidence_reads_the_recorded_commit(self) -> None:
         tmp = tempfile.mkdtemp()
-        worktree = self._git_worktree(tmp)
+        worktree = _git_worktree(tmp)
         root = os.fsdecode(worktree.root_abs)
         with open(os.path.join(root, "file.txt"), "w", encoding="utf-8") as handle:
             _ = handle.write("changed\n")
@@ -1021,8 +975,8 @@ class ObservationShellContractTests(unittest.TestCase):
             .strip()
         )
         reachable, path_bytes = _snapshot_evidence(worktree, snapshot_commit=recorded)
-        self.assertTrue(reachable())
-        self.assertEqual(path_bytes(RepoPath("file.txt")), b"hello\n")
+        assert reachable()
+        assert path_bytes(RepoPath("file.txt")) == b"hello\n"
 
     def test_snapshot_evidence_handles_unborn_heads(self) -> None:
         tmp = tempfile.mkdtemp()
@@ -1038,69 +992,71 @@ class ObservationShellContractTests(unittest.TestCase):
             target=TARGET,
         )
         reachable, path_bytes = _snapshot_evidence(worktree)
-        self.assertFalse(reachable())
-        self.assertIsNone(path_bytes(RepoPath("file.txt")))
+        assert not reachable()
+        assert path_bytes(RepoPath("file.txt")) is None
 
 
-class TemplateSourceWalkerTests(unittest.TestCase):
-    """The source-baseline walker pins tracked template source with canonical modes."""
-
-    @staticmethod
-    def _write_ownership(root: str, lifecycle_paths: tuple[str, ...]) -> None:
-        state_dir = os.path.join(root, ".rygor")
-        os.makedirs(state_dir, exist_ok=True)
-        with open(
-            os.path.join(state_dir, "source-ownership.json"), "w", encoding="utf-8"
-        ) as handle:
-            json.dump(
-                {
-                    "schema_version": 1,
-                    "lifecycle_paths": list(lifecycle_paths),
-                    "snapshot_cleanup_paths": [],
-                },
-                handle,
-                sort_keys=True,
-            )
-
-    @staticmethod
-    def _lifecycle_roots(build: list[tuple[str, str]]) -> tuple[str, ...]:
-        roots = {
-            relative.split("/", 1)[0]
-            for relative, _content in build
-            if RepoPath(relative) not in SEED_ONCE_PATHS
-        }
-        return tuple(sorted(roots))
-
-    def _repo(
-        self, build: list[tuple[str, str]]
-    ) -> tuple[str, tuple[LifecycleSourceEntry, ...]]:
-        files: dict[str, str] = dict(build)
-        files[SOURCE_OWNERSHIP_PATH.value] = json.dumps(
+def _write_ownership(root: str, lifecycle_paths: tuple[str, ...]) -> None:
+    state_dir = os.path.join(root, ".rygor")
+    os.makedirs(state_dir, exist_ok=True)
+    with open(
+        os.path.join(state_dir, "source-ownership.json"), "w", encoding="utf-8"
+    ) as handle:
+        json.dump(
             {
                 "schema_version": 1,
-                "lifecycle_paths": list(self._lifecycle_roots(build)),
+                "lifecycle_paths": list(lifecycle_paths),
                 "snapshot_cleanup_paths": [],
             },
+            handle,
             sort_keys=True,
         )
-        root = seed_repo(Path(tempfile.mkdtemp()), files, name="template")
-        return os.fspath(root), ()
 
-    def _walk(
-        self, root: str, managed_paths: tuple[str, ...] = ()
-    ) -> list[LifecycleSourceEntry]:
-        entries = assert_ok(
-            collect_template_source_entries(
-                root,
-                managed_paths={RepoPath(value) for value in managed_paths},
-                limits=DEFAULT_LIMITS,
-            ),
-            "walk",
-        )
-        return list(entries)
+
+def _lifecycle_roots(build: list[tuple[str, str]]) -> tuple[str, ...]:
+    roots = {
+        relative.split("/", 1)[0]
+        for relative, _content in build
+        if RepoPath(relative) not in SEED_ONCE_PATHS
+    }
+    return tuple(sorted(roots))
+
+
+def _build_repo(
+    build: list[tuple[str, str]],
+) -> tuple[str, tuple[LifecycleSourceEntry, ...]]:
+    files: dict[str, str] = dict(build)
+    files[SOURCE_OWNERSHIP_PATH.value] = json.dumps(
+        {
+            "schema_version": 1,
+            "lifecycle_paths": list(_lifecycle_roots(build)),
+            "snapshot_cleanup_paths": [],
+        },
+        sort_keys=True,
+    )
+    root = seed_repo(Path(tempfile.mkdtemp()), files, name="template")
+    return os.fspath(root), ()
+
+
+def _walk_source(
+    root: str, managed_paths: tuple[str, ...] = ()
+) -> list[LifecycleSourceEntry]:
+    entries = assert_ok(
+        collect_template_source_entries(
+            root,
+            managed_paths={RepoPath(value) for value in managed_paths},
+            limits=DEFAULT_LIMITS,
+        ),
+        "walk",
+    )
+    return list(entries)
+
+
+class TestTemplateSourceWalker:
+    """The source-baseline walker pins tracked template source with canonical modes."""
 
     def test_tracked_source_records_files_and_directories(self) -> None:
-        root, _ = self._repo(
+        root, _ = _build_repo(
             [
                 ("src/lib.py", "present\n"),
                 ("src/tools/run.sh", "#!/bin/sh\n"),
@@ -1109,32 +1065,28 @@ class TemplateSourceWalkerTests(unittest.TestCase):
             ]
         )
         os.chmod(os.path.join(root, "src/tools/run.sh"), 0o755)
-        entries = self._walk(root)
+        entries = _walk_source(root)
         paths = [entry.path.value for entry in entries]
-        self.assertEqual(
-            paths,
-            [
-                ".rygor/source-ownership.json",
-                "src",
-                "src/lib.py",
-                "src/tools",
-                "src/tools/run.sh",
-            ],
-        )
+        assert paths == [
+            ".rygor/source-ownership.json",
+            "src",
+            "src/lib.py",
+            "src/tools",
+            "src/tools/run.sh",
+        ]
         by_path = {entry.path.value: entry for entry in entries}
-        self.assertEqual(by_path["src/lib.py"].kind, "file")
-        self.assertEqual(by_path["src/lib.py"].mode, PosixMode.FILE)
-        self.assertEqual(by_path["src/lib.py"].sha256, sha256_hex(b"present\n"))
-        self.assertEqual(by_path["src/tools"].kind, "directory")
-        self.assertEqual(by_path["src/tools"].mode, PosixMode.DIRECTORY)
-        self.assertEqual(
-            by_path["src/tools"].sha256,
-            sha256_hex(b"template/source/dir:src/tools"),
+        assert by_path["src/lib.py"].kind == "file"
+        assert by_path["src/lib.py"].mode == PosixMode.FILE
+        assert by_path["src/lib.py"].sha256 == sha256_hex(b"present\n")
+        assert by_path["src/tools"].kind == "directory"
+        assert by_path["src/tools"].mode == PosixMode.DIRECTORY
+        assert by_path["src/tools"].sha256 == sha256_hex(
+            b"template/source/dir:src/tools"
         )
-        self.assertEqual(by_path["src/tools/run.sh"].mode, PosixMode.EXECUTABLE)
+        assert by_path["src/tools/run.sh"].mode == PosixMode.EXECUTABLE
 
     def test_untracked_and_generated_state_is_skipped(self) -> None:
-        root, _ = self._repo([("src/lib.py", "present\n")])
+        root, _ = _build_repo([("src/lib.py", "present\n")])
         for relative, content in [
             ("junk.tmp", "untracked\n"),
             (".venv/site-packages/pkg.py", "env\n"),
@@ -1144,26 +1096,28 @@ class TemplateSourceWalkerTests(unittest.TestCase):
             os.makedirs(os.path.dirname(target), exist_ok=True)
             with open(target, "w", encoding="utf-8") as handle:
                 _ = handle.write(content)
-        entries = self._walk(root)
-        self.assertEqual(
-            [entry.path.value for entry in entries],
-            [".rygor/source-ownership.json", "src", "src/lib.py"],
-        )
+        entries = _walk_source(root)
+        assert [entry.path.value for entry in entries] == [
+            ".rygor/source-ownership.json",
+            "src",
+            "src/lib.py",
+        ]
 
     def test_generated_state_below_declared_root_is_skipped(self) -> None:
-        root, _ = self._repo([("src/lib.py", "present\n")])
+        root, _ = _build_repo([("src/lib.py", "present\n")])
         cache = os.path.join(root, "src", "__pycache__")
         os.makedirs(cache)
         with open(os.path.join(cache, "lib.cpython-314.pyc"), "wb") as handle:
             _ = handle.write(b"bytecode")
-        entries = self._walk(root)
-        self.assertEqual(
-            [entry.path.value for entry in entries],
-            [".rygor/source-ownership.json", "src", "src/lib.py"],
-        )
+        entries = _walk_source(root)
+        assert [entry.path.value for entry in entries] == [
+            ".rygor/source-ownership.json",
+            "src",
+            "src/lib.py",
+        ]
 
     def test_state_subtree_and_seed_once_and_managed_paths_are_excluded(self) -> None:
-        root, _ = self._repo([("src/lib.py", "present\n")])
+        root, _ = _build_repo([("src/lib.py", "present\n")])
         state_dir = os.path.join(root, ".rygor")
         os.makedirs(state_dir, exist_ok=True)
         with open(
@@ -1180,12 +1134,12 @@ class TemplateSourceWalkerTests(unittest.TestCase):
             os.path.join(root, ".claude/settings.json"), "w", encoding="utf-8"
         ) as handle:
             _ = handle.write("managed\n")
-        entries = self._walk(root, managed_paths=(".claude/settings.json",))
+        entries = _walk_source(root, managed_paths=(".claude/settings.json",))
         paths = [entry.path.value for entry in entries]
-        self.assertEqual(paths, [".rygor/source-ownership.json", "src", "src/lib.py"])
-        self.assertNotIn(".rygor", paths)
+        assert paths == [".rygor/source-ownership.json", "src", "src/lib.py"]
+        assert ".rygor" not in paths
         for seed_once in SEED_ONCE_PATHS:
-            self.assertNotIn(seed_once.value, paths)
+            assert seed_once.value not in paths
 
     def test_declared_symlink_is_a_source_contract_violation(self) -> None:
         root = os.path.join(tempfile.mkdtemp(), "template")
@@ -1193,7 +1147,7 @@ class TemplateSourceWalkerTests(unittest.TestCase):
         with open(os.path.join(root, "lib.py"), "w", encoding="utf-8") as handle:
             _ = handle.write("present\n")
         os.symlink("lib.py", os.path.join(root, "alias.py"))
-        self._write_ownership(root, ("lib.py", "alias.py"))
+        _write_ownership(root, ("lib.py", "alias.py"))
         _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
         _ = subprocess.run(["git", "add", "-A"], cwd=root, check=True)
         error = assert_err(
@@ -1202,8 +1156,8 @@ class TemplateSourceWalkerTests(unittest.TestCase):
             ),
             "declared symlink should be refused",
         )
-        self.assertEqual(error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
-        self.assertEqual(error.subject, "alias.py")
+        assert error.kind == ContractErrorKind.SOURCE_CONTRACT_INVALID
+        assert error.subject == "alias.py"
 
     def test_unlisted_symlinks_are_not_hashed(self) -> None:
         root = os.path.join(tempfile.mkdtemp(), "template")
@@ -1212,53 +1166,49 @@ class TemplateSourceWalkerTests(unittest.TestCase):
             _ = handle.write("present\n")
         os.symlink("missing.py", os.path.join(root, "broken.py"))
         os.symlink("lib.py", os.path.join(root, "loose.py"))
-        self._write_ownership(root, ("lib.py",))
+        _write_ownership(root, ("lib.py",))
         _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
         _ = subprocess.run(["git", "add", "lib.py", "broken.py"], cwd=root, check=True)
-        entries = self._walk(root)
+        entries = _walk_source(root)
         paths = [entry.path.value for entry in entries]
-        self.assertNotIn("broken.py", paths)
-        self.assertNotIn("loose.py", paths)
+        assert "broken.py" not in paths
+        assert "loose.py" not in paths
 
     def test_unlisted_files_are_not_hashed_even_when_tracked(self) -> None:
-        root, _ = self._repo([("src/lib.py", "present\n")])
+        root, _ = _build_repo([("src/lib.py", "present\n")])
         with open(os.path.join(root, "adopter.py"), "w", encoding="utf-8") as handle:
             _ = handle.write("adopter\n")
         _ = subprocess.run(["git", "add", "adopter.py"], cwd=root, check=True)
-        entries = self._walk(root)
+        entries = _walk_source(root)
         paths = [entry.path.value for entry in entries]
-        self.assertNotIn("adopter.py", paths)
-        self.assertIn(".rygor/source-ownership.json", paths)
+        assert "adopter.py" not in paths
+        assert ".rygor/source-ownership.json" in paths
 
     def test_oversized_file_is_a_source_contract_violation(self) -> None:
-        root, _ = self._repo([("big.bin", "x" * 512)])
+        root, _ = _build_repo([("big.bin", "x" * 512)])
         limits = ResourceLimits(max_file_bytes=256)
         error = assert_err(
             collect_template_source_entries(root, managed_paths=set(), limits=limits),
             "oversized file should be refused",
         )
-        self.assertEqual(error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
-        self.assertEqual(error.subject, "big.bin")
+        assert error.kind == ContractErrorKind.SOURCE_CONTRACT_INVALID
+        assert error.subject == "big.bin"
 
     def test_path_and_unique_bytes_bounds_are_enforced(self) -> None:
-        root, _ = self._repo([("a.txt", "a\n"), ("b.txt", "b\n"), ("c.txt", "c\n")])
+        root, _ = _build_repo([("a.txt", "a\n"), ("b.txt", "b\n"), ("c.txt", "c\n")])
         path_error = assert_err(
             collect_template_source_entries(
                 root, managed_paths=set(), limits=ResourceLimits(max_paths=2)
             ),
             "path bound should be enforced",
         )
-        self.assertEqual(path_error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
-        self.assertEqual(path_error.subject, "paths")
+        assert path_error.kind == ContractErrorKind.SOURCE_CONTRACT_INVALID
+        assert path_error.subject == "paths"
         byte_error = assert_err(
             collect_template_source_entries(
                 root, managed_paths=set(), limits=ResourceLimits(max_unique_bytes=4)
             ),
             "unique-byte bound should be enforced",
         )
-        self.assertEqual(byte_error.kind, ContractErrorKind.SOURCE_CONTRACT_INVALID)
-        self.assertEqual(byte_error.subject, "unique_bytes")
-
-
-if __name__ == "__main__":
-    _ = unittest.main()
+        assert byte_error.kind == ContractErrorKind.SOURCE_CONTRACT_INVALID
+        assert byte_error.subject == "unique_bytes"
