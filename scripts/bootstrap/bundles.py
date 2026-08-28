@@ -437,6 +437,15 @@ def _lifecycle_install_set(
                 "lifecycle install set missing AGENTS.md",
             )
         )
+    try:
+        _ = agents_content.decode("utf-8")
+    except UnicodeDecodeError:
+        return Err(
+            ContractError(
+                ContractErrorKind.INVALID_TEMPLATE,
+                "lifecycle install set AGENTS.md must be UTF-8 text",
+            )
+        )
     files.append(
         ManagedFile(
             path=RepoPath("CLAUDE.md"),

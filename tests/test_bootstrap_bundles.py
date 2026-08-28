@@ -517,3 +517,29 @@ def test_compile_adoption_install_records_adopted_provenance() -> None:
             assert candidate.provenance.generation_path is GenerationPath.ADOPTED
         case Err(error):
             raise AssertionError(f"manifest decode failed: {error}")
+
+
+def test_compile_adoption_install_rejects_a_binary_agents_md() -> None:
+    """The CLAUDE.md copy is a text file; a binary AGENTS.md cannot feed it."""
+    root = Path(tempfile.mkdtemp()) / "template"
+    (root / ".rygor").mkdir(parents=True)
+    _ = (root / "AGENTS.md").write_bytes(b"\xff\xfe\x00 binary agents \x00")
+    _ = (root / "LICENSE").write_bytes(b"Apache License\n")
+    _ = (root / "NOTICE.md").write_bytes(b"# Notices\n")
+    _ = (root / ".rygor" / "source-ownership.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "lifecycle_paths": ["AGENTS.md"],
+                "snapshot_cleanup_paths": [],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    error = assert_err(
+        _compile_adoption_result(str(root), TargetSnapshot()),
+        "expected INVALID_TEMPLATE",
+    )
+    assert isinstance(error, ContractError)
+    assert error.subject == "lifecycle install set AGENTS.md must be UTF-8 text"
