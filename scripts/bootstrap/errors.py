@@ -66,6 +66,8 @@ class TransitionErrorKind(StrEnum):
     OUTPUT_LOCATION_OCCUPIED = "output_location_occupied"
     RECOVERY_TARGET_MISMATCH = "recovery_target_mismatch"
     RECOVERY_THIRD_STATE = "recovery_third_state"
+    APPLY_REQUIRED = "apply_required"
+    STATUS_REQUIRED = "status_required"
 
 
 class TransactionPrimitive(StrEnum):
