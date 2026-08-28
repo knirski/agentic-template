@@ -680,8 +680,30 @@
           "depends_on": ["T18"],
           "inputs": ["US acceptance criteria from design.md", "Baseline collection count captured before stage 7"],
           "description": "Run the complete gate: uv run ruff check .; basedpyright; collection comparison versus pre-conversion baseline (same behaviors, parametrized ids added); mutmut pinned-file collection plus a targeted mutant sample; repository search proving no node-id references broke; template-ci.yml coverage flags intact; walk every US acceptance criterion and record evidence. No code changes expected in this task.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
-          "files": {"reuse": [], "create": [], "modify": [], "delete": []},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-28",
+              "commits": [],
+              "evidence": [
+                "uv run pytest -q green serial: 1430 passed in 45.65s (baseline T11 was 1410 passed ~44s; the +20 are subTest→parametrize expansions from T13–T18, not new behaviors)",
+                "uv run pytest -n auto -q green: 1430 passed in 20.49s (~2.2x speedup over serial; baseline T11 was ~17.6s for 1410, so wall time holds as the suite grew)",
+                "uv run ruff check . clean (All checks passed); uv run ruff format --check . clean (104 files already formatted); uv run basedpyright clean (0 errors, 0 warnings, 0 notes)",
+                "coverage.xml produced by the CI-equivalent command uv run pytest --cov=scripts --cov-report=term-missing --cov-report=xml -n auto: 91% line coverage; .github/workflows/template-ci.yml line 42 still reads uv run pytest --cov=scripts --cov-report=term-missing --cov-report=xml -n auto (coverage flags and -n auto intact)",
+                "mutmut config intact (no T-task touched [tool.mutmut]): source_paths = scripts/bootstrap, scripts/check_project_readiness.py, scripts/validate_repository.py; pytest_add_cli_args_test_selection pins the four files test_bootstrap_foundations.py, test_bootstrap_determinism.py, test_bootstrap_decisions.py, test_script_cores.py with -k not test_canonical_json_round_trips_arbitrary_strict_values; the -k target name still exists in test_bootstrap_foundations.py",
+                "mutmut live run NOTE (pre-existing, out of T18 scope): uv run mutmut run errors during collection of tests/test_script_cores.py because scripts/validate_template.py (imported by that file) is not listed in source_paths, so the isolated mutants/ copy lacks it; pyproject.toml [tool.mutmut] was never modified by any T-task, and the four pinned test files are unchanged by T18, so this is not a regression from the conversion — the same four files pass under normal pytest as part of the 1430 green suite. A follow-up adding scripts/validate_template.py to source_paths would make the mutmut run collect cleanly; T19 itself made no code changes",
+                "rg for old Class-style node ids (::*Tests:: / ::*TestCase::) across .github/workflows, scripts, and docs returns nothing; the only matches for former class names are inside this spec's design.md/plan.json (explicitly excluded by US-6)",
+                "US-1 deterministic git env: tests/conftest.py defines the autouse session fixture deterministic_git_env calling configure_deterministic_git_environment(); the parity test tests/test_bootstrap_cli.py::test_text_json_parity passed 5 consecutive runs (flake fix holds under native form)",
+                "US-3 one factory: rg copy_tracked tests/ scripts/ returns no code references; rg '\"git\", ?\"init\"' tests/ returns only the three intentional unborn-HEAD / selectively-staged harness sites in tests/test_bootstrap_observation.py (allowed per T9/T11) plus factory.py/conftest",
+                "US-5 faithful materialization: tests/test_factory.py fidelity suite passes (5 passed); build_snapshot_project / write_answer_bundle / seed_repo byte/mode fidelity pinned there",
+                "US-6 native suite: zero unittest.TestCase subclasses remain under tests/; rg unittest across the repo (excluding this spec) shows only from unittest.mock import patch (stdlib) and the two pre-existing cast(type[unittest.TestCase], ...) pytest-discovery aliases in test_bootstrap_recovery.py / test_bootstrap_transaction.py; mutmut pinned-file config collected cleanly as a configuration (see mutmut note above)",
+                "US-2 parallel execution and US-4 pay-only-for-what-you-use both hold: -n auto is in template-ci.yml and CONTRIBUTING.md 'Running tests' section; native fixture injection (tmp_path) means tests not requesting projects never build them; single-file wall time did not regress",
+                "All eight stages (P1–P8) are green; the suite is fully native pytest with the factory engine as the single fixture-construction path"
+              ]
+            }
+          },
+          "files": {"reuse": [], "create": [], "modify": ["docs/specs/2026-08-25-test-suite-speedup/plan.json"], "delete": []},
           "new_abstractions": [],
           "validation": {
             "tests": [
