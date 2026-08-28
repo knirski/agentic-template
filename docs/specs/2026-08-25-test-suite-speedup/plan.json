@@ -588,8 +588,23 @@
             "EntryPointTests redirects sys.argv and runs runpy; convert to monkeypatch + tmp_path idioms"
           ],
           "description": "Convert all remaining classes in tests/test_bootstrap_cli.py to module functions with fixture requests; CliFamilyTests drops self.tmp entirely (tmp_path + scaffolded_project/make_bundle); EntryPointTests uses monkeypatch.setattr(sys, 'argv', ...) capturing SystemExit; parse-only tests gain structural laziness automatically by not requesting project fixtures.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
-          "files": {"reuse": ["exemplar pattern", "tests/conftest.py fixtures"], "create": [], "modify": ["tests/test_bootstrap_cli.py"], "delete": []},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-27",
+              "commits": ["cc2f4e8"],
+              "evidence": [
+                "Converted all remaining unittest.TestCase classes in tests/test_bootstrap_cli.py to module-level functions: CliFamilyTests drops TemporaryDirectory for tmp_path; EntryPointTests uses monkeypatch.setattr(sys, 'argv', ...) capturing SystemExit; ProjectChangesTests uses @pytest.mark.parametrize",
+                "No unittest idioms remain in the file; parse-only tests gained structural laziness by not requesting project fixtures",
+                "Regenerated .rygor/maintenance-artifacts.json after the test-source digest change",
+                "uv run pytest tests/test_bootstrap_cli.py -q green serial (40 passed, 16 subtests) and -n auto",
+                "uv run pytest -q passed; uv run ruff check . / ruff format --check . clean; basedpyright 0 errors, 0 warnings, 0 notes",
+                "Merged as PR #119"
+              ]
+            }
+          },
+          "files": {"reuse": ["exemplar pattern", "tests/conftest.py fixtures"], "create": [], "modify": ["tests/test_bootstrap_cli.py", ".rygor/maintenance-artifacts.json"], "delete": []},
           "new_abstractions": [],
           "validation": {
             "tests": ["40 consecutive runs of the parity test green (flake fix holds under native form)", "file green serial and -n auto"],
@@ -602,8 +617,23 @@
           "depends_on": ["T16"],
           "inputs": ["Files: test_bootstrap_observation.py, test_bootstrap_recovery.py, test_bootstrap_state_root.py - mix of already-function-style tests and TestCase classes; state_root contains LockingTests with 127 test definitions incl. process-spawn cases"],
           "description": "Convert remaining TestCase classes in the three files to functions; swap direct builder calls to conftest fixtures where natural; keep process-spawn/locking logic byte-for-byte.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
-          "files": {"reuse": ["exemplar pattern", "tests/conftest.py fixtures"], "create": [], "modify": ["tests/test_bootstrap_observation.py", "tests/test_bootstrap_recovery.py", "tests/test_bootstrap_state_root.py"], "delete": []},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-27",
+              "commits": ["2a98470"],
+              "evidence": [
+                "Converted remaining unittest.TestCase classes in tests/test_bootstrap_observation.py, tests/test_bootstrap_recovery.py, and tests/test_bootstrap_state_root.py to plain classes and functions; extracted shared helpers to module level",
+                "Process-spawn/locking logic (incl. LockingTests process-death cases) kept byte-for-byte unchanged",
+                "Regenerated .rygor/maintenance-artifacts.json after a docs/specs hash change; added docs/agents/test-troubleshooting.md covering CLEANUP_CONTRACT_INVALID failures (referenced from AGENTS.md)",
+                "uv run pytest tests/test_bootstrap_observation.py tests/test_bootstrap_recovery.py tests/test_bootstrap_state_root.py -q green serial and -n auto",
+                "uv run ruff check . / ruff format --check . clean; basedpyright 0 errors, 0 warnings, 0 notes",
+                "Merged as PR #120"
+              ]
+            }
+          },
+          "files": {"reuse": ["exemplar pattern", "tests/conftest.py fixtures"], "create": ["docs/agents/test-troubleshooting.md"], "modify": ["tests/test_bootstrap_observation.py", "tests/test_bootstrap_recovery.py", "tests/test_bootstrap_state_root.py", ".rygor/maintenance-artifacts.json", "AGENTS.md"], "delete": []},
           "new_abstractions": [],
           "validation": {"tests": ["three files green serial and -n auto"], "acceptance": ["locking/process-death tests unchanged in logic"]}
         },
@@ -613,8 +643,25 @@
           "depends_on": ["T17"],
           "inputs": ["Files: residual classes in test_github_template_readiness.py (GitHubSnapshot, SourceContractTests, EligibilityScriptBranchTests), test_project_readiness.py, test_repository_validation.py"],
           "description": "Final conversion batch applying the exemplar pattern; eligibility script tests move env patching to monkeypatch idioms.",
-          "execution": {"mode": "inline", "status": "pending", "completion": null},
-          "files": {"reuse": ["exemplar pattern"], "create": [], "modify": ["tests/test_github_template_readiness.py", "tests/test_project_readiness.py", "tests/test_repository_validation.py"], "delete": []},
+          "execution": {
+            "mode": "inline",
+            "status": "completed",
+            "completion": {
+              "completed_at": "2026-08-28",
+              "commits": ["f3e803d"],
+              "evidence": [
+                "GitHubSnapshot, SourceContractTests, EligibilityScriptBranchTests in tests/test_github_template_readiness.py converted to module functions; ReadinessFixtures in tests/test_project_readiness.py and AggregateFixtures in tests/test_repository_validation.py converted to module functions",
+                "setUp/tearDown lifecycles dissolved into tmp_path plus module-level builder helpers (_build_github_snapshot_project, _build_readiness_project, _build_validation_project); self.assert* replaced with bare asserts; SourceContractTests subTest loop became a plain loop with re.search replacing assertNotRegex; unittest.mock.patch context managers kept in the eligibility-script _run helper",
+                "Regenerated .rygor/maintenance-artifacts.json because the modified test sources change the tracked-source digest (the cleanup-inventory test and the live apply contract both pin it)",
+                "uv run pytest -q passed: 1430 tests",
+                "uv run pytest -n auto -q passed: 1430 tests",
+                "uv run ruff check . passed with All checks passed; uv run ruff format --check . passed; uv run basedpyright passed with 0 errors, 0 warnings, 0 notes",
+                "rg 'class.*(unittest.TestCase)' tests/ returns no matches; the only remaining unittest references are from unittest.mock import patch (stdlib, expected) and the two pre-existing cast(type[unittest.TestCase], ...) discovery aliases in test_bootstrap_recovery.py/test_bootstrap_transaction.py",
+                "Zero TestCase subclasses remain under tests/ (US-6 satisfied)"
+              ]
+            }
+          },
+          "files": {"reuse": ["exemplar pattern"], "create": [], "modify": ["tests/test_github_template_readiness.py", "tests/test_project_readiness.py", "tests/test_repository_validation.py", ".rygor/maintenance-artifacts.json"], "delete": []},
           "new_abstractions": [],
           "validation": {
             "tests": ["rg 'unittest' tests/ returns no code references", "full suite green serial and -n auto"],
