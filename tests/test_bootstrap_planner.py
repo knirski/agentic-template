@@ -4938,3 +4938,26 @@ class TestAdoptionCollisions:
         second = get_plan(self._adopted(snapshot=snapshot, collisions=collisions))
         assert build_receipt(first) == build_receipt(second)
         assert first.ordered_operations == second.ordered_operations
+
+    def test_lifecycle_path_colliding_by_case_with_managed_is_refused(self) -> None:
+        lifecycle = (
+            ManagedFile(
+                path=RepoPath("PYPROJECT.toml"),
+                kind="text",
+                mode=PosixMode.FILE,
+                content=b'[project]\nname = "example"\n',
+            ),
+        )
+        _, result = compile_fixture(
+            generation=GenerationPath.ADOPTED,
+            snapshot=fixture_copier_snapshot(),
+            cleanup=None,
+            lifecycle=lifecycle,
+            collisions={},
+        )
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.PATH_COLLISION
+                assert error.subject == "PYPROJECT.toml"
+            case Ok(_):
+                raise AssertionError("a case-variant lifecycle output compiled")

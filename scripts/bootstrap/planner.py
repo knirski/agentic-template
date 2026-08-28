@@ -1102,8 +1102,17 @@ def compile_initial_plan(
                 MAINTENANCE_INVENTORY_PATH.value,
             }
         )
+        # Path ownership is case-distinct per declaration but plan outputs are
+        # not: a lifecycle path differing only in case from a reserved path
+        # would compile a second output for the same file, so apply the same
+        # lowered comparison the per-render validators use.
+        reserved_lowered = {path.lower() for path in reserved}
         overlap = sorted(
-            (file.path.value for file in lifecycle if file.path.value in reserved),
+            (
+                file.path.value
+                for file in lifecycle
+                if file.path.value.lower() in reserved_lowered
+            ),
             key=lambda value: value.encode("utf-8"),
         )
         if overlap:
