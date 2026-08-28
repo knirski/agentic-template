@@ -422,9 +422,13 @@ def _lifecycle_install_set(
             )
         try:
             _ = content.decode("utf-8")
-            kind: Literal["text", "binary"] = "text"
+            utf8 = True
         except UnicodeDecodeError:
-            kind = "binary"
+            utf8 = False
+        executable = bool(entry.mode.value & 0o111)
+        kind: Literal["text", "binary"] = (
+            "text" if utf8 and not executable else "binary"
+        )
         files.append(
             ManagedFile(path=entry.path, kind=kind, mode=entry.mode, content=content)
         )

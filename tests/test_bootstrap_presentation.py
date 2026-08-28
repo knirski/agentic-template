@@ -187,6 +187,36 @@ def test_envelope_renders_both_next_action_shapes() -> None:
     assert "validate_repository.py" in envelope
 
 
+def test_adoptability_diagnostic_agrees_across_presentations() -> None:
+    diagnostic = Diagnostic(
+        code="BOOTSTRAP_ADOPTABLE_TARGET",
+        category=DiagnosticCategory.TRANSITION,
+        severity=DiagnosticSeverity.INFO,
+        subject="unmanaged manifest-free working tree",
+        summary="this tree can be installed into without recreating it",
+        details="adopt records adopted provenance and installs the managed output",
+        next_action=NoAutomaticAction(
+            "preview with `plan adopt --bundle BUNDLE --target TARGET`, or initialize a recognized scaffold with `init`"
+        ),
+    )
+    result = CommandResult(
+        command="status",
+        outcome=Succeeded(diagnostics=(diagnostic,)),
+        state_document={"kind": "status"},
+        decision_document={"kind": "describe_status"},
+        changes=(),
+        findings=(),
+    )
+    text = render_text(result)
+    envelope = render_json(result)
+    assert "plan adopt" in text
+    assert "init" in text
+    assert '"code":"BOOTSTRAP_ADOPTABLE_TARGET"' in envelope
+    assert '"severity":"info"' in envelope
+    assert "plan adopt" in envelope
+    assert "init" in envelope
+
+
 def test_explain_trace_handles_scalar_state_and_decision() -> None:
     result = CommandResult(
         command="status",
