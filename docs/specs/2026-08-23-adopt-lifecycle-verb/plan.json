@@ -162,8 +162,16 @@
           "description": "Create compile_adoption_install mirroring compile_initial_install's inputs but partitioning planned managed outputs against observed entries: absent paths create files; declared keep-existing paths are excluded from both the plan operations and the managed inventory; declared replace paths become ReplaceFileOperation capturing prior FileState in the receipt; undeclared collisions raise CompileErrorKind.UNDECLARED_COLLISION listing every offending path; a declaration naming a path that does not collide raises a typed unmatched-declaration error; replace targeting the seed-once legal/provenance class raises ILLEGAL_REPLACE_TARGET (US-8 structural rejection). Reuse seed-once input handling, manifest answer normalization, VerifiedBlobStore, gate specifications, and provenance assembly with generation=ADOPTED. The adoption compiler additionally builds the lifecycle install set from the template root - the declared lifecycle_paths, the template root's .rygor/source-ownership.json, and CLAUDE.md as a regular file whose bytes are the template AGENTS.md content - and compiles those files through the same partitioning with the full declare policy; installed lifecycle entries join the manifest managed inventory while lifecycle paths are NOT passed as managed render, so collect_template_source_entries still records them in the adopted source baseline. The expected-target gate is fully reused: the expected target gains the lifecycle files, so required_contract_failures passes naturally.",
           "execution": {
             "mode": "inline",
-            "status": "in_progress",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "date": "2026-08-28",
+              "commit": "ddceba7",
+              "evidence": "8 new planner tests + 7 new bundles tests covering the full partitioning and lifecycle-install matrix; full suite 1445 passed/5 skipped; basedpyright 0 errors/0 warnings; ruff check/format clean; validate_template.py clean; cleanup-inventory gate green with the regenerated inventory"
+            },
+            "deviations": [
+              "Implementation paused mid-task for owner decisions (2026-08-28): the reused expected-target template-contract gate refused every brownfield adoption because no generation path renders the lifecycle source files. Owner selected lifecycle installation (not gate scoping), the full declare policy over lifecycle paths, managed-inventory membership for installed lifecycle files, and a regular-file CLAUDE.md copy (symlink machinery declined after confirming an installed symlink makes the adopted project unobservable). design.md amended to Draft 2 and this task extended accordingly before completion.",
+              "collect_template_source_entries was refactored into a with-content core plus its existing projection so one bounded read pass records the adopted baseline and builds the lifecycle install set; its signature and behavior for existing callers are unchanged."
+            ]
           },
           "files": {
             "reuse": [
