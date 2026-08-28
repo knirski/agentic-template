@@ -32,6 +32,8 @@ Do not implement a change before the selected planning workflow reaches its appr
 
 Read `docs/agents/issue-tracker.md` when issue tracking is relevant. Read
 `docs/agents/domain.md` before changing domain terminology, invariants, or architecture decisions.
+Read `docs/agents/test-troubleshooting.md` when tests fail with `CLEANUP_CONTRACT_INVALID` or
+`maintenance-artifacts.json is stale`.
 Load only the language, framework, and domain skills relevant to the current task.
 
 Before completion, run repository-defined formatting, linting, tests, builds, and
