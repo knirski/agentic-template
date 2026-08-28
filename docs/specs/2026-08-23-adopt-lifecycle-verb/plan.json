@@ -171,6 +171,9 @@
             "deviations": [
               "Implementation paused mid-task for owner decisions (2026-08-28): the reused expected-target template-contract gate refused every brownfield adoption because no generation path renders the lifecycle source files. Owner selected lifecycle installation (not gate scoping), the full declare policy over lifecycle paths, managed-inventory membership for installed lifecycle files, and a regular-file CLAUDE.md copy (symlink machinery declined after confirming an installed symlink makes the adopted project unobservable). design.md amended to Draft 2 and this task extended accordingly before completion.",
               "collect_template_source_entries was refactored into a with-content core plus its existing projection so one bounded read pass records the adopted baseline and builds the lifecycle install set; its signature and behavior for existing callers are unchanged."
+            ],
+            "github_prs": [
+              "https://github.com/knirski/rygor/pull/126"
             ]
           },
           "files": {
