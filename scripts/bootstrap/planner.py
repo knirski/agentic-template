@@ -90,6 +90,9 @@ MAINTENANCE_INVENTORY_PATH = RepoPath(".rygor/maintenance-artifacts.json")
 class CompileErrorKind(StrEnum):
     INVALID_TARGET = "invalid_target"
     PATH_COLLISION = "path_collision"
+    UNDECLARED_COLLISION = "undeclared_collision"
+    UNMATCHED_DECLARATION = "unmatched_declaration"
+    ILLEGAL_REPLACE_TARGET = "illegal_replace_target"
     MISSING_BLOB = "missing_blob"
     CLEANUP_DISAGREEMENT = "cleanup_disagreement"
     INVALID_MAINTENANCE = "invalid_maintenance"
@@ -97,6 +100,9 @@ class CompileErrorKind(StrEnum):
     INVALID_MANIFEST = "invalid_manifest"
     PLAN_LIMIT_EXCEEDED = "plan_limit_exceeded"
     RENDER_CONTRACT_VIOLATION = "render_contract_violation"
+
+
+type CollisionAction = Literal["keep-existing", "replace"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -987,6 +993,41 @@ def _validate_no_nested_outputs(
     return Ok(None)
 
 
+def _partition_adoption_collisions(
+    *,
+    seed_paths: tuple[RepoPath, ...],
+    managed_paths: tuple[RepoPath, ...],
+    legal_paths: tuple[RepoPath, ...],
+    observed_files: Mapping[str, ObservedFileEntry],
+    collisions: Mapping[str, CollisionAction],
+) -> Result[frozenset[str], CompileError]:
+    """Resolve adoption declarations against the observed tree.
+
+    Every planned output path meeting an observed file is a collision and must
+    be declared: ``keep-existing`` excludes the path from the plan and the
+    managed inventory, ``replace`` keeps the default replace classification.
+    Declarations naming non-colliding paths and ``replace`` on the seed-once
+    legal/provenance class are structurally rejected.
+    """
+    planned = {path.value for path in (*seed_paths, *managed_paths)}
+    colliding = {value for value in planned if value in observed_files}
+    legal_values = {path.value for path in legal_paths}
+    keep_existing: set[str] = set()
+    for value in sorted(collisions, key=lambda item: item.encode("utf-8")):
+        action = collisions[value]
+        if value not in colliding:
+            return Err(_compile_error(CompileErrorKind.UNMATCHED_DECLARATION, value))
+        if action == "keep-existing":
+            keep_existing.add(value)
+        elif value in legal_values:
+            return Err(_compile_error(CompileErrorKind.ILLEGAL_REPLACE_TARGET, value))
+    undeclared = colliding - set(collisions)
+    if undeclared:
+        subject = ",".join(sorted(undeclared, key=lambda value: value.encode("utf-8")))
+        return Err(_compile_error(CompileErrorKind.UNDECLARED_COLLISION, subject))
+    return Ok(frozenset(keep_existing))
+
+
 def compile_initial_plan(
     *,
     generation: GenerationPath,
@@ -1002,6 +1043,8 @@ def compile_initial_plan(
     cleanup: CleanupContract | None,
     snapshot: TargetSnapshot,
     limits: ResourceLimits = DEFAULT_LIMITS,
+    collisions: Mapping[str, CollisionAction] | None = None,
+    lifecycle: ManagedRender = (),
 ) -> Result[OperationPlan, CompileError]:
     """Compile the complete initial plan; any error stops the flow before a mutation."""
     match _validate_snapshot(snapshot):
@@ -1027,13 +1070,80 @@ def compile_initial_plan(
 
     seed_values = {seed.path.value for seed in seed_once}
     managed_values = {file.path.value for file in managed}
-    collisions = (seed_values & managed_values) | (
+    internal_collisions = (seed_values & managed_values) | (
         {MANIFEST_PATH.value} & (seed_values | managed_values)
     )
-    if collisions:
+    if internal_collisions:
         return Err(
-            _compile_error(CompileErrorKind.PATH_COLLISION, sorted(collisions)[0])
+            _compile_error(
+                CompileErrorKind.PATH_COLLISION, sorted(internal_collisions)[0]
+            )
         )
+
+    observed_files = {entry.path.value: entry for entry in snapshot.files}
+    observed_dirs = {entry.path.value: entry for entry in snapshot.directories}
+
+    keep_existing: frozenset[str] = frozenset()
+    if lifecycle:
+        # Lifecycle installation is adoption-specific: declarations must be in
+        # force so every lifecycle collision is explicit.
+        if collisions is None:
+            return Err(_compile_error(CompileErrorKind.INVALID_TARGET, "lifecycle"))
+        match _validate_managed(lifecycle, limits):
+            case Err(error):
+                return Err(error)
+            case Ok(_):
+                pass
+        reserved = (
+            seed_values
+            | managed_values
+            | {
+                MANIFEST_PATH.value,
+                MAINTENANCE_INVENTORY_PATH.value,
+            }
+        )
+        overlap = sorted(
+            (file.path.value for file in lifecycle if file.path.value in reserved),
+            key=lambda value: value.encode("utf-8"),
+        )
+        if overlap:
+            return Err(_compile_error(CompileErrorKind.PATH_COLLISION, overlap[0]))
+        # Lifecycle files compile exactly like managed output (create or
+        # declared replace) and join the manifest inventory, but they reach
+        # this compiler on a separate channel so the source-entries collection
+        # upstream still records them in the adopted source baseline.
+        managed = tuple(
+            sorted(
+                (*managed, *lifecycle),
+                key=lambda file: file.path.value.encode("utf-8"),
+            )
+        )
+        managed_values = {file.path.value for file in managed}
+    if collisions is not None:
+        legal_paths = legal_output_paths(answers.licensing.mode)
+        if (
+            legal_paths is None
+        ):  # pragma: no cover — _validate_slot_coverage already refused
+            return Err(
+                _compile_error(CompileErrorKind.INVALID_TARGET, "licensing.mode")
+            )
+        match _partition_adoption_collisions(
+            seed_paths=tuple(seed.path for seed in seed_once),
+            managed_paths=tuple(file.path for file in managed),
+            legal_paths=legal_paths,
+            observed_files=observed_files,
+            collisions=collisions,
+        ):
+            case Err(error):
+                return Err(error)
+            case Ok(partitioned):
+                keep_existing = partitioned
+        if keep_existing:
+            managed = tuple(
+                file for file in managed if file.path.value not in keep_existing
+            )
+            managed_values = {file.path.value for file in managed}
+
     if cleanup is not None:
         declared = {path.value for path in cleanup.cleanup_paths}
         # A declared cleanup path that is exactly a managed output path is a
@@ -1094,6 +1204,8 @@ def compile_initial_plan(
     store = VerifiedBlobStore.empty(limits)
     seed_outputs: list[_PlannedOutput] = []
     for seed in seed_once:
+        if seed.path.value in keep_existing:
+            continue
         content = blobs.get(seed.content_id)
         if content is None:
             return Err(_compile_error(CompileErrorKind.MISSING_BLOB, seed.path.value))
@@ -1128,9 +1240,6 @@ def compile_initial_plan(
             return Err(error)
         case Ok(_):
             pass
-
-    observed_files = {entry.path.value: entry for entry in snapshot.files}
-    observed_dirs = {entry.path.value: entry for entry in snapshot.directories}
 
     match _build_trees(all_outputs, observed_files, observed_dirs, store):
         case Err(error):

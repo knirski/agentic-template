@@ -16,9 +16,48 @@ from typing import cast
 
 import pytest
 
-from scripts.bootstrap.bundles import DecodedBundle, decode_bundle_input
-from scripts.bootstrap.errors import InputErrorKind
+from scripts.bootstrap.bundles import (
+    DecodedBundle,
+    compile_adoption_install,
+    decode_bundle_input,
+)
+from scripts.bootstrap.errors import CommandError, ContractError, InputErrorKind
+from scripts.bootstrap.identity import (
+    PosixMode,
+    file_state_identity,
+    sha256_hex,
+    target_identity,
+)
+from scripts.bootstrap.intents import GenerationPath
+from scripts.bootstrap.manifest import MANIFEST_PATH, decode_manifest
+from scripts.bootstrap.paths import RepoPath
+from scripts.bootstrap.planner import (
+    CleanMaintenance,
+    CreateFileOperation,
+    CreateTreeOperation,
+    DeleteFileOperation,
+    ObservedFileEntry,
+    OperationPlan,
+    PlannedFileEntry,
+    RemoveEmptyDirectoryOperation,
+    ReplaceFileOperation,
+    TargetSnapshot,
+)
+from scripts.bootstrap.readiness import MechanicalReadinessResult
+from scripts.bootstrap.resolver import resolve_bundle
+from scripts.bootstrap.result import Err, Ok, Result
+from scripts.bootstrap.scaffold import (
+    PROJECT_VALIDATION_PATH,
+    PROJECT_VALIDATION_SCAFFOLD,
+    SEED_ONCE_SLOTS,
+)
+from scripts.bootstrap.source_baseline import AdoptedSourceBaseline
+from scripts.bootstrap.values import DEFAULT_LIMITS
+from tests.bootstrap_fixtures import render_for
+from tests.factory import REPO_ROOT
 from tests.fixtures import assert_err, assert_ok
+
+_ADOPTION_TARGET = target_identity(b"/work/example", device=1, inode=2)
 
 _MAX_FILE_BYTES = 16 * 1024 * 1024
 
@@ -242,3 +281,239 @@ def test_decode_rejects_unresolvable_profiles() -> None:
     error = assert_err(decode_bundle_input(json_path), "expected SCHEMA_VIOLATION")
     assert error.kind == InputErrorKind.SCHEMA_VIOLATION
     assert "unknown_capability" in error.subject
+
+
+def _observed_file(path: str, content: bytes) -> ObservedFileEntry:
+    repo_path = RepoPath(path)
+    return ObservedFileEntry(
+        path=repo_path,
+        state=file_state_identity(content, text=True, mode=PosixMode.FILE),
+        content=content,
+    )
+
+
+def _compile_adoption_result(
+    template_root: str,
+    snapshot: TargetSnapshot,
+    *,
+    collisions: dict[str, str] | None = None,
+) -> Result[tuple[OperationPlan, MechanicalReadinessResult], CommandError]:
+    document = _valid_bundle()
+    if collisions is not None:
+        document["collisions"] = collisions
+    decoded = assert_ok(
+        decode_bundle_input(
+            _materialize_bundle(
+                document, payload=json.dumps(document, sort_keys=True).encode()
+            )
+        )
+    )
+    resolved = assert_ok(resolve_bundle(decoded.bundle))
+    return compile_adoption_install(
+        decoded=decoded,
+        resolved=resolved,
+        scaffold={RepoPath(PROJECT_VALIDATION_PATH.value): PROJECT_VALIDATION_SCAFFOLD},
+        template_root=template_root,
+        maintenance=CleanMaintenance(),
+        cleanup=None,
+        snapshot=snapshot,
+        target_identity=_ADOPTION_TARGET,
+        snapshot_commit="0" * 40,
+        limits=DEFAULT_LIMITS,
+    )
+
+
+def _compile_adoption(
+    template_root: str,
+    snapshot: TargetSnapshot,
+    *,
+    collisions: dict[str, str] | None = None,
+) -> tuple[OperationPlan, MechanicalReadinessResult]:
+    return assert_ok(
+        _compile_adoption_result(template_root, snapshot, collisions=collisions)
+    )
+
+
+def _seed_paths() -> set[str]:
+    return {
+        path.value
+        for path in (
+            *SEED_ONCE_SLOTS.values(),
+            RepoPath("LICENSE"),
+            RepoPath("NOTICE.md"),
+        )
+    }
+
+
+def _planned_paths(plan: OperationPlan) -> set[str]:
+    paths: set[str] = set()
+    for operation in plan.ordered_operations:
+        match operation:
+            case CreateTreeOperation():
+                paths.add(operation.root.value)
+                paths.update(
+                    entry.path.value for entry in operation.planned_new.entries
+                )
+            case _:
+                paths.add(operation.path.value)
+    return paths
+
+
+def _planned_file_paths(plan: OperationPlan) -> set[str]:
+    paths: set[str] = set()
+    for operation in plan.ordered_operations:
+        match operation:
+            case CreateFileOperation() | ReplaceFileOperation():
+                paths.add(operation.path.value)
+            case CreateTreeOperation():
+                paths.update(
+                    entry.path.value
+                    for entry in operation.planned_new.entries
+                    if isinstance(entry, PlannedFileEntry)
+                )
+            case DeleteFileOperation() | RemoveEmptyDirectoryOperation():
+                pass
+    return paths
+
+
+def _planned_create_contents(plan: OperationPlan) -> dict[str, bytes]:
+    contents: dict[str, bytes] = {}
+    for operation in plan.ordered_operations:
+        match operation:
+            case CreateFileOperation(path=path, planned_new=planned):
+                content = plan.blob_store.get(planned.content_id)
+                assert content is not None
+                contents[path.value] = content
+            case CreateTreeOperation(planned_new=tree):
+                for entry in tree.entries:
+                    if isinstance(entry, PlannedFileEntry):
+                        content = plan.blob_store.get(entry.content_id)
+                        assert content is not None
+                        contents[entry.path.value] = content
+            case (
+                ReplaceFileOperation()
+                | DeleteFileOperation()
+                | (RemoveEmptyDirectoryOperation())
+            ):
+                pass
+    return contents
+
+
+def _manifest_inventory(plan: OperationPlan) -> set[str]:
+    match decode_manifest(plan.manifest_after.payload):
+        case Ok(candidate):
+            return {entry.path.value for entry in candidate.managed}
+        case Err(error):
+            raise AssertionError(f"manifest decode failed: {error}")
+
+
+def test_compile_adoption_install_installs_the_complete_profile_closure() -> None:
+    """Empty-tree adoption passes the full contract gate with apply's own output.
+
+    The gate reuse is the assertion: compiling successfully means the expected
+    target satisfied every required file and skill once the lifecycle install
+    set joined the plan. The managed render and the bundle seeds must land
+    byte-identically to what the two generation paths install.
+    """
+    plan, _readiness = _compile_adoption(str(REPO_ROOT), TargetSnapshot())
+    contents = _planned_create_contents(plan)
+    rendered_files, _blobs = render_for((), GenerationPath.COPIER)
+    # Managed output paths are identical across generation paths; the render
+    # bodies differ only in their generation-path sentence (fragment layer).
+    for file in rendered_files:
+        assert file.path.value in contents, file.path.value
+    expected_seeds = {
+        "README.md": b"# Example\n",
+        "docs/prd.md": b"# Product requirements\n",
+        "SECURITY.md": b"# Security\n",
+        "CONTRIBUTING.md": b"# Contributing\n",
+        "scripts/validate-project": b"#!/bin/sh\n",
+    }
+    for path, content in expected_seeds.items():
+        assert contents[path] == content, path
+    assert "AGENTS.md" in contents
+    assert "CLAUDE.md" in contents
+    assert plan.generation_path is GenerationPath.ADOPTED
+
+
+def test_compile_adoption_install_excludes_declared_keep_existing_paths() -> None:
+    plan, _readiness = _compile_adoption(str(REPO_ROOT), TargetSnapshot())
+    managed_paths = _planned_file_paths(plan) - _seed_paths() - {MANIFEST_PATH.value}
+    keep_existing = "pyproject.toml"
+    assert keep_existing in managed_paths
+    excluded_plan, _readiness = _compile_adoption(
+        str(REPO_ROOT),
+        TargetSnapshot(files=(_observed_file(keep_existing, b"adopted\n"),)),
+        collisions={keep_existing: "keep-existing"},
+    )
+    assert keep_existing not in _planned_paths(excluded_plan)
+    assert _manifest_inventory(excluded_plan) == managed_paths - {keep_existing}
+
+
+def test_compile_adoption_install_excludes_keep_existing_lifecycle_paths() -> None:
+    plan, _readiness = _compile_adoption(str(REPO_ROOT), TargetSnapshot())
+    managed_paths = _planned_file_paths(plan) - _seed_paths() - {MANIFEST_PATH.value}
+    keep_existing = "CONTEXT.md"
+    assert keep_existing in managed_paths
+    excluded_plan, _readiness = _compile_adoption(
+        str(REPO_ROOT),
+        TargetSnapshot(files=(_observed_file(keep_existing, b"own context\n"),)),
+        collisions={keep_existing: "keep-existing"},
+    )
+    assert keep_existing not in _planned_paths(excluded_plan)
+    assert keep_existing not in _manifest_inventory(excluded_plan)
+
+
+def test_compile_adoption_install_refuses_undeclared_collisions() -> None:
+    plan, _readiness = _compile_adoption(str(REPO_ROOT), TargetSnapshot())
+    managed_paths = _planned_file_paths(plan) - _seed_paths() - {MANIFEST_PATH.value}
+    colliding = sorted(managed_paths)[:2]
+    error = assert_err(
+        _compile_adoption_result(
+            str(REPO_ROOT),
+            TargetSnapshot(
+                files=tuple(_observed_file(path, b"adopted\n") for path in colliding)
+            ),
+            collisions={colliding[0]: "keep-existing"},
+        ),
+        "expected UNDECLARED_COLLISION",
+    )
+    assert isinstance(error, ContractError)
+    assert set(error.subject.split(",")) == {colliding[1]}
+
+
+def test_compile_adoption_install_writes_claude_md_as_agents_copy() -> None:
+    plan, _readiness = _compile_adoption(str(REPO_ROOT), TargetSnapshot())
+    contents = _planned_create_contents(plan)
+    assert "AGENTS.md" in contents
+    assert "CLAUDE.md" in contents
+    assert contents["CLAUDE.md"] == contents["AGENTS.md"]
+
+
+def test_compile_adoption_install_baseline_records_installed_lifecycle_source() -> None:
+    plan, _readiness = _compile_adoption(str(REPO_ROOT), TargetSnapshot())
+    baseline = plan.source_after
+    assert isinstance(baseline, AdoptedSourceBaseline)
+    contents = _planned_create_contents(plan)
+    baseline_paths: set[str] = set()
+    for entry in baseline.entries:
+        if entry.kind == "directory":
+            continue
+        baseline_paths.add(entry.path.value)
+        content = contents.get(entry.path.value)
+        assert content is not None, f"{entry.path.value} was not installed"
+        assert entry.sha256 == sha256_hex(content)
+    assert "CONTEXT.md" in baseline_paths
+    assert "AGENTS.md" in baseline_paths
+    assert ".rygor/source-ownership.json" in baseline_paths
+    assert "pyproject.toml" not in baseline_paths
+
+
+def test_compile_adoption_install_records_adopted_provenance() -> None:
+    plan, _readiness = _compile_adoption(str(REPO_ROOT), TargetSnapshot())
+    assert plan.generation_path is GenerationPath.ADOPTED
+    match decode_manifest(plan.manifest_after.payload):
+        case Ok(candidate):
+            assert candidate.provenance.generation_path is GenerationPath.ADOPTED
+        case Err(error):
+            raise AssertionError(f"manifest decode failed: {error}")

@@ -33,11 +33,13 @@ from scripts.bootstrap.manifest import (
     SlotContent,
 )
 from scripts.bootstrap.observation import (
-    collect_template_source_entries,
+    LifecycleSourceFile,
+    collect_template_source_entries_with_content,
 )
 from scripts.bootstrap.paths import RepoPath, parse_path
 from scripts.bootstrap.planner import (
     CleanMaintenance,
+    CollisionAction,
     CreateFileOperation,
     CreateTreeOperation,
     DeleteFileOperation,
@@ -59,6 +61,8 @@ from scripts.bootstrap.readiness import MechanicalReadinessResult
 from scripts.bootstrap.render import (
     LicensingInfo,
     MaintenanceInfo,
+    ManagedFile,
+    ManagedRender,
     ProfileInfo,
     ProjectInfo,
 )
@@ -393,6 +397,57 @@ def _manifest_answers(
     )
 
 
+def _lifecycle_install_set(
+    pairs: tuple[LifecycleSourceFile, ...],
+) -> Result[ManagedRender, CommandError]:
+    """Build the adoption lifecycle install set from collected template source.
+
+    The set is every declared lifecycle source file plus a regular-file
+    ``CLAUDE.md`` carrying the template AGENTS.md bytes; directory entries and
+    reserved seed/managed paths never reach this boundary.
+    """
+    files: list[ManagedFile] = []
+    agents_content: bytes | None = None
+    for pair in pairs:
+        entry = pair.entry
+        content = pair.content
+        if content is None:
+            continue
+        if entry.path.value == "CLAUDE.md":
+            return Err(
+                ContractError(
+                    ContractErrorKind.INVALID_TEMPLATE,
+                    "lifecycle path CLAUDE.md is not installable",
+                )
+            )
+        try:
+            _ = content.decode("utf-8")
+            kind: Literal["text", "binary"] = "text"
+        except UnicodeDecodeError:
+            kind = "binary"
+        files.append(
+            ManagedFile(path=entry.path, kind=kind, mode=entry.mode, content=content)
+        )
+        if entry.path.value == "AGENTS.md":
+            agents_content = content
+    if agents_content is None:
+        return Err(
+            ContractError(
+                ContractErrorKind.INVALID_TEMPLATE,
+                "lifecycle install set missing AGENTS.md",
+            )
+        )
+    files.append(
+        ManagedFile(
+            path=RepoPath("CLAUDE.md"),
+            kind="text",
+            mode=PosixMode.FILE,
+            content=agents_content,
+        )
+    )
+    return Ok(tuple(sorted(files, key=lambda file: file.path.value.encode("utf-8"))))
+
+
 def compile_initial_install(
     *,
     generation: GenerationPath,
@@ -406,6 +461,8 @@ def compile_initial_install(
     target_identity: TargetIdentity,
     snapshot_commit: str | None,
     limits: ResourceLimits,
+    collisions: Mapping[str, CollisionAction] | None = None,
+    lifecycle: ManagedRender | None = None,
 ) -> Result[tuple[OperationPlan, MechanicalReadinessResult], CommandError]:
     """Compile the complete initial plan for one generation path."""
 
@@ -461,15 +518,26 @@ def compile_initial_install(
             )
         case Ok(managed):
             pass
-    match collect_template_source_entries(
+    match collect_template_source_entries_with_content(
         template_root,
         managed_paths={file.path for file in managed},
         limits=limits,
     ):
         case Err(error):
             return Err(error)
-        case Ok(source_entries):
+        case Ok(pairs):
             pass
+    source_entries = tuple(pair.entry for pair in pairs)
+    # The adoption declare policy is always in force: an absent map declares
+    # nothing, so every collision still refuses the plan.
+    if collisions is None and generation is GenerationPath.ADOPTED:
+        collisions = {}
+    if lifecycle is None and generation is GenerationPath.ADOPTED:
+        match _lifecycle_install_set(pairs):
+            case Err(error):
+                return Err(error)
+            case Ok(install_set):
+                lifecycle = install_set
     match compile_initial_plan(
         generation=generation,
         target_identity=target_identity,
@@ -484,6 +552,8 @@ def compile_initial_install(
         cleanup=cleanup,
         snapshot=snapshot,
         limits=limits,
+        collisions=collisions,
+        lifecycle=lifecycle if lifecycle is not None else (),
     ):
         case Err(error):
             kind = (
@@ -511,6 +581,47 @@ def compile_initial_install(
                     "expected target fails the template contract",
                 )
             )
+
+
+def compile_adoption_install(
+    *,
+    decoded: DecodedBundle,
+    resolved: ResolvedBundle,
+    scaffold: dict[RepoPath, bytes],
+    template_root: str,
+    maintenance: CleanMaintenance | RetainMaintenance,
+    cleanup: CleanupContract | None,
+    snapshot: TargetSnapshot,
+    target_identity: TargetIdentity,
+    snapshot_commit: str | None,
+    limits: ResourceLimits,
+) -> Result[tuple[OperationPlan, MechanicalReadinessResult], CommandError]:
+    """Compile the complete adoption plan for one manifest-free working tree.
+
+    Adoption records ``GenerationPath.ADOPTED`` provenance and applies the
+    conflict policy declared in the bundle's answer document: every planned
+    output meeting observed content must be declared ``keep-existing`` or
+    ``replace`` before anything is installed.
+    """
+    collisions: dict[str, CollisionAction] = (
+        {}
+        if decoded.bundle.collisions is None
+        else dict(decoded.bundle.collisions.root)
+    )
+    return compile_initial_install(
+        generation=GenerationPath.ADOPTED,
+        decoded=decoded,
+        resolved=resolved,
+        scaffold=scaffold,
+        template_root=template_root,
+        maintenance=maintenance,
+        cleanup=cleanup,
+        snapshot=snapshot,
+        target_identity=target_identity,
+        snapshot_commit=snapshot_commit,
+        limits=limits,
+        collisions=collisions,
+    )
 
 
 def plan_snapshot_paths(plan: OperationPlan) -> tuple[set[RepoPath], set[RepoPath]]:

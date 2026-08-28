@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from types import MappingProxyType
 from typing import Literal, cast
@@ -416,6 +416,8 @@ def compile_fixture(
     blobs: VerifiedBlobStore | None = None,
     snapshot_commit: str | None = "0" * 40,
     limits: ResourceLimits | None = None,
+    collisions: Mapping[str, Literal["keep-existing", "replace"]] | None = None,
+    lifecycle: tuple[ManagedFile, ...] | None = None,
 ) -> tuple[VerifiedBlobStore, Result[OperationPlan, CompileError]]:
     """Return (input blob store, compile result) for a fixture with optional overrides."""
     licensing_mode = (
@@ -450,6 +452,8 @@ def compile_fixture(
         cleanup=cleanup,
         snapshot=snapshot,
         limits=limits if limits is not None else DEFAULT_LIMITS,
+        collisions=collisions,
+        lifecycle=lifecycle if lifecycle is not None else (),
     )
     return blobs, result
 
@@ -4740,3 +4744,197 @@ class TestExpectedTarget:
                     assert expected_dirs[root].mode is PosixMode.DIRECTORY
             case Err(error):
                 raise AssertionError(f"apply_plan failed: {error}")
+
+
+def _operation_paths(plan: OperationPlan) -> set[str]:
+    paths: set[str] = set()
+    for operation in plan.ordered_operations:
+        match operation:
+            case CreateTreeOperation():
+                paths.add(operation.root.value)
+                paths.update(
+                    entry.path.value for entry in operation.planned_new.entries
+                )
+            case _:
+                paths.add(operation.path.value)
+    return paths
+
+
+class TestAdoptionCollisions:
+    """Conflict-aware partitioning for adoption installs (US-3/US-4/US-5/US-8)."""
+
+    def _copier_plus(self, *files: ObservedFileEntry) -> TargetSnapshot:
+        base = fixture_copier_snapshot()
+        return _sorted_snapshot((*base.files, *files), base.directories)
+
+    def _adopted(
+        self,
+        *,
+        snapshot: TargetSnapshot,
+        collisions: Mapping[str, str] | None,
+    ) -> Result[OperationPlan, CompileError]:
+        _, result = compile_fixture(
+            generation=GenerationPath.ADOPTED,
+            snapshot=snapshot,
+            cleanup=None,
+            collisions=cast(
+                Mapping[str, Literal["keep-existing", "replace"]] | None, collisions
+            ),
+        )
+        return result
+
+    def test_absent_outputs_compile_identically_with_empty_declarations(self) -> None:
+        snapshot = fixture_copier_snapshot()
+        _, plain = compile_fixture(
+            generation=GenerationPath.ADOPTED,
+            snapshot=snapshot,
+            cleanup=None,
+        )
+        _, declared = compile_fixture(
+            generation=GenerationPath.ADOPTED,
+            snapshot=snapshot,
+            cleanup=None,
+            collisions={},
+        )
+        assert build_receipt(get_plan(declared)) == build_receipt(get_plan(plain))
+
+    def test_keep_existing_paths_leave_operations_and_inventory(self) -> None:
+        managed_path = RepoPath("pyproject.toml")
+        snapshot = self._copier_plus(
+            observed_file(managed_path, SOURCE_PYPROJECT),
+            observed_file(RepoPath("README.md"), b"# My own project\n"),
+            observed_file(RepoPath("LICENSE"), b"Custom license text\n"),
+        )
+        result = self._adopted(
+            snapshot=snapshot,
+            collisions={
+                managed_path.value: "keep-existing",
+                "README.md": "keep-existing",
+                "LICENSE": "keep-existing",
+            },
+        )
+        plan = get_plan(result)
+        touched = _operation_paths(plan)
+        assert "pyproject.toml" not in touched
+        assert "README.md" not in touched
+        assert "LICENSE" not in touched
+        match decode_manifest(plan.manifest_after.payload):
+            case Ok(candidate):
+                inventory = {entry.path.value for entry in candidate.managed}
+            case Err(error):
+                raise AssertionError(f"manifest decode failed: {error}")
+        assert "pyproject.toml" not in inventory
+        assert ".github/workflows/ci.yml" in inventory
+        assert "docs/template-updates.md" in inventory
+
+    def test_replace_declaration_compiles_with_prior_file_state(self) -> None:
+        managed_path = RepoPath("pyproject.toml")
+        observed = observed_file(managed_path, SOURCE_PYPROJECT)
+        snapshot = self._copier_plus(observed)
+        result = self._adopted(
+            snapshot=snapshot,
+            collisions={managed_path.value: "replace"},
+        )
+        plan = get_plan(result)
+        assert not any(
+            isinstance(operation, CreateFileOperation)
+            and operation.path == managed_path
+            for operation in plan.ordered_operations
+        )
+        replacement = next(
+            operation
+            for operation in plan.ordered_operations
+            if isinstance(operation, ReplaceFileOperation)
+            and operation.path == managed_path
+        )
+        assert replacement.expected_old == observed.state
+        managed_content = next(
+            content
+            for path, _kind, content in MANAGED_CONTENTS
+            if path == managed_path.value
+        )
+        assert replacement.planned_new.identity.raw_sha256 == sha256_hex(
+            managed_content
+        )
+
+    def test_undeclared_collisions_refuse_naming_every_offender(self) -> None:
+        snapshot = self._copier_plus(
+            observed_file(RepoPath("pyproject.toml"), SOURCE_PYPROJECT),
+            observed_file(RepoPath("README.md"), b"# Mine\n"),
+            observed_file(RepoPath("LICENSE"), b"Custom license\n"),
+        )
+        result = self._adopted(
+            snapshot=snapshot,
+            collisions={"README.md": "replace"},
+        )
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.UNDECLARED_COLLISION
+                assert set(error.subject.split(",")) == {"pyproject.toml", "LICENSE"}
+                assert error.subject.split(",") == sorted(
+                    error.subject.split(","), key=lambda value: value.encode("utf-8")
+                )
+            case Ok(_):
+                raise AssertionError("undeclared collisions compiled a plan")
+
+    def test_declaration_on_non_colliding_path_is_unmatched(self) -> None:
+        # A planned but absent path has no collision to declare.
+        result = self._adopted(
+            snapshot=fixture_copier_snapshot(),
+            collisions={"pyproject.toml": "keep-existing"},
+        )
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.UNMATCHED_DECLARATION
+                assert error.subject == "pyproject.toml"
+            case Ok(_):
+                raise AssertionError("an unmatched declaration compiled a plan")
+        # A path outside the planned inventory is equally unmatched.
+        result = self._adopted(
+            snapshot=fixture_copier_snapshot(),
+            collisions={"unrelated.txt": "keep-existing"},
+        )
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.UNMATCHED_DECLARATION
+                assert error.subject == "unrelated.txt"
+            case Ok(_):
+                raise AssertionError("an unmatched declaration compiled a plan")
+
+    def test_replace_on_legal_path_is_structurally_rejected(self) -> None:
+        snapshot = self._copier_plus(observed_file(RepoPath("LICENSE"), b"Custom\n"))
+        result = self._adopted(
+            snapshot=snapshot,
+            collisions={"LICENSE": "replace"},
+        )
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.ILLEGAL_REPLACE_TARGET
+                assert error.subject == "LICENSE"
+            case Ok(_):
+                raise AssertionError("legal replace target compiled a plan")
+
+    def test_lifecycle_install_requires_the_declare_policy(self) -> None:
+        lifecycle = fixture_managed()
+        _, result = compile_fixture(
+            generation=GenerationPath.ADOPTED,
+            snapshot=fixture_copier_snapshot(),
+            cleanup=None,
+            lifecycle=lifecycle,
+        )
+        match result:
+            case Err(error):
+                assert error.kind is CompileErrorKind.INVALID_TARGET
+                assert error.subject == "lifecycle"
+            case Ok(_):
+                raise AssertionError("lifecycle installation without declarations")
+
+    def test_adoption_compilation_is_deterministic(self) -> None:
+        snapshot = self._copier_plus(
+            observed_file(RepoPath("pyproject.toml"), SOURCE_PYPROJECT)
+        )
+        collisions: dict[str, str] = {"pyproject.toml": "replace"}
+        first = get_plan(self._adopted(snapshot=snapshot, collisions=collisions))
+        second = get_plan(self._adopted(snapshot=snapshot, collisions=collisions))
+        assert build_receipt(first) == build_receipt(second)
+        assert first.ordered_operations == second.ordered_operations
