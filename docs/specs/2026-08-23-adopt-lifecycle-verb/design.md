@@ -1,6 +1,7 @@
 # Adopt Lifecycle Verb for Brownfield Repositories
 
-**Status:** Draft 1, assembled from approved discovery and design batches
+**Status:** Draft 2, assembled from approved discovery and design batches; amended 2026-08-28
+during T3 implementation with the lifecycle-installation decisions (owner-confirmed).
 **Date:** 2026-08-23
 **Planning mode:** Spec-backed Plan
 **Origin:** `.handoff/2026-08-23-framework-gap-analysis.md` finding F-02; owner selected
@@ -51,6 +52,37 @@ Owner decisions recorded so review does not reopen them.
   over adopter-owned state and rebinds no stable identifier, so the extension is additive under
   REQ-013 (verified: `validate_readiness_rule_catalog` pins readiness rules only).
 
+Amendments settled 2026-08-28 (owner decisions recorded so review does not reopen them):
+
+- **Lifecycle installation:** the template contract requires the generated-lifecycle source
+  files (AGENTS.md, every skill, `scripts/bootstrap/*.py`, `.rygor/source-ownership.json`,
+  `copier.yml`, …) to exist in the installed tree, and no generation path renders them —
+  GitHub/Copier targets receive them from their template packaging before `apply`. Because the
+  adoption entry condition is an arbitrary manifest-free tree, `adopt` must install the
+  lifecycle source set itself: the template root's declared `lifecycle_paths` plus the template
+  root's `.rygor/source-ownership.json` plus `CLAUDE.md`. Without this the reused expected-target
+  contract gate would refuse every real brownfield adoption, contradicting the settled entry
+  conditions.
+- **Collision policy over lifecycle paths:** the full per-path declare policy applies. An
+  undeclared collision between a planned lifecycle file and observed content refuses the plan
+  naming every offender; `keep-existing` excludes the path from the install and from the
+  manifest inventory; `replace` overwrites with the prior `FileState` recorded in the receipt.
+  Lifecycle files are template-owned, not legally sensitive, so unlike the seed-once
+  legal/provenance class `replace` is allowed.
+- **Post-install ownership — managed inventory:** installed lifecycle files join the manifest's
+  managed inventory. They are restore-able and drift-fatal, diverging deliberately from
+  GitHub/Copier projects where the same files stay outside the inventory. The source baseline
+  still records them (lifecycle paths are not excluded from source-entries collection), so
+  adopted projects keep snapshot-style repair/regeneration diagnosis. Consequence accepted: an
+  adopter file replaced by a lifecycle install becomes drift-fatal managed state.
+- **CLAUDE.md packaging:** installed as a regular file whose bytes are the template's AGENTS.md
+  content. The template ships `CLAUDE.md` as a symlink to AGENTS.md, but the observation and
+  transaction layers reject every symlink in a project tree; an installed symlink would make the
+  adopted project permanently unobservable. A symlink-create operation type (new journal,
+  rollback, and recovery third states) was evaluated and declined for v1. Accepted divergence:
+  adopted projects carry a regular `CLAUDE.md` instead of a symlink, and its content is the
+  template's AGENTS.md bytes even when AGENTS.md itself is declared `keep-existing`.
+
 ## Scope
 
 **In scope**
@@ -59,6 +91,12 @@ Owner decisions recorded so review does not reopen them.
   section (*adoption declaration*).
 - A conflict-aware compilation branch that partitions planned outputs into create / replace /
   keep-existing exclusions with typed compile errors.
+- The adoption lifecycle-install set: reading the template root's declared lifecycle source
+  (plus its `.rygor/source-ownership.json` and the `CLAUDE.md` regular copy), compiling those
+  files through the same partitioning, and recording installed entries in the managed
+  inventory.
+- Restore parity for adopted projects: the recorded-render reconstruction sources installed
+  lifecycle bytes from the template root, verified against the recorded inventory identities.
 - CLI verbs `plan adopt` and `adopt` with the existing envelope and exit-code taxonomy.
 - Status diagnostics describing adoptability of unmanaged trees.
 - PRD amendments (REQ-007, REQ-010), `CONTEXT.md` terminology updates, README and durable
@@ -178,14 +216,24 @@ Component changes, all within the existing boundary:
   naming `status`. Reuses the existing install decision type: the transaction executor is
   plan-driven and `OperationPlan` carries `generation_path` and provenance, so no new
   machine-level decision type exists.
-- **planner / compiler** — `compile_adoption_install` partitions planned managed outputs against
-  observed entries: absent → create; declared `keep-existing` → excluded from both the plan and
-  the managed inventory (absence *is* the ownership model; no new ownership class); declared
-  `replace` → replace operation with prior `FileState` recorded in the receipt; undeclared
-  collision → typed compile error listing all offenders; `replace` on the seed-once class →
-  structurally rejected.
+- **planner / compiler** — `compile_adoption_install` mirrors `compile_initial_install` with
+  `generation=ADOPTED` plus the lifecycle install set. It partitions planned managed outputs
+  against observed entries: absent → create; declared `keep-existing` → excluded from both the
+  plan and the managed inventory (absence *is* the ownership model; no new ownership class);
+  declared `replace` → replace operation with prior `FileState` recorded in the receipt;
+  undeclared collision → typed compile error listing all offenders; `replace` on the seed-once
+  legal/provenance class → structurally rejected. The lifecycle install set joins the same
+  partitioning and, when installed, joins the manifest inventory; it is *not* passed as managed
+  render, so the source-entries collection still records it in the adopted source baseline.
+  Reuse seed-once input handling, manifest answer normalization, VerifiedBlobStore, gate
+  specifications (fully reused — the expected target gains the lifecycle files, so the
+  template-contract gate passes naturally), and provenance assembly with generation=ADOPTED.
 - **source_baseline.py** — exhaustive match gains the `ADOPTED` case, deriving a snapshot-style
   tagged digest over installed lifecycle-source entries.
+- **restore (recorded render)** — for adopted projects the recorded-render reconstruction
+  extends the re-rendered selection with the installed lifecycle entries: their bytes are read
+  from the template root and accepted only when their identities match the recorded inventory,
+  so `restore` reproduces managed drift exactly as it does for the other generation paths.
 - **observation/presentation** — `UnsupportedManifestFree` diagnostics gain adoptability framing;
   status names `init` + `plan adopt` as next actions while remaining exit-0 inspection.
 - **CLI** — `adopt` and `plan adopt` subparsers; identical envelope shapes.
@@ -217,8 +265,9 @@ uv run --python 3.14 scripts/bootstrap_project.py status --target .
    `"keep-existing"` or `"replace"`.
 2. **Manifest** — `provenance.generation_path = "adopted"`. Keep-existing paths appear nowhere
    (absence from the managed inventory is the ownership record); replaced files' prior identities
-   appear only in receipts. No schema-version bump: the extension is additive and the manifest
-   remains a function of normalized inputs.
+   appear only in receipts. For adopted projects the managed inventory additionally records the
+   installed lifecycle entries (same entry shape; no schema-version bump: the extension is
+   additive and the manifest remains a function of normalized inputs).
 3. **Receipts** — schema untouched; encode/reconstruct accept `adopted` because the closed set
    derives from the enum; `source_before`/`source_after` carry adopted-tagged baselines.
 4. **State machine** — zero new `SystemState` variants; adopt consumes the existing
@@ -235,10 +284,16 @@ Implementation includes these documentation changes (this skill does not edit th
   initial-install entry condition alongside the two recognized scaffolds.
 - **REQ-010** — add `plan adopt`/`adopt` to the public lifecycle enumeration; state that adopted
   projects follow snapshot repair/regeneration rules and never reconcile.
+- **REQ-009** — note that adopted projects record installed lifecycle source inside the managed
+  inventory; the ownership-separation prohibitions (no adopter prose, legal text, secret values,
+  or claims about current tree bytes) are unchanged.
 - **CONTEXT.md** — narrow *Unrecognized manifest-free target* to non-Git, bare, and
   manifest-bearing states; add *Adopted project* (generated-project whose manifest records
   adopted provenance) and *Adoption declaration* (the per-path collision map inside the answer
-  document); extend the *Bootstrap answer document* definition to allow the declaration.
+  document); extend the *Bootstrap answer document* definition to allow the declaration; extend
+  the *Managed inventory* / *Generated-lifecycle source* terminology so adopted projects record
+  installed lifecycle files in the inventory. Record the lifecycle-installation ownership
+  decision as an ADR (it changes ownership semantics for one generation path).
 - README, `docs/project-readiness.md`, and the durable adopter documents gain the brownfield
   entry path.
 
@@ -256,6 +311,14 @@ Alternatives considered and rejected:
 - **Prior file identities in the manifest** — violates REQ-009's prohibition on claims about
   current tree bytes; receipts retain the evidence instead.
 - **Allow `replace` on seed-once legal paths** — deferred; structurally rejected in v1.
+- **Scope the expected-target contract gate for adopted plans** — evaluated during T3 and
+  declined: skipping the required-file/skill checks would certify adopted projects that lack the
+  template's own delivery infrastructure, defeating the verb's purpose. Installing the lifecycle
+  set (settled above) keeps the gate fully reused and honest.
+- **Symlink-create operation for `CLAUDE.md`** — evaluated and declined: the observation and
+  transaction layers reject every project-tree symlink (an installed symlink makes the adopted
+  project permanently unobservable), and making symlinks legal means new journal, rollback, and
+  recovery third states — new transaction machinery the design froze as unchanged.
 
 Why this design wins: purely additive across closed unions; one compiler, one transaction
 machine, one receipt format; verifiably compatible under REQ-013; the observation core already
@@ -265,7 +328,12 @@ it.
 Known limitations accepted for v1: adopted projects cannot gain Copier reconcile lineage;
 uncommitted adopter work at declared `replace` paths is overwritten beyond the journal's
 file-level restore; collision declarations are hand-authored; seed-once `replace` may be
-revisited post-v1 if a real need appears.
+revisited post-v1 if a real need appears; adopted projects package `CLAUDE.md` as a regular file
+copy of the template's AGENTS.md rather than a symlink, and its bytes stay the template's AGENTS.md
+content even when AGENTS.md is declared `keep-existing`; adopter files replaced by lifecycle
+installs become drift-fatal managed state; a `keep-existing` declaration on a contract-required
+skill whose existing bytes lack valid frontmatter fails the reused expected-target gate
+deterministically.
 
 ## Open Questions
 

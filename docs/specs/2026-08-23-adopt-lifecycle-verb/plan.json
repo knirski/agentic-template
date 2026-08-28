@@ -154,22 +154,32 @@
           ],
           "inputs": [
             "design.md Architecture section partition rules",
+            "design.md amendments 2026-08-28: lifecycle installation, full declare policy over lifecycle paths, managed-inventory membership, CLAUDE.md regular copy",
             "compile_initial_install shape at scripts/bootstrap/bundles.py:396",
             "OperationPlan operation types in scripts/bootstrap/planner.py",
             "TargetSnapshot of observed entries supplied by observation"
           ],
-          "description": "Create compile_adoption_install mirroring compile_initial_install's inputs but partitioning planned managed outputs against observed entries: absent paths create files; declared keep-existing paths are excluded from both the plan operations and the managed inventory; declared replace paths become ReplaceFileOperation capturing prior FileState in the receipt; undeclared collisions raise CompileErrorKind.UNDECLARED_COLLISION listing every offending path; a declaration naming a path that does not collide raises a typed unmatched-declaration error; replace targeting the seed-once legal/provenance class raises ILLEGAL_REPLACE_TARGET (US-8 structural rejection). Reuse seed-once input handling, manifest answer normalization, VerifiedBlobStore, gate specifications, and provenance assembly with generation=ADOPTED.",
+          "description": "Create compile_adoption_install mirroring compile_initial_install's inputs but partitioning planned managed outputs against observed entries: absent paths create files; declared keep-existing paths are excluded from both the plan operations and the managed inventory; declared replace paths become ReplaceFileOperation capturing prior FileState in the receipt; undeclared collisions raise CompileErrorKind.UNDECLARED_COLLISION listing every offending path; a declaration naming a path that does not collide raises a typed unmatched-declaration error; replace targeting the seed-once legal/provenance class raises ILLEGAL_REPLACE_TARGET (US-8 structural rejection). Reuse seed-once input handling, manifest answer normalization, VerifiedBlobStore, gate specifications, and provenance assembly with generation=ADOPTED. The adoption compiler additionally builds the lifecycle install set from the template root - the declared lifecycle_paths, the template root's .rygor/source-ownership.json, and CLAUDE.md as a regular file whose bytes are the template AGENTS.md content - and compiles those files through the same partitioning with the full declare policy; installed lifecycle entries join the manifest managed inventory while lifecycle paths are NOT passed as managed render, so collect_template_source_entries still records them in the adopted source baseline. The expected-target gate is fully reused: the expected target gains the lifecycle files, so required_contract_failures passes naturally.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "date": "2026-08-28",
+              "commit": "ddceba7",
+              "evidence": "8 new planner tests + 7 new bundles tests covering the full partitioning and lifecycle-install matrix; full suite 1445 passed/5 skipped; basedpyright 0 errors/0 warnings; ruff check/format clean; validate_template.py clean; cleanup-inventory gate green with the regenerated inventory"
+            },
+            "deviations": [
+              "Implementation paused mid-task for owner decisions (2026-08-28): the reused expected-target template-contract gate refused every brownfield adoption because no generation path renders the lifecycle source files. Owner selected lifecycle installation (not gate scoping), the full declare policy over lifecycle paths, managed-inventory membership for installed lifecycle files, and a regular-file CLAUDE.md copy (symlink machinery declined after confirming an installed symlink makes the adopted project unobservable). design.md amended to Draft 2 and this task extended accordingly before completion.",
+              "collect_template_source_entries was refactored into a with-content core plus its existing projection so one bounded read pass records the adopted baseline and builds the lifecycle install set; its signature and behavior for existing callers are unchanged."
+            ]
           },
           "files": {
             "reuse": [
               "scripts/bootstrap/bundles.py::_seed_once_inputs",
               "scripts/bootstrap/bundles.py::_manifest_answers",
               "scripts/bootstrap/planner.py operation types",
-              "scripts/bootstrap/identity.py::FileState"
+              "scripts/bootstrap/identity.py::FileState",
+              "scripts/bootstrap/observation.py::collect_template_source_entries"
             ],
             "create": [],
             "modify": [
@@ -183,7 +193,7 @@
           "new_abstractions": [
             {
               "name": "compile_adoption_install",
-              "requirement": "US-1/US-4/US-5/US-8: one deterministic conflict-aware plan for installing into brownfield trees",
+              "requirement": "US-1/US-4/US-5/US-8: one deterministic conflict-aware plan for installing into brownfield trees, including the template lifecycle source set",
               "consumers": [
                 "adopt/plan-adopt executor in scripts/bootstrap/cli.py"
               ]
@@ -196,7 +206,12 @@
               "replace paths compile to replace operations carrying prior FileState",
               "undeclared collision lists every offending path in the error subject",
               "declaration naming a non-colliding path errors as unmatched declaration",
-              "replace on a seed-once path errors as illegal replace target"
+              "replace on a seed-once path errors as illegal replace target",
+              "lifecycle files absent from the target compile to create operations and join the managed inventory",
+              "keep-existing on a lifecycle path excludes it from operations and inventory",
+              "replace on a lifecycle path compiles with prior FileState; undeclared lifecycle collisions refuse",
+              "CLAUDE.md planned content equals the template AGENTS.md bytes; .rygor/source-ownership.json is planned verbatim",
+              "adopted source baseline still records lifecycle entries after lifecycle installation"
             ],
             "acceptance": [
               "compilation is a pure function of decoded bundle plus observation; repeat calls yield identical plans"
@@ -365,16 +380,17 @@
         },
         {
           "id": "T7",
-          "name": "Generation-path parity and determinism",
+          "name": "Generation-path parity, restore for adopted projects, and determinism",
           "depends_on": [
             "T5"
           ],
           "inputs": [
             "generation-path fixture suites tests/test_copier_bootstrap.py and tests/test_github_template_readiness.py patterns",
             "profile/capability matrix in tests/test_capability_matrix.py",
-            "determinism suite tests/test_bootstrap_determinism.py"
+            "determinism suite tests/test_bootstrap_determinism.py",
+            "design.md amendment 2026-08-28: installed lifecycle entries are managed inventory; recorded render sources lifecycle bytes from the template root"
           ],
-          "description": "Prove adopt composes with the rest of the contract: GitHub and Copier fixture scaffolds refuse adopt pointing at apply; the complete profile/capability matrix installs identically through adopt; repeated adoptions produce byte-identical plans and receipts across runs and entry shapes; restore works against adopted baselines while reconcile permanently refuses with OPERATION_UNAVAILABLE.",
+          "description": "Prove adopt composes with the rest of the contract: GitHub and Copier fixture scaffolds refuse adopt pointing at apply; the complete profile/capability matrix installs identically through adopt; repeated adoptions produce byte-identical plans and receipts across runs and entry shapes; restore works on adopted projects - extend the recorded-render reconstruction so installed lifecycle entries are sourced from the template root and accepted only when their identities match the recorded inventory; an adopter edit to an installed lifecycle file is managed drift diagnosed by status before unrelated mutation; reconcile permanently refuses with OPERATION_UNAVAILABLE.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -389,7 +405,8 @@
               "tests/test_copier_bootstrap.py",
               "tests/test_capability_matrix.py",
               "tests/test_bootstrap_determinism.py",
-              "tests/test_bootstrap_lifecycle.py"
+              "tests/test_bootstrap_lifecycle.py",
+              "scripts/bootstrap/cli.py"
             ],
             "delete": []
           },
@@ -399,6 +416,8 @@
               "both fixture scaffolds refuse adopt with next action apply",
               "full profile/capability matrix passes through adopt",
               "repeat adoptions yield byte-identical receipts",
+              "restore reproduces installed lifecycle entries on adopted projects",
+              "adopter edit to an installed lifecycle file is diagnosed as managed drift",
               "restore succeeds on adopted projects; reconcile refuses permanently"
             ],
             "acceptance": [
@@ -420,11 +439,12 @@
           ],
           "inputs": [
             "design.md Contract amendments section (authoritative wording scope)",
-            "docs/prd.md REQ-007 and REQ-010",
-            "CONTEXT.md terms Unrecognized manifest-free target, Bootstrap answer document",
+            "design.md amendments 2026-08-28: lifecycle installation ownership and CLAUDE.md packaging",
+            "docs/prd.md REQ-007, REQ-009, and REQ-010",
+            "CONTEXT.md terms Unrecognized manifest-free target, Bootstrap answer document, Managed inventory, Generated-lifecycle source",
             "generated documentation fragments in scripts/bootstrap/capability_fragments.py core_document_fragments"
           ],
-          "description": "Amend REQ-007 to admit adoption of any verified non-bare manifest-free Git working tree alongside the two recognized scaffolds; amend REQ-010 to add plan adopt/adopt to the public lifecycle with snapshot-like posture and permanent reconcile refusal. Narrow the Unrecognized manifest-free target term to non-Git, bare, and manifest-bearing states; add Adopted project and Adoption declaration terms; extend the Bootstrap answer document definition to allow the declaration. Update README, docs/project-readiness.md, and generated durable documents mentioning lifecycle availability - through fragment definitions, never per-capability branches.",
+          "description": "Amend REQ-007 to admit adoption of any verified non-bare manifest-free Git working tree alongside the two recognized scaffolds; amend REQ-010 to add plan adopt/adopt to the public lifecycle with snapshot-like posture and permanent reconcile refusal; note in REQ-009 that adopted projects record installed lifecycle source inside the managed inventory while every ownership-separation prohibition stays unchanged. Narrow the Unrecognized manifest-free target term to non-Git, bare, and manifest-bearing states; add Adopted project and Adoption declaration terms; extend the Bootstrap answer document definition to allow the declaration; extend the Managed inventory and Generated-lifecycle source terms so adopted projects record installed lifecycle files in the inventory. Record the lifecycle-installation ownership decision as a new ADR. Update README, docs/project-readiness.md, and generated durable documents mentioning lifecycle availability - through fragment definitions, never per-capability branches.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -434,7 +454,9 @@
             "reuse": [
               "fragment definition layer in scripts/bootstrap/capability_fragments.py"
             ],
-            "create": [],
+            "create": [
+              "docs/adr/0003-adoption-installs-lifecycle-source.md"
+            ],
             "modify": [
               "docs/prd.md",
               "CONTEXT.md",

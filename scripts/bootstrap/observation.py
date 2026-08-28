@@ -1030,6 +1030,19 @@ def _cleanup_observation(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class LifecycleSourceFile:
+    """One collected source entry plus the bytes it was hashed from.
+
+    Directory entries carry ``None`` content; file entries carry the exact
+    bytes behind ``entry.sha256`` so the same bounded read pass can both
+    record the baseline and, for adoption, install the lifecycle source.
+    """
+
+    entry: LifecycleSourceEntry
+    content: bytes | None
+
+
 def collect_template_source_entries(
     template_root: str,
     *,
@@ -1043,6 +1056,27 @@ def collect_template_source_entries(
     the lifecycle baseline.  Every owned symlink and hardlink is rejected, and
     file reads are descriptor-bound so a source change cannot turn a checked
     regular file into a different object between stat and read.
+    """
+    match collect_template_source_entries_with_content(
+        template_root, managed_paths=managed_paths, limits=limits
+    ):
+        case Err(error):
+            return Err(error)
+        case Ok(pairs):
+            return Ok(tuple(pair.entry for pair in pairs))
+
+
+def collect_template_source_entries_with_content(
+    template_root: str,
+    *,
+    managed_paths: AbstractSet[RepoPath],
+    limits: ResourceLimits,
+) -> Result[tuple[LifecycleSourceFile, ...], ContractError]:
+    """Collect the owned source entries together with their file bytes.
+
+    Same reading discipline and authorization contract as
+    ``collect_template_source_entries``; file entries additionally carry the
+    exact bytes behind their recorded digest.
     """
 
     ownership_abs = os.path.join(template_root, SOURCE_OWNERSHIP_PATH.value)
@@ -1093,7 +1127,7 @@ def collect_template_source_entries(
         case Ok(ownership):
             pass
 
-    entries: list[LifecycleSourceEntry] = []
+    entries: list[LifecycleSourceFile] = []
     seen: set[str] = set()
     total_bytes = 0
     reserved_paths = {path.value for path in (*SEED_ONCE_PATHS, *managed_paths)}
@@ -1101,12 +1135,12 @@ def collect_template_source_entries(
     def source_error(path: str) -> ContractError:
         return ContractError(ContractErrorKind.SOURCE_CONTRACT_INVALID, path)
 
-    def add_entry(entry: LifecycleSourceEntry) -> Result[None, ContractError]:
-        if entry.path.value in seen:
-            return Err(source_error(entry.path.value))
+    def add_entry(entry: LifecycleSourceFile) -> Result[None, ContractError]:
+        if entry.entry.path.value in seen:
+            return Err(source_error(entry.entry.path.value))
         if len(entries) >= limits.max_paths:
             return Err(source_error("paths"))
-        seen.add(entry.path.value)
+        seen.add(entry.entry.path.value)
         entries.append(entry)
         return Ok(None)
 
@@ -1182,11 +1216,16 @@ def collect_template_source_entries(
                 case Ok(path):
                     pass
             match add_entry(
-                LifecycleSourceEntry(
-                    path=path,
-                    kind="directory",
-                    mode=PosixMode.DIRECTORY,
-                    sha256=sha256_hex(b"template/source/dir:" + os.fsencode(relative)),
+                LifecycleSourceFile(
+                    entry=LifecycleSourceEntry(
+                        path=path,
+                        kind="directory",
+                        mode=PosixMode.DIRECTORY,
+                        sha256=sha256_hex(
+                            b"template/source/dir:" + os.fsencode(relative)
+                        ),
+                    ),
+                    content=None,
                 )
             ):
                 case Err(error):
@@ -1230,15 +1269,18 @@ def collect_template_source_entries(
                 case Ok(path):
                     pass
             match add_entry(
-                LifecycleSourceEntry(
-                    path=path,
-                    kind="file",
-                    mode=(
-                        PosixMode.EXECUTABLE
-                        if file_info.st_mode & 0o100
-                        else PosixMode.FILE
+                LifecycleSourceFile(
+                    entry=LifecycleSourceEntry(
+                        path=path,
+                        kind="file",
+                        mode=(
+                            PosixMode.EXECUTABLE
+                            if file_info.st_mode & 0o100
+                            else PosixMode.FILE
+                        ),
+                        sha256=sha256_hex(content),
                     ),
-                    sha256=sha256_hex(content),
+                    content=content,
                 )
             ):
                 case Err(error):
@@ -1272,15 +1314,18 @@ def collect_template_source_entries(
                 case Ok((file_info, content)):
                     pass
             match add_entry(
-                LifecycleSourceEntry(
-                    path=declared_path,
-                    kind="file",
-                    mode=(
-                        PosixMode.EXECUTABLE
-                        if file_info.st_mode & 0o100
-                        else PosixMode.FILE
+                LifecycleSourceFile(
+                    entry=LifecycleSourceEntry(
+                        path=declared_path,
+                        kind="file",
+                        mode=(
+                            PosixMode.EXECUTABLE
+                            if file_info.st_mode & 0o100
+                            else PosixMode.FILE
+                        ),
+                        sha256=sha256_hex(content),
                     ),
-                    sha256=sha256_hex(content),
+                    content=content,
                 )
             ):
                 case Err(error):
@@ -1294,15 +1339,18 @@ def collect_template_source_entries(
         case Ok((ownership_info, ownership_content)):
             pass
     match add_entry(
-        LifecycleSourceEntry(
-            path=SOURCE_OWNERSHIP_PATH,
-            kind="file",
-            mode=(
-                PosixMode.EXECUTABLE
-                if ownership_info.st_mode & 0o100
-                else PosixMode.FILE
+        LifecycleSourceFile(
+            entry=LifecycleSourceEntry(
+                path=SOURCE_OWNERSHIP_PATH,
+                kind="file",
+                mode=(
+                    PosixMode.EXECUTABLE
+                    if ownership_info.st_mode & 0o100
+                    else PosixMode.FILE
+                ),
+                sha256=sha256_hex(ownership_content),
             ),
-            sha256=sha256_hex(ownership_content),
+            content=ownership_content,
         )
     ):
         case Err(error):
@@ -1310,7 +1358,12 @@ def collect_template_source_entries(
         case Ok(_):
             pass
     return Ok(
-        tuple(sorted(entries, key=lambda entry: entry.path.value.encode("utf-8")))
+        tuple(
+            sorted(
+                entries,
+                key=lambda pair: pair.entry.path.value.encode("utf-8"),
+            )
+        )
     )
 
 
