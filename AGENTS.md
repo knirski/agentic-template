@@ -47,6 +47,8 @@ boundary. The template source uses the readiness and generation-path fixture sui
 
 - Use the repository's modern Python toolchain: manage dependencies with `uv`, format and lint
   with Ruff, type-check with basedpyright, and run tests through `uv run`.
+- Always run the test suite as `uv run pytest -n auto --dist=worksteal` — parallelism with work
+  stealing is the repository's canonical test invocation (see CONTRIBUTING.md and CI).
 - Prefer current Python features supported by the repository's `requires-python` floor, explicit
   type annotations, small functions, immutable values, and transformations that are easy to test.
 - Where practical, structure Python commands as a functional core with an imperative shell: keep
