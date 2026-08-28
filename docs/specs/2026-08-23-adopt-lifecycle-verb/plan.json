@@ -370,8 +370,16 @@
           "description": "Exercise adoption through the real transaction machine: dirty-tree and empty-tree adoptions install completely; adopter-hook failure installs but exits 1 retaining evidence without rollback; interrupted runs restore the exact pre-state or finish forward via recover, surviving git clean -fdx. Keep-existing paths remain untouched byte-for-byte across recovery sequences.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "date": "2026-08-28",
+              "evidence": "14 new tests: 3 journaled end-to-end adoption tests (dirty tree, empty-tree receipt-closure, hook failure without rollback), 10 crash-recovery tests (install crashes at 4 points restoring exact pre-state after git clean -fdx, sealed-cleanup crash finishing forward, keep-existing surviving 3 crash sequences, sealed+git-clean third-state refusal, third-state preservation), and 1 hypothesis stateful machine interleaving install/crash/recover/git-clean over a real target; full suite 1476 passed/5 skipped under pytest -n auto --dist=worksteal; basedpyright 0 errors/0 warnings; ruff check/format clean; validate_template.py exit 0; cleanup-inventory gate green with the regenerated inventory"
+            },
+            "deviations": [
+              "Adoption end-to-end helpers (target/bundle builders, whole-tree capture, crash harness) were placed in a new tests/adoption_e2e.py rather than inside the three listed test files: fixtures.py is imported at module level by factory.py, so the shared helpers needed a home that imports fixtures and factory without creating an import cycle.",
+              "The crash harness simulates process death by releasing the lock and closing the state-root descriptor before raising, because in-process pytest would otherwise hold the flock through the traceback's frame references.",
+              "A sealed crash followed by git clean -fdx refuses recovery with RECOVERY_THIRD_STATE and preserves every artifact: git clean deletes the untracked installed candidate, and the machine cannot distinguish that from adopter tampering. Recorded as the honest contract; the surviving-evidence claim covers the MUTATING phase (journal, backups, and tokens live in .git/rygor) where recovery still restores the exact pre-state."
+            ]
           },
           "files": {
             "reuse": [
