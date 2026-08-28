@@ -16,10 +16,12 @@ from scripts.bootstrap.errors import (
 )
 from scripts.bootstrap.intents import (
     Add,
+    Adopt,
     Apply,
     InitBundle,
     InspectStatus,
     PlanAdd,
+    PlanAdopt,
     PlanApply,
     PlanReconcile,
     PlanRestore,
@@ -103,7 +105,7 @@ class CompileCandidate:
 
 @dataclass(frozen=True, slots=True)
 class InitialInstall:
-    intent: Apply | PlanApply
+    intent: Apply | PlanApply | Adopt | PlanAdopt
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,6 +192,8 @@ type CommandDecision = (
 type ActionIntent = (
     Apply
     | PlanApply
+    | Adopt
+    | PlanAdopt
     | Add
     | PlanAdd
     | Restore
@@ -303,9 +307,9 @@ def _refuse_for(
     intent: ActionIntent, error: CommandError
 ) -> RefusePlan | RefuseMutation:
     match intent:
-        case PlanApply() | PlanAdd() | PlanRestore() | PlanReconcile():
+        case PlanApply() | PlanAdopt() | PlanAdd() | PlanRestore() | PlanReconcile():
             return RefusePlan(error)
-        case Apply() | Add() | Restore() | Reconcile():
+        case Apply() | Adopt() | Add() | Restore() | Reconcile():
             return RefuseMutation(error)
     return assert_never(
         intent
@@ -418,6 +422,8 @@ def _project_action(intent: ActionIntent, state: ProjectAvailable) -> CommandDec
             return _apply_decision(intent, state)
         case PlanApply():
             return _plan_apply_decision(intent, state)
+        case Adopt() | PlanAdopt():
+            return _adopt_decision(intent, state)
         case Add() | PlanAdd():
             return _add_decision(intent, state)
         case Restore() | PlanRestore():
@@ -437,6 +443,33 @@ def _plan_apply_decision(intent: PlanApply, state: ProjectAvailable) -> CommandD
             return RefusePlan(result.error)
         case _:
             return CompileCandidate(intent)
+
+
+def _adopt_decision(
+    intent: Adopt | PlanAdopt, state: ProjectAvailable
+) -> CommandDecision:
+    """Adopt accepts only a manifest-free, non-bare Git working tree."""
+    match state.observation:
+        case UnsupportedManifestFree():
+            return _accept_adopt(intent)
+        case RecognizedScaffold():
+            return _refuse_for(intent, _transition(TransitionErrorKind.APPLY_REQUIRED))
+        case ExistingProject() | InvalidManifest():
+            return _refuse_for(intent, _transition(TransitionErrorKind.STATUS_REQUIRED))
+    return assert_never(
+        state.observation
+    )  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
+
+
+def _accept_adopt(intent: Adopt | PlanAdopt) -> CommandDecision:
+    match intent:
+        case Adopt():
+            return InitialInstall(intent)
+        case PlanAdopt():
+            return CompileCandidate(intent)
+    return assert_never(  # pragma: no cover  # pyright: ignore[reportUnreachable] — proven exhaustive by recommended mode; kept as a runtime guard
+        intent
+    )
 
 
 def _add_decision(intent: Add | PlanAdd, state: ProjectAvailable) -> CommandDecision:
@@ -585,6 +618,8 @@ def decide_project(intent: ProjectIntent, state: SystemState) -> CommandDecision
         case (
             Apply()
             | PlanApply()
+            | Adopt()
+            | PlanAdopt()
             | Add()
             | PlanAdd()
             | Restore()

@@ -35,6 +35,8 @@ from scripts.bootstrap.identity import TargetIdentity
 from scripts.bootstrap.intents import (
     Add,
     AddOptions,
+    Adopt,
+    AdoptOptions,
     Apply,
     ApplyOptions,
     ApplyPlanOptions,
@@ -43,6 +45,7 @@ from scripts.bootstrap.intents import (
     InitOptions,
     InspectStatus,
     PlanAdd,
+    PlanAdopt,
     PlanApply,
     PlanReconcile,
     PlanRestore,
@@ -87,6 +90,7 @@ from scripts.bootstrap.state import (
     OutputAvailable,
     PathDelta,
     PendingIdentity,
+    PopulatedManifestFree,
     ProjectAvailable,
     ProtectedTargetAvailable,
     RecognizedScaffold,
@@ -547,6 +551,131 @@ def test_apply_decision_handles_all_existing_state_families() -> None:
     assert isinstance(
         decide_project(Apply(ApplyOptions()), changed_copier), RefuseMutation
     )
+
+
+def test_adopt_accepts_unsupported_manifest_free_of_both_shapes() -> None:
+    for shape in (
+        EmptyManifestFree(),
+        PopulatedManifestFree((RepoPath("src/main.py"),)),
+    ):
+        state = ProjectAvailable(worktree(), UnsupportedManifestFree(shape, ()))
+        assert isinstance(
+            decide_project(Adopt(AdoptOptions("digest")), state), InitialInstall
+        )
+        assert isinstance(
+            decide_project(PlanAdopt(AdoptOptions("digest")), state), CompileCandidate
+        )
+
+
+def test_adopt_over_recognized_scaffold_refuses_naming_apply() -> None:
+    state = ProjectAvailable(
+        worktree(),
+        RecognizedScaffold(
+            GenerationPath.GITHUB, NoSnapshotCleanup(), EmptyManifestFree(), ()
+        ),
+    )
+    mutation = decide_project(Adopt(AdoptOptions("digest")), state)
+    assert isinstance(mutation, RefuseMutation)
+    assert isinstance(mutation.error, TransitionError)
+    assert mutation.error.kind == TransitionErrorKind.APPLY_REQUIRED
+    planned = decide_project(PlanAdopt(AdoptOptions("digest")), state)
+    assert isinstance(planned, RefusePlan)
+    assert isinstance(planned.error, TransitionError)
+    assert planned.error.kind == TransitionErrorKind.APPLY_REQUIRED
+
+
+def test_adopt_over_any_existing_project_refuses_naming_status() -> None:
+    managed = ManagedVerified()
+    observations = (
+        ExistingProject(
+            UnsafeExistingProject(
+                RecordedProjectState(GenerationPath.GITHUB),
+                TopologyError(()),
+                TargetSnapshot(()),
+            )
+        ),
+        ExistingProject(
+            IncompatibleExistingProject(
+                RecordedProjectState(GenerationPath.GITHUB),
+                ClosureError("incompatible"),
+                TargetSnapshot(()),
+            )
+        ),
+        ExistingProject(
+            SnapshotExistingProject(
+                RecordedProjectState(GenerationPath.GITHUB),
+                SnapshotSourceSame(managed),
+                TargetSnapshot(()),
+            )
+        ),
+        ExistingProject(
+            SnapshotExistingProject(
+                RecordedProjectState(GenerationPath.GITHUB),
+                SnapshotSourceSame(ManagedDrift(PathDelta((RepoPath("managed.txt"),)))),
+                TargetSnapshot(()),
+            )
+        ),
+        ExistingProject(
+            CopierExistingProject(
+                RecordedProjectState(GenerationPath.COPIER),
+                CopierSourceChanged(SourceDelta((RepoPath("source.txt"),)), managed),
+                TargetSnapshot(()),
+            )
+        ),
+        InvalidManifest("invalid", ()),
+    )
+    for observation in observations:
+        state = ProjectAvailable(worktree(), observation)
+        mutation = decide_project(Adopt(AdoptOptions("digest")), state)
+        assert isinstance(mutation, RefuseMutation)
+        assert isinstance(mutation.error, TransitionError)
+        assert mutation.error.kind == TransitionErrorKind.STATUS_REQUIRED
+        planned = decide_project(PlanAdopt(AdoptOptions("digest")), state)
+        assert isinstance(planned, RefusePlan)
+        assert isinstance(planned.error, TransitionError)
+        assert planned.error.kind == TransitionErrorKind.STATUS_REQUIRED
+
+
+def test_non_adopt_verbs_keep_refusing_unsupported_manifest_free() -> None:
+    state = ProjectAvailable(
+        worktree(), UnsupportedManifestFree(EmptyManifestFree(), ())
+    )
+    mutation = decide_project(Apply(ApplyOptions()), state)
+    assert isinstance(mutation, RefuseMutation)
+    assert isinstance(mutation.error, TransitionError)
+    assert mutation.error.kind == TransitionErrorKind.UNSUPPORTED_TARGET
+    for intent in (
+        Add(AddOptions(("capability",))),
+        Restore(RestoreOptions()),
+        Reconcile(ReconcileOptions()),
+    ):
+        decision = decide_project(intent, state)
+        assert isinstance(decision, RefuseMutation)
+        assert isinstance(decision.error, TransitionError)
+        assert decision.error.kind == TransitionErrorKind.OPERATION_UNAVAILABLE
+    assert isinstance(
+        decide_project(Recover(RecoverOptions()), state), NoRecoveryNeeded
+    )
+
+
+def test_adopt_blocked_and_protected_states_refuse_in_intent_family() -> None:
+    blocked = TargetUnavailable(UnsupportedGitTarget(TargetReason.NOT_WORKTREE))
+    mutation = decide_project(Adopt(AdoptOptions("digest")), blocked)
+    assert isinstance(mutation, RefuseMutation)
+    assert isinstance(mutation.error, TransitionError)
+    assert mutation.error.kind == TransitionErrorKind.UNSUPPORTED_TARGET
+    planned = decide_project(PlanAdopt(AdoptOptions("digest")), blocked)
+    assert isinstance(planned, RefusePlan)
+    protected = ProtectedTargetAvailable(
+        worktree(protected=True).context,
+        UnsupportedManifestFree(EmptyManifestFree(), ()),
+    )
+    protected_mutation = decide_project(Adopt(AdoptOptions("digest")), protected)
+    assert isinstance(protected_mutation, RefuseMutation)
+    assert isinstance(protected_mutation.error, TransitionError)
+    assert protected_mutation.error.kind == TransitionErrorKind.UNSUPPORTED_TARGET
+    protected_planned = decide_project(PlanAdopt(AdoptOptions("digest")), protected)
+    assert isinstance(protected_planned, RefusePlan)
 
 
 def test_project_actions_cover_add_restore_and_reconcile_families() -> None:

@@ -53,6 +53,11 @@ class ApplyOptions:
 
 
 @dataclass(frozen=True, slots=True)
+class AdoptOptions:
+    bundle_digest: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class RecoverOptions:
     target: RepoPath | None = None
 
@@ -73,6 +78,11 @@ class PlanApply:
 
 
 @dataclass(frozen=True, slots=True)
+class PlanAdopt:
+    options: AdoptOptions
+
+
+@dataclass(frozen=True, slots=True)
 class PlanAdd:
     options: AddOptions
 
@@ -90,6 +100,11 @@ class PlanReconcile:
 @dataclass(frozen=True, slots=True)
 class Apply:
     options: ApplyOptions
+
+
+@dataclass(frozen=True, slots=True)
+class Adopt:
+    options: AdoptOptions
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,10 +130,12 @@ class Recover:
 type ProjectIntent = (
     InspectStatus
     | PlanApply
+    | PlanAdopt
     | PlanAdd
     | PlanRestore
     | PlanReconcile
     | Apply
+    | Adopt
     | Add
     | Restore
     | Reconcile
