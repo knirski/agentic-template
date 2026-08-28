@@ -4,8 +4,7 @@ The GitHub-snapshot suite (test_github_template_readiness.py) and the Copier
 suite (test_copier_bootstrap.py) both build a tracked-source copy, overlay the
 seed-once scaffold, write an answer bundle, and drive the bootstrap CLI.  The
 helpers live here with public names so neither suite imports the other's
-internals; the CLI suite keeps its own synthetic fixtures.
-"""
+internals; the CLI suite keeps its own synthetic fixtures."""
 
 from __future__ import annotations
 

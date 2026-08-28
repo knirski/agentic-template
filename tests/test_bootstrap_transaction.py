@@ -10,11 +10,13 @@ model that drives every machine constructor.
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import unittest
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import assert_never, cast
 from unittest.mock import patch
 
@@ -161,6 +163,7 @@ from scripts.bootstrap.transaction_machine import (
     _validate_stage_entries,  # pyright: ignore[reportPrivateUsage]  deliberate private-helper unit test
 )
 from scripts.bootstrap.values import JournalPhase
+from tests.factory import seed_repo
 
 TARGET = target_identity(b"/work/example", device=1, inode=2)
 NEW = b"fresh content\n"
@@ -2242,3 +2245,155 @@ class TransactionMachineStateful(RuleBasedStateMachine):
 TestTransactionMachineStateful = cast(
     type[unittest.TestCase], TransactionMachineStateful.TestCase
 )
+
+
+# --- JournaledAdoptionEndToEndTests ------------------------------------------
+
+
+class TestJournaledAdoptionEndToEnd:
+    """T6: adoption through the real machine, journal, and real working trees.
+
+    These complements drive ``adopt`` through the CLI shell so the compiled
+    adoption plan, the journaled transaction machine, the adopter hook, and
+    the observed tree are all the production implementations.
+    """
+
+    def test_dirty_tree_adoption_installs_and_leaves_adopter_files_untouched(
+        self, tmp_path: Path
+    ) -> None:
+        from tests.adoption_e2e import (
+            ADOPTER_NOTES,
+            adoption_bundle,
+            capture_tree,
+            cli_exit_code,
+            run_cli,
+        )
+
+        target = seed_repo(
+            tmp_path,
+            {"notes.txt": ADOPTER_NOTES, "src/app.py": "print(1)\n"},
+            name="adoptee",
+        )
+        # Uncommitted modification plus an untracked file: a dirty tree.
+        _ = (target / "src/app.py").write_text("print(2)\n", encoding="utf-8")
+        _ = (target / "scratch.md").write_text("untracked scratch\n", encoding="utf-8")
+        pre = capture_tree(target)
+        record = tmp_path / "hook-runs"
+        _ = record.write_text("", encoding="utf-8")
+        bundle = adoption_bundle(tmp_path / "bundle-input", record)
+
+        result = run_cli(["adopt", "--bundle", str(bundle), "--target", str(target)])
+
+        assert cli_exit_code(result) == 0
+        manifest = cast(
+            "dict[str, object]",
+            json.loads((target / ".rygor/project.json").read_text(encoding="utf-8")),
+        )
+        provenance = cast("dict[str, object]", manifest["provenance"])
+        assert provenance["generation_path"] == "adopted"
+        post = capture_tree(target)
+        assert pre.items() <= post.items()
+        assert (target / "notes.txt").read_text() == ADOPTER_NOTES
+        assert (target / "src/app.py").read_text() == "print(2)\n"
+        assert (target / "scratch.md").read_text() == "untracked scratch\n"
+        assert (target / "AGENTS.md").is_file()
+        assert (target / "CLAUDE.md").is_file()
+        assert not (target / ".git/rygor/journal.json").exists()
+        assert record.read_text().splitlines() == ["run"]
+
+    def test_empty_tree_adoption_installs_the_complete_profile_closure(
+        self, tmp_path: Path
+    ) -> None:
+        from scripts.bootstrap.plan_digest import decode_receipt
+        from tests.adoption_e2e import (
+            adoption_bundle,
+            capture_tree,
+            cli_exit_code,
+            empty_adoption_target,
+            run_cli,
+        )
+        from tests.fixtures import assert_ok
+
+        target = empty_adoption_target(tmp_path)
+        record = tmp_path / "hook-runs"
+        _ = record.write_text("", encoding="utf-8")
+        bundle = adoption_bundle(tmp_path / "bundle-input", record)
+        receipt_path = tmp_path / "receipt.json"
+        planned = run_cli(
+            [
+                "plan",
+                "adopt",
+                "--bundle",
+                str(bundle),
+                "--target",
+                str(target),
+                "--out",
+                str(receipt_path),
+            ]
+        )
+        assert cli_exit_code(planned) == 0
+        assert capture_tree(target) == {}
+        receipt = assert_ok(decode_receipt(receipt_path.read_bytes()))
+        planned_files: set[str] = set()
+        for document in cast("list[object]", receipt["operations"]):
+            operation = cast("dict[str, object]", document)
+            match operation["kind"]:
+                case "create_file" | "replace_file":
+                    if operation["planned_new"] is not None:
+                        planned_files.add(cast("str", operation["path"]))
+                case "create_tree":
+                    tree = cast("dict[str, object]", operation["planned_new"])
+                    for entry_document in cast("list[object]", tree["entries"]):
+                        entry = cast("dict[str, object]", entry_document)
+                        if entry["kind"] == "file":
+                            planned_files.add(cast("str", entry["path"]))
+                case "delete_file" | "remove_empty_directory":
+                    pass
+                case other:  # pragma: no cover  # the operation kinds are closed
+                    raise AssertionError(f"unexpected operation kind: {other}")
+        assert "AGENTS.md" in planned_files
+        assert ".rygor/project.json" in planned_files
+
+        result = run_cli(["adopt", "--bundle", str(bundle), "--target", str(target)])
+
+        assert cli_exit_code(result) == 0
+        installed = capture_tree(target)
+        assert set(installed) == planned_files
+        manifest = cast(
+            "dict[str, object]",
+            json.loads((target / ".rygor/project.json").read_text(encoding="utf-8")),
+        )
+        provenance = cast("dict[str, object]", manifest["provenance"])
+        assert provenance["generation_path"] == "adopted"
+        assert record.read_text().splitlines() == ["run"]
+
+    def test_hook_failure_installs_but_exits_one_without_rollback(
+        self, tmp_path: Path
+    ) -> None:
+        from tests.adoption_e2e import (
+            ADOPTER_NOTES,
+            adoption_bundle,
+            cli_exit_code,
+            run_cli,
+        )
+
+        target = seed_repo(tmp_path, {"notes.txt": ADOPTER_NOTES}, name="adoptee")
+        record = tmp_path / "hook-runs"
+        _ = record.write_text("", encoding="utf-8")
+        bundle = adoption_bundle(tmp_path / "bundle-input", record, hook_status=3)
+
+        result = run_cli(["adopt", "--bundle", str(bundle), "--target", str(target)])
+
+        assert cli_exit_code(result) == 1
+        assert (target / ".rygor/project.json").is_file()
+        assert (target / "AGENTS.md").is_file()
+        assert (target / "notes.txt").read_text() == ADOPTER_NOTES
+        # The hook evidence is retained exactly once; nothing rolled back.
+        assert record.read_text().splitlines() == ["run"]
+        assert not (target / ".git/rygor/journal.json").exists()
+        # Recovery finds nothing to do and preserves the installed candidate.
+        recovered = run_cli(["recover", "--target", str(target)])
+        assert cli_exit_code(recovered) == 0
+        assert (target / ".rygor/project.json").is_file()
+        assert (target / "AGENTS.md").is_file()
+        assert record.read_text().splitlines() == ["run"]

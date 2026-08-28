@@ -9,6 +9,7 @@ failure.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import tempfile
@@ -1113,3 +1114,273 @@ class RollbackCrashStateMachine(RuleBasedStateMachine):
 TestRollbackCrashStateMachine = cast(
     type[unittest.TestCase], RollbackCrashStateMachine.TestCase
 )
+
+
+# --- JournaledAdoptionCrashTests ---------------------------------------------
+
+
+def _adopt_scenario(parent: Path) -> tuple[Path, Path]:
+    """One keep-existing adoption scenario: a target plus its declared bundle."""
+
+    from tests.adoption_e2e import adoption_bundle, adoption_target
+
+    target = adoption_target(parent)
+    record = parent / "hook-runs"
+    _ = record.write_text("", encoding="utf-8")
+    bundle = adoption_bundle(
+        parent / "bundle-input",
+        record,
+        collisions={"README.md": "keep-existing"},
+    )
+    return target, bundle
+
+
+def _planned_operation_count(target: Path, bundle: Path, parent: Path) -> int:
+    from scripts.bootstrap.plan_digest import decode_receipt
+    from tests.adoption_e2e import cli_exit_code, run_cli
+    from tests.fixtures import assert_ok
+
+    receipt_path = parent / "receipt.json"
+    planned = run_cli(
+        [
+            "plan",
+            "adopt",
+            "--bundle",
+            str(bundle),
+            "--target",
+            str(target),
+            "--out",
+            str(receipt_path),
+        ]
+    )
+    assert cli_exit_code(planned) == 0
+    receipt = assert_ok(decode_receipt(receipt_path.read_bytes()))
+    return len(cast("list[object]", receipt["operations"]))
+
+
+def _journal_phase(target: Path) -> JournalPhase:
+    from tests.fixtures import assert_ok
+
+    journal = target / ".git/rygor/journal.json"
+    envelope = assert_ok(decode_journal(journal.read_bytes()))
+    return envelope.phase
+
+
+def _git_clean(target: Path) -> None:
+    from tests.fixtures import run
+
+    cleaned = run(["git", "clean", "-fdx"], cwd=target)
+    assert cleaned.returncode == 0
+
+
+class TestJournaledAdoptionCrashRecovery:
+    """T6: real interrupted adoptions recover through the real machine."""
+
+    @pytest.mark.parametrize("crash_at", [1, 2, "half", "last"])
+    def test_crash_during_install_restores_exact_pre_state(
+        self, tmp_path: Path, crash_at: int | str
+    ) -> None:
+        from tests.adoption_e2e import (
+            TransactionCrash,
+            capture_tree,
+            cli_exit_code,
+            crashing_transaction,
+            run_cli,
+        )
+
+        target, bundle = _adopt_scenario(tmp_path)
+        pre = capture_tree(target)
+        n_ops = _planned_operation_count(target, bundle, tmp_path)
+        point = (
+            crash_at
+            if isinstance(crash_at, int)
+            else n_ops // 2
+            if crash_at == "half"
+            else n_ops
+        )
+        with (
+            crashing_transaction(apply_at=point) as fired,
+            pytest.raises(TransactionCrash),
+        ):
+            _ = run_cli(["adopt", "--bundle", str(bundle), "--target", str(target)])
+        assert fired["apply"] is True
+        assert _journal_phase(target) is JournalPhase.MUTATING
+
+        # The administrative state in .git/rygor survives git clean -fdx.
+        _git_clean(target)
+
+        result = run_cli(["recover", "--target", str(target)])
+        assert cli_exit_code(result) == 0
+        assert capture_tree(target) == pre
+        assert not (target / ".git/rygor/journal.json").exists()
+
+        # Recovery is idempotent: a second pass changes nothing.
+        again = run_cli(["recover", "--target", str(target)])
+        assert cli_exit_code(again) == 0
+        assert capture_tree(target) == pre
+
+        # The same bundle completes the adoption afterwards.
+        retried = run_cli(["adopt", "--bundle", str(bundle), "--target", str(target)])
+        assert cli_exit_code(retried) == 0
+        assert (target / ".rygor/project.json").is_file()
+
+    def test_crash_during_forward_cleanup_completes_install(
+        self, tmp_path: Path
+    ) -> None:
+        from tests.adoption_e2e import (
+            ADOPTER_NOTES,
+            ADOPTER_README,
+            TransactionCrash,
+            cli_exit_code,
+            crashing_transaction,
+            run_cli,
+        )
+
+        target, bundle = _adopt_scenario(tmp_path)
+        with (
+            crashing_transaction(seal_clean=True) as fired,
+            pytest.raises(TransactionCrash),
+        ):
+            _ = run_cli(["adopt", "--bundle", str(bundle), "--target", str(target)])
+        assert fired["clean"] is True
+        assert _journal_phase(target) is JournalPhase.SEALED
+
+        result = run_cli(["recover", "--target", str(target)])
+        assert cli_exit_code(result) == 0
+        assert not (target / ".git/rygor/journal.json").exists()
+        assert (target / ".rygor/project.json").is_file()
+        assert (target / "AGENTS.md").is_file()
+        # The candidate state is finished forward, never rolled back.
+        assert (target / "README.md").read_text() == ADOPTER_README
+        assert (target / "notes.txt").read_text() == ADOPTER_NOTES
+
+        # Recovery is idempotent: a second pass changes nothing.
+        again = run_cli(["recover", "--target", str(target)])
+        assert cli_exit_code(again) == 0
+        assert not (target / ".git/rygor/journal.json").exists()
+        assert (target / "AGENTS.md").is_file()
+
+    @pytest.mark.parametrize(
+        "sequence",
+        ["apply-first", "apply-last", "sealed"],
+    )
+    def test_keep_existing_paths_survive_every_crash_sequence(
+        self, tmp_path: Path, sequence: str
+    ) -> None:
+        from tests.adoption_e2e import (
+            ADOPTER_NOTES,
+            ADOPTER_README,
+            TransactionCrash,
+            capture_tree,
+            cli_exit_code,
+            crashing_transaction,
+            run_cli,
+        )
+
+        target, bundle = _adopt_scenario(tmp_path)
+        pre = capture_tree(target)
+        n_ops = _planned_operation_count(target, bundle, tmp_path)
+        if sequence.startswith("apply"):
+            point = 1 if "first" in sequence else n_ops
+            with (
+                crashing_transaction(apply_at=point) as fired,
+                pytest.raises(TransactionCrash),
+            ):
+                _ = run_cli(["adopt", "--bundle", str(bundle), "--target", str(target)])
+            assert fired["apply"] is True
+        else:
+            with (
+                crashing_transaction(seal_clean=True) as fired,
+                pytest.raises(TransactionCrash),
+            ):
+                _ = run_cli(["adopt", "--bundle", str(bundle), "--target", str(target)])
+            assert fired["clean"] is True
+
+        result = run_cli(["recover", "--target", str(target)])
+
+        assert cli_exit_code(result) == 0
+        if sequence == "sealed":
+            # The candidate is finished forward: installed closure, adopter
+            # bytes untouched, and keep-existing excluded from the inventory.
+            assert (target / "README.md").read_text() == ADOPTER_README
+            assert (target / "notes.txt").read_text() == ADOPTER_NOTES
+            assert (target / ".rygor/project.json").is_file()
+            manifest = cast(
+                "dict[str, object]",
+                json.loads(
+                    (target / ".rygor/project.json").read_text(encoding="utf-8")
+                ),
+            )
+            managed = cast("list[object]", manifest["managed"])
+            managed_paths = {
+                cast("dict[str, object]", entry)["path"] for entry in managed
+            }
+            assert "README.md" not in managed_paths
+        else:
+            # Byte-for-byte, mode-for-mode: adopter-owned state is untouched.
+            assert capture_tree(target) == pre
+        assert (target / "README.md").read_bytes() == pre["README.md"][0]
+        assert (target / "notes.txt").read_bytes() == pre["notes.txt"][0]
+
+    def test_sealed_crash_then_git_clean_refuses_and_preserves(
+        self, tmp_path: Path
+    ) -> None:
+        """git clean -fdx deletes the untracked installed candidate; recovery
+        must refuse as a third state and preserve every artifact."""
+
+        from scripts.bootstrap.presentation import render_text
+        from tests.adoption_e2e import (
+            TransactionCrash,
+            cli_exit_code,
+            crashing_transaction,
+            run_cli,
+        )
+
+        target, bundle = _adopt_scenario(tmp_path)
+        with (
+            crashing_transaction(seal_clean=True) as fired,
+            pytest.raises(TransactionCrash),
+        ):
+            _ = run_cli(["adopt", "--bundle", str(bundle), "--target", str(target)])
+        assert fired["clean"] is True
+        _git_clean(target)
+
+        result = run_cli(["recover", "--target", str(target)])
+
+        assert cli_exit_code(result) >= 1
+        assert "RECOVERY_THIRD_STATE" in render_text(result)
+        assert _journal_phase(target) is JournalPhase.SEALED
+        assert not (target / ".rygor/project.json").exists()
+
+    def test_third_state_is_preserved_and_refuses_recovery(
+        self, tmp_path: Path
+    ) -> None:
+        from scripts.bootstrap.presentation import render_text
+        from tests.adoption_e2e import (
+            TransactionCrash,
+            capture_tree,
+            cli_exit_code,
+            crashing_transaction,
+            run_cli,
+        )
+
+        target, bundle = _adopt_scenario(tmp_path)
+        pre = capture_tree(target)
+        _ = _planned_operation_count(target, bundle, tmp_path)
+        with crashing_transaction(apply_at=2) as fired, pytest.raises(TransactionCrash):
+            _ = run_cli(["adopt", "--bundle", str(bundle), "--target", str(target)])
+        assert fired["apply"] is True
+        installed = set(capture_tree(target)) - set(pre)
+        assert installed
+        victim = sorted(installed)[0]
+        foreign = b"foreign adopter bytes\n"
+        _ = (target / victim).write_bytes(foreign)
+
+        result = run_cli(["recover", "--target", str(target)])
+
+        assert cli_exit_code(result) >= 1
+        assert "RECOVERY_THIRD_STATE" in render_text(result)
+        # The unrecognized third state is preserved, never overwritten, and
+        # the journal evidence remains available for a human decision.
+        assert (target / victim).read_bytes() == foreign
+        assert _journal_phase(target) is JournalPhase.MUTATING
