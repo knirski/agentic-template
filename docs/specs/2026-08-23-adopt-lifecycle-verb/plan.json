@@ -312,12 +312,16 @@
             "status": "completed",
             "completion": {
               "date": "2026-08-28",
+              "commit": "f0a5a19",
               "evidence": "7 new CLI tests + 2 text/JSON parity params + 1 presentation test covering the full adopt outcome and exit-code matrix, receipt immutability, and status adoptability framing; full suite 1462 passed/5 skipped under pytest -n auto --dist=worksteal; basedpyright 0 errors/0 warnings; ruff check/format clean; validate_template.py exit 0; cleanup-inventory gate green with the regenerated inventory"
             },
             "deviations": [
               "Envelope command strings use the established spacing convention ('adopt', 'plan adopt') rather than plan.json's hyphenated 'plan-adopt', matching every existing 'plan apply'-style envelope verbatim.",
               "_lifecycle_install_set (T3 code) classified lifecycle file kinds by UTF-8 decodability alone; the three 0o755 template scripts then observed as 'binary' post-install, failed the expected/post-state overlay, and silently rolled every adoption back. Kind classification now follows the observation rule (executable bytes are binary), consistent with the seed-once hook handling.",
               "main()-driven tests cannot override the template root, so the JSON single-envelope test covers success/installed-but-unready/contract outcomes and the refusal envelope is pinned by the text/JSON parity params, which execute with the fixture's own template root."
+            ],
+            "github_prs": [
+              "https://github.com/knirski/rygor/pull/128"
             ]
           },
           "files": {
