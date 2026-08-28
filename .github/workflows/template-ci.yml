@@ -39,7 +39,7 @@ jobs:
         run: uv sync --all-groups --locked
       - name: Run source checks
         run: |
-          uv run pytest --cov=scripts --cov-report=term-missing --cov-report=xml -n auto
+          uv run pytest --cov=scripts --cov-report=term-missing --cov-report=xml -n auto --dist=worksteal
           uv run ruff check
           uv run ruff format --check
           uv run basedpyright

@@ -60,7 +60,7 @@ SCAFFOLD_CONTRIBUTING = (
     "<!-- rygor:placeholder:contributing -->\n\n"
     "## Running tests\n\n"
     "Run the test suite serially with `uv run pytest`. For faster feedback on a multi-core machine,\n"
-    "run `uv run pytest -n auto` to distribute tests across available workers.\n"
+    "run `uv run pytest -n auto --dist=worksteal` to distribute tests across available workers.\n"
 )
 SCAFFOLD_SECURITY = "# Security Policy\n\n<!-- rygor:placeholder:security -->\n"
 SCAFFOLD_HOOK_TEMPLATE = (
