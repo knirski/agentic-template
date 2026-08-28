@@ -16,11 +16,9 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
-import unittest
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import Protocol, TypedDict, cast, override
+from typing import Protocol, TypedDict, cast
 from unittest.mock import patch
 
 import yaml
@@ -99,62 +97,60 @@ def _apply_bootstrap(project: Path, bundle: Path, *, leave: bool = False) -> int
     return result.returncode
 
 
-class GitHubSnapshot(unittest.TestCase):
-    tmp: tempfile.TemporaryDirectory[str]  # pyright: ignore[reportUninitializedInstanceVariable]  initialized in unittest setUp lifecycle
-    project: Path  # pyright: ignore[reportUninitializedInstanceVariable]  initialized in unittest setUp lifecycle
+def _build_github_snapshot_project(tmp_path: Path) -> Path:
+    """Build a pristine snapshot project for GitHubSnapshot tests."""
+    project = tmp_path / "project"
+    copy_tree(pristine_snapshot(), project)
+    assert not (project / ".git").exists()
+    assert not (project / ".direnv").exists()
+    assert not (project / "untracked-canary.txt").exists()
+    for relative in ("docs/prd.md", "README.md", "scripts/validate-project"):
+        path = project / relative
+        path.chmod(path.stat().st_mode | 0o600)
+    return project
 
-    @override
-    def setUp(self) -> None:
-        self.tmp = tempfile.TemporaryDirectory()
-        self.project = Path(self.tmp.name) / "project"
-        copy_tree(pristine_snapshot(), self.project)
-        self.assertFalse((self.project / ".git").exists())
-        self.assertFalse((self.project / ".direnv").exists())
-        self.assertFalse((self.project / "untracked-canary.txt").exists())
-        for relative in ("docs/prd.md", "README.md", "scripts/validate-project"):
-            path = self.project / relative
-            path.chmod(path.stat().st_mode | 0o600)
 
-    @override
-    def tearDown(self) -> None:
-        self.tmp.cleanup()
+def _run_checker(project: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "scripts/check_project_readiness.py"],
+        cwd=project,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
 
-    def run_checker(self) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [sys.executable, "scripts/check_project_readiness.py"],
-            cwd=self.project,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
 
-    def run_validator(self) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [sys.executable, "scripts/validate_repository.py"],
-            cwd=self.project,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+def _run_validator(project: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "scripts/validate_repository.py"],
+        cwd=project,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
 
-    def test_untouched_snapshot_fails_then_minimal_configuration_passes(self) -> None:
-        untouched = self.run_checker()
-        self.assertEqual(untouched.returncode, 1)
-        self.assertIn("READINESS_PRD_MARKER", untouched.stderr)
-        self.assertIn("READINESS_README_BOILERPLATE", untouched.stderr)
-        _ = (self.project / "docs/prd.md").write_text(PRD, encoding="utf-8")
-        _ = (self.project / "README.md").write_text(README, encoding="utf-8")
-        _ = (self.project / "SECURITY.md").write_text(
-            "# Security\n\nReport privately.\n", encoding="utf-8"
-        )
-        _ = (self.project / "CONTRIBUTING.md").write_text(
-            "# Contributing\n\nWelcome.\n", encoding="utf-8"
-        )
-        hook = self.project / "scripts/validate-project"
-        _ = hook.write_text(f"#!{sys.executable}\nprint('ok')\n", encoding="utf-8")
-        hook.chmod(hook.stat().st_mode | 0o100)
-        configured = self.run_validator()
-        self.assertEqual(configured.returncode, 0, configured.stderr)
+
+def test_untouched_snapshot_fails_then_minimal_configuration_passes(
+    tmp_path: Path,
+) -> None:
+    project = _build_github_snapshot_project(tmp_path)
+    untouched = _run_checker(project)
+    assert untouched.returncode == 1
+    assert "READINESS_PRD_MARKER" in untouched.stderr
+    assert "READINESS_README_BOILERPLATE" in untouched.stderr
+    _ = (project / "docs/prd.md").write_text(PRD, encoding="utf-8")
+    _ = (project / "README.md").write_text(README, encoding="utf-8")
+    _ = (project / "SECURITY.md").write_text(
+        "# Security\n\nReport privately.\n", encoding="utf-8"
+    )
+    _ = (project / "CONTRIBUTING.md").write_text(
+        "# Contributing\n\nWelcome.\n", encoding="utf-8"
+    )
+    hook = project / "scripts/validate-project"
+    _ = hook.write_text(f"#!{sys.executable}\nprint('ok')\n", encoding="utf-8")
+    hook.chmod(hook.stat().st_mode | 0o100)
+    configured = _run_validator(project)
+    assert configured.returncode == 0, configured.stderr
 
 
 def test_source_exposes_only_the_canonical_validation_hook() -> None:
@@ -348,104 +344,95 @@ COPIER_SEED_ONCE_EXCLUSIONS = frozenset(
 )
 
 
-class SourceContractTests(unittest.TestCase):
-    """T13 source declarations: ownership split, exclusions, and inventory."""
+def test_adr_0001_states_the_ownership_split() -> None:
+    text = ADR_0001.read_text(encoding="utf-8")
+    assert "Copier owns source lifecycle updates" in text
+    assert "bootstrap owns derived-output reconciliation" in text
 
-    def test_adr_0001_states_the_ownership_split(self) -> None:
-        text = ADR_0001.read_text(encoding="utf-8")
-        self.assertIn("Copier owns source lifecycle updates", text)
-        self.assertIn("bootstrap owns derived-output reconciliation", text)
 
-    def test_copier_excludes_pin_the_maintenance_and_safety_sets(self) -> None:
-        config = cast(dict[str, object], _yaml_mapping(ROOT / "copier.yml"))
-        excludes = set(cast(list[str], config["_exclude"]))
-        inventory = cast(_InventoryDocument, _json_mapping(MAINTENANCE_INVENTORY))
-        maintenance = set(
-            [entry["path"] for entry in inventory["entries"]]
-            + [".rygor/maintenance-artifacts.json"]
-        )
-        self.assertEqual(
-            excludes,
-            maintenance
-            | BOOTSTRAP_MANAGED_DOCUMENTS
-            | ADOPTER_OWNED_OUTPUTS
-            | COPIER_SEED_ONCE_EXCLUSIONS
-            | COPIER_SAFETY_EXCLUSIONS,
-            "_exclude must cover maintenance, managed-document, and safety sets",
-        )
+def test_copier_excludes_pin_the_maintenance_and_safety_sets() -> None:
+    config = cast(dict[str, object], _yaml_mapping(ROOT / "copier.yml"))
+    excludes = set(cast(list[str], config["_exclude"]))
+    inventory = cast(_InventoryDocument, _json_mapping(MAINTENANCE_INVENTORY))
+    maintenance = set(
+        [entry["path"] for entry in inventory["entries"]]
+        + [".rygor/maintenance-artifacts.json"]
+    )
+    assert excludes == (
+        maintenance
+        | BOOTSTRAP_MANAGED_DOCUMENTS
+        | ADOPTER_OWNED_OUTPUTS
+        | COPIER_SEED_ONCE_EXCLUSIONS
+        | COPIER_SAFETY_EXCLUSIONS
+    ), "_exclude must cover maintenance, managed-document, and safety sets"
 
-    def test_source_ownership_matches_the_cleanup_inventory(self) -> None:
-        ownership = cast(_OwnershipDocument, _json_mapping(SOURCE_OWNERSHIP))
-        inventory = cast(_InventoryDocument, _json_mapping(MAINTENANCE_INVENTORY))
-        self.assertEqual(
-            ownership["snapshot_cleanup_paths"],
-            sorted(entry["path"] for entry in inventory["entries"]),
-        )
 
-    def test_cleanup_inventory_matches_the_tracked_source(self) -> None:
-        expected = expected_cleanup_inventory()
-        committed = cast(_InventoryDocument, _json_mapping(MAINTENANCE_INVENTORY))
-        self.assertEqual(
-            committed,
-            expected,
-            "maintenance-artifacts.json is stale; regenerate it from the tracked source",
-        )
+def test_source_ownership_matches_the_cleanup_inventory() -> None:
+    ownership = cast(_OwnershipDocument, _json_mapping(SOURCE_OWNERSHIP))
+    inventory = cast(_InventoryDocument, _json_mapping(MAINTENANCE_INVENTORY))
+    assert ownership["snapshot_cleanup_paths"] == sorted(
+        entry["path"] for entry in inventory["entries"]
+    )
 
-    def test_no_bash_workflow_adapters_or_shellcheck_configuration(self) -> None:
-        self.assertFalse((ROOT / ".shellcheckrc").exists())
-        for workflow in sorted(WORKFLOWS.glob("*.yml")):
-            text = workflow.read_text(encoding="utf-8")
-            with self.subTest(workflow=workflow.name):
-                self.assertNotIn("shell: bash", text)
-                self.assertNotIn("shellcheck", text)
-                # Textual scan, never YAML parsing: a ``run:`` key at any
-                # indentation starts a block, and lines indented deeper than
-                # the key are its multiline continuations.  A blank line keeps
-                # the block open; any other line at or above the key indent
-                # ends it.
-                run_indent: int | None = None
-                for line in text.splitlines():
-                    stripped = line.lstrip()
-                    if stripped.startswith("run:"):
-                        run_indent = len(line) - len(stripped)
-                    elif (
-                        line.strip()
-                        and run_indent is not None
-                        and len(line) - len(line.lstrip()) <= run_indent
-                    ):
-                        run_indent = None
-                    if run_indent is not None:
-                        self.assertNotRegex(line, _SHELL_SCRIPT_REFERENCE, line)
 
-    def test_release_eligibility_script_contract(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="rygor-eligibility.") as raw:
-            parent = Path(raw)
-            fake_gh = parent / "gh"
-            _ = fake_gh.write_text(
-                f"#!/usr/bin/env python3\nprint('{MAIN_BRANCH_SHA}')\n",
-                encoding="utf-8",
-            )
-            fake_gh.chmod(0o755)
-            output = parent / "output.txt"
-            _ = output.write_text("", encoding="utf-8")
-            env = {
-                **dict(os.environ),
-                "PATH": str(parent) + os.pathsep + os.environ.get("PATH", ""),
-                "GH_TOKEN": "token",
-                "GITHUB_REPOSITORY": "owner/repo",
-                "GITHUB_SHA": MAIN_BRANCH_SHA,
-                "GITHUB_OUTPUT": str(output),
-            }
-            script = str(ROOT / "scripts/check-release-eligibility.py")
-            eligible = run([sys.executable, script], env=env)
-            self.assertEqual(eligible.returncode, 0, eligible.stderr)
-            self.assertIn("eligible=true", output.read_text(encoding="utf-8"))
-            env["GITHUB_SHA"] = STALE_COMMIT_SHA
-            stale = run([sys.executable, script], env=env)
-            self.assertEqual(stale.returncode, 0, stale.stderr)
-            self.assertIn("eligible=false", output.read_text(encoding="utf-8"))
-            missing = run([sys.executable, script], env={**env, "GITHUB_SHA": ""})
-            self.assertEqual(missing.returncode, 2, missing.stdout + missing.stderr)
+def test_cleanup_inventory_matches_the_tracked_source() -> None:
+    expected = expected_cleanup_inventory()
+    committed = cast(_InventoryDocument, _json_mapping(MAINTENANCE_INVENTORY))
+    assert committed == expected, (
+        "maintenance-artifacts.json is stale; regenerate it from the tracked source"
+    )
+
+
+def test_no_bash_workflow_adapters_or_shellcheck_configuration() -> None:
+    assert not (ROOT / ".shellcheckrc").exists()
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        text = workflow.read_text(encoding="utf-8")
+        assert "shell: bash" not in text
+        assert "shellcheck" not in text
+        run_indent: int | None = None
+        for line in text.splitlines():
+            stripped = line.lstrip()
+            if stripped.startswith("run:"):
+                run_indent = len(line) - len(stripped)
+            elif (
+                line.strip()
+                and run_indent is not None
+                and len(line) - len(line.lstrip()) <= run_indent
+            ):
+                run_indent = None
+            if run_indent is not None:
+                assert not re.search(_SHELL_SCRIPT_REFERENCE, line), line
+
+
+def test_release_eligibility_script_contract(tmp_path: Path) -> None:
+    parent = tmp_path / "eligibility"
+    parent.mkdir()
+    fake_gh = parent / "gh"
+    _ = fake_gh.write_text(
+        f"#!/usr/bin/env python3\nprint('{MAIN_BRANCH_SHA}')\n",
+        encoding="utf-8",
+    )
+    fake_gh.chmod(0o755)
+    output = parent / "output.txt"
+    _ = output.write_text("", encoding="utf-8")
+    env = {
+        **dict(os.environ),
+        "PATH": str(parent) + os.pathsep + os.environ.get("PATH", ""),
+        "GH_TOKEN": "token",
+        "GITHUB_REPOSITORY": "owner/repo",
+        "GITHUB_SHA": MAIN_BRANCH_SHA,
+        "GITHUB_OUTPUT": str(output),
+    }
+    script = str(ROOT / "scripts/check-release-eligibility.py")
+    eligible = run([sys.executable, script], env=env)
+    assert eligible.returncode == 0, eligible.stderr
+    assert "eligible=true" in output.read_text(encoding="utf-8")
+    env["GITHUB_SHA"] = STALE_COMMIT_SHA
+    stale = run([sys.executable, script], env=env)
+    assert stale.returncode == 0, stale.stderr
+    assert "eligible=false" in output.read_text(encoding="utf-8")
+    missing = run([sys.executable, script], env={**env, "GITHUB_SHA": ""})
+    assert missing.returncode == 2, missing.stdout + missing.stderr
 
 
 class _EligibilityScript(Protocol):
@@ -471,85 +458,87 @@ def _load_eligibility_script() -> _EligibilityScript:
     return cast(_EligibilityScript, cast(object, module))
 
 
-class EligibilityScriptBranchTests(unittest.TestCase):
-    """In-process branch coverage for the release-eligibility script.
+def _run_eligibility_script(
+    script: _EligibilityScript,
+    *,
+    gh: SimpleNamespace | None = None,
+    error: Exception | None = None,
+    **env: str,
+) -> int:
+    if (gh is None) == (error is None):
+        raise AssertionError("pass exactly one of gh or error")
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "GITHUB_REPOSITORY": "owner/repo",
+                "GITHUB_SHA": MAIN_BRANCH_SHA,
+                "GH_TOKEN": "token",
+                "GITHUB_OUTPUT": "",
+                **env,
+            },
+        ),
+        patch.object(
+            script.subprocess,
+            "run",
+            return_value=gh if gh is not None else None,
+            side_effect=error,
+        ),
+    ):
+        return script.main()
 
-    The subprocess contract test above drives the real executable with a fake
-    ``gh`` binary; pytest-cov cannot measure that child process, so this suite
-    also exercises ``main()`` in-process to keep the hardened branches
-    counted by the coverage gate.
-    """
 
-    script: _EligibilityScript  # pyright: ignore[reportUninitializedInstanceVariable]  initialized in unittest setUp lifecycle
+def test_eligible_when_the_validated_commit_is_the_main_tip(tmp_path: Path) -> None:
+    script = _load_eligibility_script()
+    gh = SimpleNamespace(returncode=0, stdout=MAIN_BRANCH_SHA, stderr="")
+    output = tmp_path / "output.txt"
+    _ = output.write_text("", encoding="utf-8")
+    assert _run_eligibility_script(script, gh=gh, GITHUB_OUTPUT=str(output)) == 0
+    assert output.read_text(encoding="utf-8") == "eligible=true\n"
 
-    @override
-    def setUp(self) -> None:
-        self.script = _load_eligibility_script()
 
-    def _run(
-        self,
-        *,
-        gh: SimpleNamespace | None = None,
-        error: Exception | None = None,
-        **env: str,
-    ) -> int:
-        if (gh is None) == (error is None):
-            raise AssertionError("pass exactly one of gh or error")
-        with (
-            patch.dict(
-                os.environ,
-                {
-                    "GITHUB_REPOSITORY": "owner/repo",
-                    "GITHUB_SHA": MAIN_BRANCH_SHA,
-                    "GH_TOKEN": "token",
-                    # CI always sets GITHUB_OUTPUT; pin it empty so in-process
-                    # runs never append to the live job output file.
-                    "GITHUB_OUTPUT": "",
-                    **env,
-                },
-            ),
-            patch.object(
-                self.script.subprocess,
-                "run",
-                return_value=gh if gh is not None else None,
-                side_effect=error,
-            ),
-        ):
-            return self.script.main()
+def test_stale_commit_is_not_eligible() -> None:
+    script = _load_eligibility_script()
+    gh = SimpleNamespace(returncode=0, stdout=MAIN_BRANCH_SHA, stderr="")
+    assert _run_eligibility_script(script, gh=gh, GITHUB_SHA=STALE_COMMIT_SHA) == 0
 
-    def test_eligible_when_the_validated_commit_is_the_main_tip(self) -> None:
-        gh = SimpleNamespace(returncode=0, stdout=MAIN_BRANCH_SHA, stderr="")
-        with tempfile.TemporaryDirectory(prefix="rygor-eligibility.") as raw:
-            output = Path(raw) / "output.txt"
-            _ = output.write_text("", encoding="utf-8")
-            self.assertEqual(self._run(gh=gh, GITHUB_OUTPUT=str(output)), 0)
-            self.assertEqual(output.read_text(encoding="utf-8"), "eligible=true\n")
 
-    def test_stale_commit_is_not_eligible(self) -> None:
-        gh = SimpleNamespace(returncode=0, stdout=MAIN_BRANCH_SHA, stderr="")
-        self.assertEqual(self._run(gh=gh, GITHUB_SHA=STALE_COMMIT_SHA), 0)
+def test_missing_environment_is_a_usage_error() -> None:
+    script = _load_eligibility_script()
+    gh = SimpleNamespace(returncode=0, stdout=MAIN_BRANCH_SHA, stderr="")
+    assert _run_eligibility_script(script, gh=gh, GITHUB_SHA="") == 2
 
-    def test_missing_environment_is_a_usage_error(self) -> None:
-        gh = SimpleNamespace(returncode=0, stdout=MAIN_BRANCH_SHA, stderr="")
-        self.assertEqual(self._run(gh=gh, GITHUB_SHA=""), 2)
 
-    def test_rejects_a_malformed_repository_name(self) -> None:
-        gh = SimpleNamespace(returncode=0, stdout=MAIN_BRANCH_SHA, stderr="")
-        self.assertEqual(
-            self._run(gh=gh, GITHUB_REPOSITORY="not an owner/repository pair"), 2
+def test_rejects_a_malformed_repository_name() -> None:
+    script = _load_eligibility_script()
+    gh = SimpleNamespace(returncode=0, stdout=MAIN_BRANCH_SHA, stderr="")
+    assert (
+        _run_eligibility_script(
+            script, gh=gh, GITHUB_REPOSITORY="not an owner/repository pair"
         )
+        == 2
+    )
 
-    def test_gh_api_failure_is_a_usage_error(self) -> None:
-        gh = SimpleNamespace(returncode=1, stdout="", stderr="boom")
-        self.assertEqual(self._run(gh=gh), 2)
 
-    def test_gh_timeout_is_a_usage_error(self) -> None:
-        self.assertEqual(
-            self._run(error=subprocess.TimeoutExpired("gh", timeout=30)), 2
+def test_gh_api_failure_is_a_usage_error() -> None:
+    script = _load_eligibility_script()
+    gh = SimpleNamespace(returncode=1, stdout="", stderr="boom")
+    assert _run_eligibility_script(script, gh=gh) == 2
+
+
+def test_gh_timeout_is_a_usage_error() -> None:
+    script = _load_eligibility_script()
+    assert (
+        _run_eligibility_script(
+            script, error=subprocess.TimeoutExpired("gh", timeout=30)
         )
+        == 2
+    )
 
-    def test_missing_gh_binary_is_a_usage_error(self) -> None:
-        self.assertEqual(self._run(error=OSError("no such file: gh")), 2)
+
+def test_missing_gh_binary_is_a_usage_error() -> None:
+    script = _load_eligibility_script()
+    assert _run_eligibility_script(script, error=OSError("no such file: gh")) == 2
 
 
 def expected_cleanup_inventory() -> dict[str, object]:
@@ -612,7 +601,3 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(65536), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-if __name__ == "__main__":
-    _ = unittest.main()
