@@ -243,8 +243,15 @@
           "description": "Add AdoptOptions(bundle_digest) mirroring ApplyOptions plus PlanAdopt/Adopt intent dataclasses joined into the ProjectIntent union. Add _adopt_decision accepting only ProjectAvailable whose observation is UnsupportedManifestFree (either empty or populated shape); recognized scaffolds refuse naming apply as next action; existing projects refuse naming status. Reuse InitialInstall and CompileCandidate decision types - no new machine-level decision type. Every other verb keeps refusing over UnsupportedManifestFree exactly as today.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
-            "completion": null
+            "status": "completed",
+            "completion": {
+              "date": "2026-08-28",
+              "commit": "946726a",
+              "evidence": "5 new decision tests covering both manifest-free shapes, scaffold/existing-project/invalid-manifest refusals, unchanged non-adopt verb refusals, and blocked/protected states; full suite 1452 passed/5 skipped under pytest -n auto --dist=worksteal; basedpyright 0 errors/0 warnings; ruff check/format clean; validate_template.py exit 0; cleanup-inventory gate green with the regenerated inventory"
+            },
+            "github_prs": [
+              "https://github.com/knirski/rygor/pull/127"
+            ]
           },
           "files": {
             "reuse": [
