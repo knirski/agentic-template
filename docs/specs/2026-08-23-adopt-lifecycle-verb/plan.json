@@ -373,6 +373,7 @@
             "status": "completed",
             "completion": {
               "date": "2026-08-28",
+              "commit": "1097b48",
               "evidence": "14 new tests: 3 journaled end-to-end adoption tests (dirty tree, empty-tree receipt-closure, hook failure without rollback), 10 crash-recovery tests (install crashes at 4 points restoring exact pre-state after git clean -fdx, sealed-cleanup crash finishing forward, keep-existing surviving 3 crash sequences, sealed+git-clean third-state refusal, third-state preservation), and 1 hypothesis stateful machine interleaving install/crash/recover/git-clean over a real target; full suite 1476 passed/5 skipped under pytest -n auto --dist=worksteal; basedpyright 0 errors/0 warnings; ruff check/format clean; validate_template.py exit 0; cleanup-inventory gate green with the regenerated inventory"
             },
             "deviations": [
