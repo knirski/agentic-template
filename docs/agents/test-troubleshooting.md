@@ -28,24 +28,45 @@ During `bootstrap_project.py apply`, the observation pipeline recomputes the dir
 
 ### Fix
 
-Regenerate the inventory from the current working tree:
+Regenerate the inventory from the current working tree **with the deterministic
+git environment** (matching the `deterministic_git_env` test fixture):
 
 ```bash
-uv run python scripts/regenerate_cleanup_inventory.py
+GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1 \
+  uv run python scripts/regenerate_cleanup_inventory.py
 ```
 
-Then commit the updated `.rygor/maintenance-artifacts.json` alongside the source change.
+Without these env vars, a local global gitignore can exclude files that the
+test fixture sees (because it sets `GIT_CONFIG_GLOBAL=/dev/null`), producing a
+hash that differs from what CI computes — the inventory passes locally but
+fails in CI.
+
+Commit the updated `.rygor/maintenance-artifacts.json` alongside the source
+change **in the same PR**. The hash diff is invisible (only a sha256 string
+changes) so it is easy to forget.
 
 ### Prevention
 
-After modifying any file under a cleanup path, always regenerate before running the full suite:
+After modifying any file under a cleanup path, always regenerate before running
+the full suite:
 
 ```bash
-uv run python scripts/regenerate_cleanup_inventory.py
+GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1 \
+  uv run python scripts/regenerate_cleanup_inventory.py
 uv run pytest -q
 ```
 
 The canonical list of cleanup paths is `CLEANUP_PATHS` in `tests/fixtures.py`.
+
+### Pitfall: key ordering
+
+The idempotency test (`test_regeneration_is_idempotent_from_any_working_directory`)
+compares raw bytes, not parsed JSON. The canonical script uses
+`json.dumps(..., sort_keys=True, indent=2)`. If you manually regenerate with
+plain `json.dumps`, the key order may differ (e.g. `"schema_version"` before
+`"entries"` instead of after), and the idempotency test will fail even though
+the JSON content is semantically identical. Always use the script, never
+hand-write the JSON.
 
 ### Related Files
 
