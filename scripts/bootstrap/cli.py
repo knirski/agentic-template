@@ -27,6 +27,7 @@ from scripts.bootstrap.blobs import VerifiedBlobStore
 from scripts.bootstrap.bundles import (
     _BUNDLE_FILE,  # pyright: ignore[reportPrivateUsage]  shared bundle-path constant with the init executor
     HOOK_PATH,
+    compile_adoption_install,
     compile_initial_install,
     decode_bundle,
     decode_bundle_input,
@@ -94,6 +95,8 @@ from scripts.bootstrap.identity import (
 from scripts.bootstrap.intents import (
     Add,
     AddOptions,
+    Adopt,
+    AdoptOptions,
     Apply,
     ApplyOptions,
     ApplyPlanOptions,
@@ -103,6 +106,7 @@ from scripts.bootstrap.intents import (
     InspectStatus,
     Intent,
     PlanAdd,
+    PlanAdopt,
     PlanApply,
     PlanReconcile,
     PlanRestore,
@@ -251,7 +255,7 @@ from scripts.bootstrap.values import DEFAULT_LIMITS, ResourceLimits
 # ---------------------------------------------------------------------------
 
 PLANNING_COMMANDS = frozenset(
-    {"plan apply", "plan add", "plan restore", "plan reconcile"}
+    {"plan apply", "plan adopt", "plan add", "plan restore", "plan reconcile"}
 )
 
 _HOOK_TIMEOUT_SECONDS = 600.0
@@ -352,7 +356,7 @@ def _build_parser() -> _CapturingArgumentParser:
 
     plan = subparsers.add_parser("plan", add_help=True)
     plan_subparsers = plan.add_subparsers(dest="plan_command", required=True)
-    for plan_command in ("apply", "add", "restore", "reconcile"):
+    for plan_command in ("apply", "adopt", "add", "restore", "reconcile"):
         plan_parser = plan_subparsers.add_parser(
             plan_command, add_help=True, parents=[_TARGET_PARSER]
         )
@@ -361,6 +365,9 @@ def _build_parser() -> _CapturingArgumentParser:
     apply = subparsers.add_parser("apply", add_help=True, parents=[_TARGET_PARSER])
     _ = apply.add_argument("--bundle", required=True)
     _ = apply.add_argument("--leave-maintenance-artifacts", action="store_true")
+
+    adopt = subparsers.add_parser("adopt", add_help=True, parents=[_TARGET_PARSER])
+    _ = adopt.add_argument("--bundle", required=True)
 
     add = subparsers.add_parser("add", add_help=True, parents=[_TARGET_PARSER])
     _ = add.add_argument("--input", required=True, dest="input_path")
@@ -382,6 +389,8 @@ def _plan_arguments(command: str, parser: argparse.ArgumentParser) -> None:
     if command == "apply":
         _ = parser.add_argument("--bundle", required=True)
         _ = parser.add_argument("--leave-maintenance-artifacts", action="store_true")
+    elif command == "adopt":
+        _ = parser.add_argument("--bundle", required=True)
     elif command == "add":
         _ = parser.add_argument("--input", required=True, dest="input_path")
     elif command == "restore":
@@ -500,6 +509,8 @@ def _decode_intent(command: str, namespace: argparse.Namespace) -> Intent:
                     )
                 )
             )
+        case "plan adopt":
+            return PlanAdopt(AdoptOptions())
         case "plan add":
             return PlanAdd(AddOptions())
         case "plan restore":
@@ -518,6 +529,8 @@ def _decode_intent(command: str, namespace: argparse.Namespace) -> Intent:
                     )
                 )
             )
+        case "adopt":
+            return Adopt(AdoptOptions())
         case "add":
             return Add(AddOptions())
         case "restore":
@@ -883,6 +896,72 @@ def _compile_initial_candidate(
             return Ok((plan, readiness))
 
 
+def _compile_adopt_candidate(
+    parsed: ParsedCommand,
+    observation: SystemObservation,
+    resolved: ResolvedShellTarget,
+    *,
+    template_root: str,
+    limits: ResourceLimits,
+) -> Result[tuple[OperationPlan, MechanicalReadinessResult], CommandError]:
+    """Decode all adoption inputs and compile one candidate plan."""
+
+    assert parsed.bundle_path is not None
+    match decode_bundle_input(parsed.bundle_path):
+        case Err(error):
+            return Err(error)
+        case Ok(decoded):
+            pass
+    match resolve_bundle(decode_bundle(decoded.document)):
+        case Err(failure):
+            return Err(
+                InputError(
+                    InputErrorKind.SCHEMA_VIOLATION,
+                    f"{failure.kind.value}:{failure.subject}",
+                )
+            )
+        case Ok(resolved_bundle):
+            pass
+    from scripts.bootstrap.state import (
+        ProjectAvailable as _ProjectAvailable,
+    )
+    from scripts.bootstrap.state import (
+        UnsupportedManifestFree as _UnsupportedManifestFree,
+    )
+
+    match observation.system:
+        case _ProjectAvailable(observation=_UnsupportedManifestFree()):
+            pass
+        case _:
+            return Err(
+                TransitionError(
+                    TransitionErrorKind.OPERATION_UNAVAILABLE,
+                    "adoption requires a manifest-free working tree",
+                )
+            )
+    assert observation.pass_ is not None
+    worktree = resolved.worktree
+    assert worktree is not None
+    snapshot_commit: str | None = None
+    match run_git(("rev-parse", "HEAD"), cwd=worktree.root_abs):
+        case Ok(result) if result.returncode == 0:
+            snapshot_commit = result.stdout.decode("ascii", "replace").strip()
+        case _:
+            snapshot_commit = None
+    return compile_adoption_install(
+        decoded=decoded,
+        resolved=resolved_bundle,
+        scaffold=_scaffold_bytes(template_root),
+        template_root=template_root,
+        maintenance=CleanMaintenance(),
+        cleanup=None,
+        snapshot=_snapshot_from_pass(observation.pass_),
+        target_identity=observation.pass_.target,
+        snapshot_commit=snapshot_commit,
+        limits=limits,
+    )
+
+
 def _execute_mutation(
     parsed: ParsedCommand,
     *,
@@ -1004,6 +1083,116 @@ def _execute_mutation(
     # Mutating apply: drive the transaction machine, then attempt the hook once.
     # The initial install refuses a completed mutation when its own readiness is
     # blocking; lifecycle transitions (restore, reconcile) gate only on the hook.
+    return _drive_transaction(
+        command,
+        plan,
+        resolved,
+        observation,
+        limits,
+        template_root=template_root,
+        findings=readiness.blocking,
+        decision_kind="initial_install",
+        revalidate=lambda: _revalidate_initial(
+            parsed,
+            plan,
+            resolved,
+            template_root=template_root,
+            limits=limits,
+        ),
+    )
+
+
+def _execute_adoption(
+    parsed: ParsedCommand,
+    *,
+    template_root: str,
+    limits: ResourceLimits,
+) -> CommandResult:
+    """Execute ``plan adopt`` or ``adopt``: observe, decide, compile, interpret."""
+
+    command = parsed.command
+    if parsed.out_path is not None and os.path.lexists(parsed.out_path):
+        return _result(
+            command,
+            outcome_for_error(
+                UsageError(
+                    UsageErrorKind.INVALID_VALUE, "--out destination is occupied"
+                )
+            ),
+        )
+    match resolve_shell_target(parsed.target, cwd=os.getcwd()):
+        case Err(error):
+            return _result(command, outcome_for_error(error))
+        case Ok(resolved):
+            pass
+    match observe_system(
+        resolved, coherent=True, template_root=template_root, limits=limits
+    ):
+        case Err(error):
+            return _result(command, outcome_for_error(error))
+        case Ok(observation):
+            pass
+    from scripts.bootstrap.decisions import (
+        CompileCandidate,
+        InitialInstall,
+        RefuseMutation,
+        RefusePlan,
+        decide_project,
+    )
+
+    match decide_project(cast(ProjectIntent, parsed.intent), observation.system):
+        case RefusePlan(error=error) | RefuseMutation(error=error):
+            return _result(command, outcome_for_error(error))
+        case CompileCandidate() | InitialInstall():
+            pass
+        case (
+            decision
+        ):  # pragma: no cover — a new decision variant must never fall through to mutation
+            del decision
+            return _result(
+                command,
+                outcome_for_error(CoreInternalFailure(InternalCode.IMPOSSIBLE_STATE)),
+            )
+    match _compile_adopt_candidate(
+        parsed,
+        observation,
+        resolved,
+        template_root=template_root,
+        limits=limits,
+    ):
+        case Err(error):
+            return _result(command, outcome_for_error(error))
+        case Ok((plan, readiness)):
+            pass
+    if command in PLANNING_COMMANDS:
+        receipt = build_receipt(plan)
+        digest = plan_receipt_digest(receipt)
+        changes = tuple(
+            Change(
+                _operation_change_kind(operation),
+                _operation_subject(operation),
+                "planned",
+            )
+            for operation in plan.ordered_operations
+        )
+        if parsed.out_path is not None:
+            match _write_receipt_exclusive(parsed.out_path, receipt):
+                case Err(error):
+                    return _result(command, outcome_for_error(error))
+                case Ok(_):
+                    pass
+            changes = (
+                *changes,
+                Change("receipt", parsed.out_path, digest),
+            )
+        return _result(
+            command,
+            Succeeded(hook_evidence=NotAttempted(_hook_not_attempted_reason(command))),
+            state_document={"kind": "plan_receipt", "receipt": receipt},
+            decision_document={"kind": "compile_candidate"},
+            changes=changes,
+            findings=readiness.blocking,
+        )
     return _drive_transaction(
         command,
         plan,
@@ -1457,6 +1646,38 @@ def _status_evidence(system: SystemState) -> CommandOutcome | None:
             return None
 
 
+def _adoptability_diagnostics(system: SystemState) -> tuple[Diagnostic, ...]:
+    """Frame the adoptability of unmanaged trees for exit-0 status inspection."""
+
+    from scripts.bootstrap.state import (
+        ProjectAvailable as _ProjectAvailable,
+    )
+    from scripts.bootstrap.state import (
+        UnsupportedManifestFree as _UnsupportedManifestFree,
+    )
+
+    match system:
+        case _ProjectAvailable(observation=_UnsupportedManifestFree()):
+            return (
+                Diagnostic(
+                    code="BOOTSTRAP_ADOPTABLE_TARGET",
+                    category=DiagnosticCategory.TRANSITION,
+                    severity=DiagnosticSeverity.INFO,
+                    subject="unmanaged manifest-free working tree",
+                    summary="this tree can be installed into without recreating it",
+                    details=(
+                        "adopt records adopted provenance and installs the managed "
+                        "delivery infrastructure into the current tree"
+                    ),
+                    next_action=NoAutomaticAction(
+                        "preview the installation with `plan adopt --bundle BUNDLE --target TARGET --out RECEIPT`, or initialize a recognized scaffold with `init`"
+                    ),
+                ),
+            )
+        case _:
+            return ()
+
+
 def _execute_status(
     parsed: ParsedCommand,
     *,
@@ -1479,6 +1700,7 @@ def _execute_status(
     outcome = _status_evidence(observation.system)
     if outcome is None:
         outcome = Succeeded(
+            diagnostics=_adoptability_diagnostics(observation.system),
             hook_evidence=NotAttempted(
                 "adopter hook: not evaluated; run uv run --python 3.14 scripts/validate_repository.py"
             ),
@@ -2086,7 +2308,12 @@ def _revalidate_initial(
                     subject="initial decision changed",
                 )
             )
-    match _compile_initial_candidate(
+    compile_candidate = (
+        _compile_adopt_candidate
+        if parsed.command in ("adopt", "plan adopt")
+        else _compile_initial_candidate
+    )
+    match compile_candidate(
         parsed,
         observation,
         resolved,
@@ -2429,6 +2656,8 @@ def execute_command(
         return _execute_status(parsed, template_root=root, limits=limits)
     if parsed.command in ("plan apply", "apply"):
         return _execute_mutation(parsed, template_root=root, limits=limits)
+    if parsed.command in ("plan adopt", "adopt"):
+        return _execute_adoption(parsed, template_root=root, limits=limits)
     if parsed.command in (
         "plan add",
         "add",

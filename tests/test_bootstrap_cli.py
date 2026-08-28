@@ -64,10 +64,12 @@ from scripts.bootstrap.result import Err, Ok, Result
 from scripts.bootstrap.transaction import derive_preparation_specs, derive_preparations
 from scripts.bootstrap.values import JournalPhase
 from tests.factory import (
+    REPO_ROOT,
     SnapshotConfig,
     SnapshotProject,
     build_snapshot_project,
     pristine_snapshot,
+    seed_repo,
     write_answer_bundle,
 )
 from tests.fixtures import PRD, README, SUPPLIED_CONTRIBUTING, SUPPLIED_SECURITY
@@ -213,6 +215,8 @@ def test_usage_families_exit_two() -> None:
         ["frobnicate"],
         ["apply"],
         ["plan", "apply"],
+        ["adopt"],
+        ["plan", "adopt"],
         ["init", "--from", "x"],
         ["reconcile", "--overwrite-drift"],
         ["plan", "reconcile", "--overwrite-drift", "--out", "-"],
@@ -587,6 +591,225 @@ def test_apply_already_installed_refuses(tmp_path: Path) -> None:
     )
 
 
+# --- AdoptionTests -----------------------------------------------------------
+
+
+def _adoption_target(parent: Path, **files: str) -> Path:
+    """Create one manifest-free, non-bare Git working tree for adoption."""
+
+    parent.mkdir(parents=True, exist_ok=True)
+    return seed_repo(
+        parent,
+        {"notes.txt": "adopter notes\n", **files},
+        name="adoptee",
+    )
+
+
+def _adoption_bundle(parent: Path, record: Path, *, hook_status: int = 0) -> Path:
+    parent.mkdir(parents=True, exist_ok=True)
+    bundle = write_answer_bundle(parent, supplied=True, record=record)
+    if hook_status != 0:
+        hook = bundle / "content/validate-project"
+        _ = hook.write_text(f"#!/bin/sh\necho run >> {record}\nexit {hook_status}\n")
+        hook.chmod(0o755)
+    return bundle
+
+
+def test_plan_adopt_writes_receipt_without_mutating_target(tmp_path: Path) -> None:
+    from scripts.bootstrap.plan_digest import decode_receipt, encode_receipt
+    from tests.fixtures import assert_ok
+
+    target = _adoption_target(tmp_path)
+    bundle = _adoption_bundle(tmp_path / "bundle", tmp_path / "hook-runs")
+    receipt = tmp_path / "receipt.json"
+    result = _run_cli(
+        [
+            "plan",
+            "adopt",
+            "--bundle",
+            str(bundle),
+            "--target",
+            str(target),
+            "--out",
+            str(receipt),
+        ],
+        template_root=str(REPO_ROOT),
+    )
+    assert _exit_code(result) == 0
+    assert receipt.is_file()
+    decoded = assert_ok(decode_receipt(receipt.read_bytes()))
+    envelope = cast(dict[str, object], json.loads(render_json(result)))
+    state = cast(dict[str, object], envelope["state"])
+    assert state["kind"] == "plan_receipt"
+    assert json.loads(encode_receipt(decoded)) == state["receipt"]
+    assert envelope["command"] == "plan adopt"
+    assert not (target / "README.md").exists()
+    assert not (target / ".rygor").exists()
+    assert (target / "notes.txt").read_text() == "adopter notes\n"
+
+
+def test_adopt_installs_and_exits_zero_on_hook_success(tmp_path: Path) -> None:
+    target = _adoption_target(tmp_path)
+    hook_runs = tmp_path / "hook-runs"
+    _ = hook_runs.write_text("", encoding="utf-8")
+    bundle = _adoption_bundle(tmp_path / "bundle", hook_runs)
+    result = _run_cli(
+        ["adopt", "--bundle", str(bundle), "--target", str(target)],
+        template_root=str(REPO_ROOT),
+    )
+    assert _exit_code(result) == 0
+    manifest = cast(
+        dict[str, object], json.loads((target / ".rygor/project.json").read_text())
+    )
+    provenance = cast(dict[str, object], manifest["provenance"])
+    assert provenance["generation_path"] == "adopted"
+    assert (target / "AGENTS.md").is_file()
+    assert (target / "CLAUDE.md").is_file()
+    assert (target / "notes.txt").read_text() == "adopter notes\n"
+    assert hook_runs.read_text().splitlines() == ["run"]
+
+
+def test_adopt_installed_but_unready_exits_one_without_rollback(
+    tmp_path: Path,
+) -> None:
+    target = _adoption_target(tmp_path)
+    hook_runs = tmp_path / "hook-runs"
+    _ = hook_runs.write_text("", encoding="utf-8")
+    bundle = _adoption_bundle(tmp_path / "bundle", hook_runs, hook_status=3)
+    result = _run_cli(
+        ["adopt", "--bundle", str(bundle), "--target", str(target)],
+        template_root=str(REPO_ROOT),
+    )
+    assert _exit_code(result) == 1
+    assert (target / ".rygor/project.json").is_file()
+    assert "action_required" in render_text(result)
+    assert hook_runs.read_text().splitlines() == ["run"]
+
+
+def test_adopt_refusals_exit_one_with_named_next_actions(tmp_path: Path) -> None:
+    project, scaffold_bundle = _build_cli_fixture(tmp_path)
+    bundle = _adoption_bundle(tmp_path / "adopt", project.hook_runs)
+    over_scaffold = _run_cli(
+        ["adopt", "--bundle", str(bundle), "--target", str(project.root)],
+        template_root=str(project.template_root),
+    )
+    assert _exit_code(over_scaffold) == 1
+    assert "APPLY_REQUIRED" in render_text(over_scaffold)
+    assert project.run_count() == 0
+    applied = _run_cli(
+        ["apply", "--bundle", str(scaffold_bundle), "--target", str(project.root)],
+        template_root=str(project.template_root),
+    )
+    assert _exit_code(applied) == 1
+    assert (project.root / ".rygor/project.json").is_file()
+    over_project = _run_cli(
+        ["adopt", "--bundle", str(bundle), "--target", str(project.root)],
+        template_root=str(project.template_root),
+    )
+    assert _exit_code(over_project) == 1
+    assert "STATUS_REQUIRED" in render_text(over_project)
+
+
+def test_adopt_contract_failures_exit_two(tmp_path: Path) -> None:
+    target = _adoption_target(tmp_path, **{"README.md": "adopter readme\n"})
+    bundle = _adoption_bundle(tmp_path / "bundle", tmp_path / "hook-runs")
+    result = _run_cli(
+        [
+            "plan",
+            "adopt",
+            "--bundle",
+            str(bundle),
+            "--target",
+            str(target),
+        ],
+        template_root=str(REPO_ROOT),
+    )
+    assert _exit_code(result) == 2
+    assert "README.md" in render_text(result)
+
+
+def test_status_names_adopt_next_actions_on_unmanaged_trees(tmp_path: Path) -> None:
+    target = _adoption_target(tmp_path)
+    result = _run_cli(
+        ["status", "--target", str(target)],
+        template_root=str(REPO_ROOT),
+    )
+    assert _exit_code(result) == 0
+    text = render_text(result)
+    assert "init" in text
+    assert "plan adopt" in text
+    assert not (target / ".rygor").exists()
+    envelope = cast(dict[str, object], json.loads(render_json(result)))
+    assert "plan adopt" in json.dumps(envelope["diagnostics"])
+
+
+def test_adopt_json_emits_exactly_one_envelope_per_outcome(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from scripts.bootstrap.cli import main as cli_main
+
+    target = _adoption_target(tmp_path / "json-target")
+    hook_runs = tmp_path / "hook-runs"
+    _ = hook_runs.write_text("", encoding="utf-8")
+    bundle = _adoption_bundle(tmp_path / "bundle", hook_runs)
+    unready_target = _adoption_target(tmp_path / "unready-target")
+    unready_bundle = _adoption_bundle(
+        tmp_path / "unready-bundle", hook_runs, hook_status=3
+    )
+    colliding = _adoption_target(tmp_path / "collide", **{"README.md": ""})
+    cases = [
+        (
+            [
+                "--format",
+                "json",
+                "plan",
+                "adopt",
+                "--bundle",
+                str(bundle),
+                "--target",
+                str(target),
+            ],
+            "plan adopt",
+            0,
+        ),
+        (
+            [
+                "--format",
+                "json",
+                "adopt",
+                "--bundle",
+                str(unready_bundle),
+                "--target",
+                str(unready_target),
+            ],
+            "adopt",
+            1,
+        ),
+        (
+            [
+                "--format",
+                "json",
+                "adopt",
+                "--bundle",
+                str(bundle),
+                "--target",
+                str(colliding),
+            ],
+            "adopt",
+            2,
+        ),
+    ]
+    for argv, command, expected_exit in cases:
+        _ = capsys.readouterr()
+        assert cli_main(argv) == expected_exit
+        rendered = capsys.readouterr().out
+        document = cast(dict[str, object], json.loads(rendered))
+        assert rendered.count('"schema_version"') == 1
+        assert document["command"] == command
+        assert document["exit_code"] == expected_exit
+
+
 def test_valid_cleanup_apply_removes_declared_paths(tmp_path: Path) -> None:
     _project, bundle = _build_cli_fixture(tmp_path)
     parent = tmp_path / "clean-valid"
@@ -919,6 +1142,27 @@ def test_sealed_recovery_cleans_surviving_stages(tmp_path: Path) -> None:
                 "PLACEHOLDER",
             ],
             id="plan-apply",
+        ),
+        pytest.param(
+            [
+                "adopt",
+                "--bundle",
+                "PLACEHOLDER_BUNDLE",
+                "--target",
+                "PLACEHOLDER",
+            ],
+            id="adopt",
+        ),
+        pytest.param(
+            [
+                "plan",
+                "adopt",
+                "--bundle",
+                "PLACEHOLDER_BUNDLE",
+                "--target",
+                "PLACEHOLDER",
+            ],
+            id="plan-adopt",
         ),
         pytest.param(
             ["recover", "--target", "PLACEHOLDER"],
