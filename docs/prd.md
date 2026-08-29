@@ -74,15 +74,19 @@ write-capable permissions, persisted checkout credentials, or a privileged envir
 ### REQ-007: Bootstrap and adopt projects deterministically
 
 The template must compile an explicit, self-contained input bundle into one complete project plan.
-The same normalized inputs and template source must produce byte-identical managed output, manifest
-state, modes, and operation ordering on both supported generation paths. Initial installation is
-supported for a verified non-bare Git working tree that either contains a recognized scaffold
-produced by one of the two generation paths (`apply`) or is any manifest-free tree (empty or
-populated, dirty or clean) adopted through an explicit per-path collision declaration (`adopt`);
-collisions between planned managed output — including the installed template lifecycle source set — and
-observed content must be declared `keep-existing` or `replace`, and an undeclared collision or an
-illegal `replace` on a seed-once legal/provenance path refuses the plan. A target that is non-Git,
-bare, or manifest-bearing remains unsupported outside v1.
+The same normalized profile/capability closure and template source must produce byte-identical
+profile-managed output, modes, and operation ordering regardless of generation path; manifest
+generation provenance and, for adopted projects, the additional managed lifecycle inventory
+(`lifecycle_paths`, `.rygor/source-ownership.json`, and the regular-file `CLAUDE.md` copy) are
+generation-path-specific by design and therefore excluded from the byte-identical guarantee, while
+the profile/capability closure remains byte-identical. Initial installation is supported for a
+verified non-bare Git working tree that either contains a recognized scaffold produced by one of
+the two generation paths (`apply`) or is any manifest-free tree (empty or populated, dirty or
+clean) adopted through an explicit per-path collision declaration (`adopt`); collisions between
+planned managed output — including the installed template lifecycle source set — and observed
+content must be declared `keep-existing` or `replace`, and an undeclared collision or an illegal
+`replace` on a seed-once legal/provenance path refuses the plan. A target that is non-Git, bare,
+or manifest-bearing remains unsupported outside v1.
 
 ### REQ-008: Select and extend capabilities declaratively
 
