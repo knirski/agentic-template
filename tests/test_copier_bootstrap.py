@@ -203,6 +203,30 @@ def main() -> int:
         ):
             _ = run(["git", "-C", str(project), *list(args)])
         bundle = _make_bundle(workspace, supplied=True, record=record)
+        # A recognized Copier scaffold refuses adoption: the next action is
+        # apply, nothing is installed, and the validation hook never runs.
+        adopted = run(
+            [
+                sys.executable,
+                str(project / "scripts/bootstrap_project.py"),
+                "adopt",
+                "--bundle",
+                str(bundle),
+                "--target",
+                str(project),
+            ]
+        )
+        if adopted.returncode != 1 or "APPLY_REQUIRED" not in (
+            adopted.stdout + adopted.stderr
+        ):
+            print(adopted.stdout + adopted.stderr, file=sys.stderr)
+            return 1
+        if (project / ".rygor/project.json").is_file():
+            print("Copier adopt refusal left a manifest", file=sys.stderr)
+            return 1
+        if record.read_text(encoding="utf-8") != "":
+            print("Copier adopt refusal ran the validation hook", file=sys.stderr)
+            return 1
         applied = run(
             [
                 sys.executable,

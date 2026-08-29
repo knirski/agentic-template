@@ -27,6 +27,7 @@ from scripts.bootstrap.blobs import VerifiedBlobStore
 from scripts.bootstrap.bundles import (
     _BUNDLE_FILE,  # pyright: ignore[reportPrivateUsage]  shared bundle-path constant with the init executor
     HOOK_PATH,
+    _read_template_file,  # pyright: ignore[reportPrivateUsage]  shared bounded template read with the adoption compilers
     compile_adoption_install,
     compile_initial_install,
     decode_bundle,
@@ -91,6 +92,8 @@ from scripts.bootstrap.identity import (
     DirectoryState,
     FileState,
     ManifestIdentity,
+    PosixMode,
+    content_identity,
 )
 from scripts.bootstrap.intents import (
     Add,
@@ -203,6 +206,7 @@ from scripts.bootstrap.readiness import (
 from scripts.bootstrap.render import (
     LicensingInfo,
     MaintenanceInfo,
+    ManagedFile,
     ManagedRender,
     ProfileInfo,
     ProjectInfo,
@@ -1913,6 +1917,72 @@ def _recorded_render(
     )
 
 
+def _adopted_lifecycle_render(
+    manifest: CandidateManifest,
+    rendered: ManagedRender,
+    *,
+    template_root: str,
+) -> Result[ManagedRender, ContractError]:
+    """Extend the recorded render with an adopted project's lifecycle entries.
+
+    Adopted manifests record the installed lifecycle source inside the managed
+    inventory, and no generation path renders those files.  Their certified
+    bytes are read from the template root and accepted only when the derived
+    ``{kind, sha256, mode}`` identity equals the recorded inventory entry, so
+    restore writes exactly the recorded bytes or refuses.
+    """
+
+    rendered_paths = {file.path.value for file in rendered}
+    files = list(rendered)
+    for entry in manifest.managed:
+        path = entry.path.value
+        if path in rendered_paths:
+            continue
+        content = _read_template_file(template_root, path)
+        if content is None:
+            return Err(
+                ContractError(
+                    ContractErrorKind.RENDER_CONTRACT_VIOLATION,
+                    f"render_missing:{path}",
+                )
+            )
+        try:
+            mode_bits = stat.S_IMODE(os.stat(os.path.join(template_root, path)).st_mode)
+        except OSError:
+            return Err(
+                ContractError(
+                    ContractErrorKind.RENDER_CONTRACT_VIOLATION,
+                    f"render_missing:{path}",
+                )
+            )
+        executable = bool(mode_bits & 0o111)
+        try:
+            _ = content.decode("utf-8")
+            utf8 = True
+        except UnicodeDecodeError:
+            utf8 = False
+        kind: Literal["text", "binary"] = (
+            "text" if utf8 and not executable else "binary"
+        )
+        mode = PosixMode.EXECUTABLE if executable else PosixMode.FILE
+        identity = content_identity(content, text=kind == "text")
+        if (
+            entry.kind != kind
+            or entry.mode != mode
+            or entry.sha256 != identity.normalized_sha256
+        ):
+            return Err(
+                ContractError(
+                    ContractErrorKind.RENDER_CONTRACT_VIOLATION,
+                    f"render_mismatch:{path}",
+                )
+            )
+        files.append(
+            ManagedFile(path=RepoPath(path), kind=kind, mode=mode, content=content)
+        )
+    return Ok(tuple(sorted(files, key=lambda file: file.path.value.encode("utf-8"))))
+
+
 def _manifest_identity(manifest: CandidateManifest) -> ManifestIdentity:
     document = manifest_document(manifest)
     return ManifestIdentity(
@@ -2058,6 +2128,14 @@ def _compile_lifecycle_plan(
                 return Ok(plan)
     if parsed.command in ("restore", "plan restore"):
         requested = cast("Restore | PlanRestore", parsed.intent).options.paths
+        if generation is GenerationPath.ADOPTED:
+            match _adopted_lifecycle_render(
+                manifest, rendered, template_root=template_root
+            ):
+                case Err(error):
+                    return Err(error)
+                case Ok(extended):
+                    rendered = extended
         match compile_restore_plan(
             generation=generation,
             target_identity=observation.pass_.target,

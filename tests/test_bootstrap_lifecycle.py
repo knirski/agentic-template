@@ -7,6 +7,7 @@ happy paths, receipt binding, and refusal branches count toward source coverage.
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from collections.abc import Callable
@@ -15,6 +16,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
+from scripts.bootstrap.canonical_json import canonical_json
 from scripts.bootstrap.cli import (
     ParsedCommand,
     _execute_lifecycle,  # pyright: ignore[reportPrivateUsage]  intentional lifecycle coverage
@@ -22,6 +24,7 @@ from scripts.bootstrap.cli import (
     parse_argv,
 )
 from scripts.bootstrap.diagnostics import (
+    ActionRequired,
     ContractFailure,
     InvalidRequest,
     Succeeded,
@@ -34,6 +37,7 @@ from scripts.bootstrap.manifest import (
     ProfileSelection,
     ProvenanceRecord,
     decode_manifest,
+    manifest_checksum,
 )
 from scripts.bootstrap.presentation import CommandResult
 from scripts.bootstrap.result import Ok
@@ -350,6 +354,154 @@ def test_reconcile_binds_receipt_in_process() -> None:
         assert managed.read_bytes() == compiled
         assert source.read_text(encoding="utf-8") == "drifted source\n"
         assert unselected_artifact.read_bytes() == (ROOT / ".releaserc").read_bytes()
+
+
+# --- adopted projects: restore parity and permanent reconcile refusal ---------
+
+
+def _adopted_project(raw: Path) -> tuple[Path, Path]:
+    """Adopt one empty manifest-free tree through the in-process CLI."""
+
+    from tests.adoption_e2e import adoption_bundle, empty_adoption_target, run_cli
+
+    parent = Path(raw)
+    target = empty_adoption_target(parent)
+    record = parent / "hook-runs"
+    _ = record.write_text("", encoding="utf-8")
+    bundle = adoption_bundle(parent / "bundle-input", record)
+    result = run_cli(["adopt", "--bundle", str(bundle), "--target", str(target)])
+    assert isinstance(result.outcome, Succeeded), result.outcome
+    return target, record
+
+
+def test_restore_no_drift_on_adopted_project_is_a_no_op_in_process() -> None:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
+        target, _record = _adopted_project(Path(raw))
+        result = _execute(["restore", "--target", str(target)])
+        assert isinstance(result.outcome, Succeeded), result.outcome
+        assert result.state_document == {"kind": "no_changes"}
+
+
+def test_plan_restore_writes_receipt_on_adopted_project_in_process() -> None:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
+        parent = Path(raw)
+        target, _record = _adopted_project(parent)
+        claude = target / "CLAUDE.md"
+        _ = claude.write_bytes(b"adopter edit\n")
+        receipt = parent / "restore-plan.json"
+        result = _execute(
+            [
+                "plan",
+                "restore",
+                "--target",
+                str(target),
+                "--out",
+                str(receipt),
+            ]
+        )
+        assert isinstance(result.outcome, Succeeded), result.outcome
+        assert receipt.is_file()
+        assert claude.read_bytes() == b"adopter edit\n"
+
+
+def test_restore_reproduces_a_deleted_installed_lifecycle_entry() -> None:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
+        target, _record = _adopted_project(Path(raw))
+        claude = target / "CLAUDE.md"
+        recorded = claude.read_bytes()
+        _ = claude.unlink()
+        result = _execute(["restore", "--target", str(target)])
+        assert isinstance(result.outcome, Succeeded), result.outcome
+        assert claude.is_file()
+        assert claude.read_bytes() == recorded
+        assert recorded == (ROOT / "AGENTS.md").read_bytes()
+
+
+def test_restore_repairs_drifted_lifecycle_and_managed_entries_on_adoption() -> None:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
+        target, _record = _adopted_project(Path(raw))
+        claude = target / "CLAUDE.md"
+        recorded_claude = claude.read_bytes()
+        capabilities = target / "docs/capabilities.md"
+        recorded_capabilities = capabilities.read_bytes()
+        _ = claude.write_bytes(b"adopter edit\n")
+        _ = capabilities.write_bytes(b"adopter edit\n")
+        result = _execute(["restore", "--target", str(target)])
+        assert isinstance(result.outcome, Succeeded), result.outcome
+        assert claude.read_bytes() == recorded_claude
+        assert capabilities.read_bytes() == recorded_capabilities
+
+
+def test_restore_refuses_when_template_lifecycle_identity_mismatches() -> None:
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
+        target, _record = _adopted_project(Path(raw))
+        manifest_path = target / ".rygor/project.json"
+        document = cast(
+            "dict[str, object]",
+            json.loads(manifest_path.read_text(encoding="utf-8")),
+        )
+        managed = cast("list[dict[str, object]]", document["managed"])
+        tampered = False
+        for entry in managed:
+            if entry["path"] == "CLAUDE.md":
+                entry["sha256"] = "f" * 64
+                tampered = True
+        assert tampered
+        # The manifest is tamper-evident: re-sign the tampered document so the
+        # refusal below comes from the lifecycle identity guard, not the
+        # checksum gate.
+        _ = document.pop("checksum")
+        _ = manifest_path.write_bytes(
+            canonical_json({**document, "checksum": manifest_checksum(document)})
+        )
+        result = _execute(["restore", "--target", str(target)])
+        assert isinstance(result.outcome, ContractFailure), result.outcome
+        assert "RENDER_CONTRACT_VIOLATION" in str(result.outcome)
+        assert "CLAUDE.md" in str(result.outcome)
+
+
+def test_restore_refuses_an_adopter_edit_to_a_source_tracked_lifecycle_file() -> None:
+    """Adopted provenance is snapshot-like: source edits refer to snapshot repair."""
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
+        target, _record = _adopted_project(Path(raw))
+        agents = target / "AGENTS.md"
+        _ = agents.write_bytes(b"adopter edit\n")
+        result = _execute(["restore", "--target", str(target)])
+        assert isinstance(result.outcome, ActionRequired), result.outcome
+        assert "TEMPLATE_CHANGED" in str(result.outcome)
+        assert agents.read_bytes() == b"adopter edit\n"
+
+
+def test_adopter_edit_to_installed_lifecycle_file_is_managed_drift() -> None:
+    from scripts.bootstrap.presentation import render_text
+    from tests.adoption_e2e import run_cli
+
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
+        parent = Path(raw)
+        target, _record = _adopted_project(parent)
+        claude = target / "CLAUDE.md"
+        _ = claude.write_bytes(b"adopter edit\n")
+        result = run_cli(["status", "--target", str(target)])
+        assert isinstance(result.outcome, Succeeded), result.outcome
+        text = render_text(result)
+        assert "drift" in text
+        assert "CLAUDE.md" in text
+        assert claude.read_bytes() == b"adopter edit\n"
+
+
+def test_reconcile_permanently_refuses_on_adopted_projects_in_process() -> None:
+    from tests.adoption_e2e import capture_tree
+
+    with tempfile.TemporaryDirectory(prefix="rygor-lifecycle.") as raw:
+        target, _record = _adopted_project(Path(raw))
+        before = capture_tree(target)
+        result = _execute(["reconcile", "--target", str(target)])
+        assert isinstance(result.outcome, ActionRequired), result.outcome
+        assert "OPERATION_UNAVAILABLE" in str(result.outcome)
+        planned = _execute(["plan", "reconcile", "--target", str(target)])
+        assert isinstance(planned.outcome, ActionRequired), planned.outcome
+        assert "OPERATION_UNAVAILABLE" in str(planned.outcome)
+        assert capture_tree(target) == before
 
 
 def test_reconcile_refuses_stale_receipt_in_process() -> None:

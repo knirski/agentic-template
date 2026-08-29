@@ -23,9 +23,14 @@ from typing import cast
 
 import pytest
 
-from scripts.bootstrap.capability_fragments import CORE_CI_PATH, capability_definitions
+from scripts.bootstrap.capability_fragments import (
+    CORE_CI_PATH,
+    capability_definitions,
+    core_definition,
+)
 from scripts.bootstrap.catalog import CATALOG, catalog_surface
 from scripts.bootstrap.contributions import render_source_fixture
+from scripts.bootstrap.resolver import ResolvedBundle
 from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.template_contract import SOURCE_WORKFLOW_SELECTIONS
 from tests.factory import copy_tree
@@ -472,3 +477,160 @@ def test_adopter_fixture_installs_and_runs_capability_commands() -> None:
         assert "pr-agent" not in lock
         for package in SOURCE_DEV_PACKAGES:
             assert package not in lock
+
+
+# --- adoption parity ---------------------------------------------------------
+
+
+def _render_adopted_for(
+    resolved: ResolvedBundle,
+) -> dict[str, bytes]:
+    """Render the adopted-generation managed outputs for one resolved selection.
+
+    The inputs mirror ``compile_initial_install`` exactly: the resolved
+    profile, topological effective order, and normalized settings, so the
+    expected bytes are the compiled adopted render for the same bundle.
+    """
+
+    from scripts.bootstrap.blobs import VerifiedBlobStore
+    from scripts.bootstrap.contributions import render_generation
+    from scripts.bootstrap.intents import GenerationPath
+    from scripts.bootstrap.render import (
+        LicensingInfo,
+        MaintenanceInfo,
+        ProfileInfo,
+        ProjectInfo,
+    )
+
+    match render_generation(
+        generation_path=GenerationPath.ADOPTED,
+        core=core_definition(),
+        definitions=capability_definitions(),
+        effective=resolved.effective,
+        additions=(),
+        settings=resolved.settings,
+        project=ProjectInfo(name="example", default_branch="main"),
+        licensing=LicensingInfo(mode="retain-apache-2.0", content_sha256=None),
+        profile=ProfileInfo(id=resolved.profile_id, frozen=resolved.requested),
+        maintenance=MaintenanceInfo(status="clean", retained_paths=()),
+        slots={},
+        blobs=VerifiedBlobStore.empty(),
+    ):
+        case Ok(managed):
+            return {file.path.value: file.content for file in managed}
+        case Err(error):
+            raise AssertionError(f"adopted render failed: {error}")
+
+
+@pytest.mark.parametrize(
+    ("selection", "expected_jobs"),
+    [
+        ((), ["project-validation", "delivery-contract"]),
+        (("semantic-release",), ["project-validation", "delivery-contract", "release"]),
+        (("nix",), ["project-validation", "delivery-contract", "nix-check"]),
+        (
+            ("nix", "cachix-publish"),
+            ["project-validation", "delivery-contract", "nix-check", "cachix-publish"],
+        ),
+        (
+            ("semantic-release", "nix"),
+            ["project-validation", "delivery-contract", "nix-check", "release"],
+        ),
+        (
+            ("semantic-release", "cachix-publish", "nix"),
+            [
+                "project-validation",
+                "delivery-contract",
+                "nix-check",
+                "cachix-publish",
+                "release",
+            ],
+        ),
+        (("pr-agent-gemini",), ["project-validation", "delivery-contract"]),
+        (
+            ("semantic-release", "pr-agent-gemini"),
+            ["project-validation", "delivery-contract", "release"],
+        ),
+    ],
+)
+def test_capability_matrix_installs_identically_through_adopt(
+    selection: tuple[str, ...], expected_jobs: list[str]
+) -> None:
+    """Every profile and selection installs its complete closure through adopt.
+
+    The adopted install must land the adopted-generation managed render
+    byte-identically for every profile and custom selection, install the
+    lifecycle source set (with CLAUDE.md as a regular AGENTS.md copy), and
+    leave the project observed-clean under the standard status machinery.
+    """
+    from scripts.bootstrap.bundles import decode_bundle_input
+    from scripts.bootstrap.presentation import render_text
+    from scripts.bootstrap.resolver import resolve_bundle
+    from tests.adoption_e2e import (
+        cli_exit_code,
+        empty_adoption_target,
+        run_cli,
+    )
+    from tests.factory import write_answer_bundle
+
+    with tempfile.TemporaryDirectory(prefix="rygor-adopt-matrix.") as raw:
+        parent = Path(raw)
+        target = empty_adoption_target(parent)
+        record = parent / "hook-runs"
+        _ = record.write_text("", encoding="utf-8")
+        bundle = write_answer_bundle(
+            parent,
+            supplied=True,
+            record=record,
+            capabilities=sorted(selection) or None,
+            capability_settings=(
+                {"cachix-publish": {"cache_name": "example"}}
+                if "cachix-publish" in selection
+                else None
+            ),
+        )
+        result = run_cli(["adopt", "--bundle", str(bundle), "--target", str(target)])
+        assert cli_exit_code(result) == 0, str(result.outcome)
+
+        match decode_bundle_input(str(bundle)):
+            case Ok(decoded):
+                pass
+            case Err(error):
+                raise AssertionError(f"bundle decode failed: {error}")
+        match resolve_bundle(decoded.bundle):
+            case Ok(resolved):
+                pass
+            case Err(error):
+                raise AssertionError(f"bundle resolve failed: {error}")
+        for path, content in _render_adopted_for(resolved).items():
+            installed = target / path
+            assert installed.is_file(), path
+            assert installed.read_bytes() == content, path
+
+        assert (target / "AGENTS.md").read_bytes() == (ROOT / "AGENTS.md").read_bytes()
+        claude = target / "CLAUDE.md"
+        assert claude.is_file() and not claude.is_symlink()
+        assert claude.read_bytes() == (ROOT / "AGENTS.md").read_bytes()
+        assert (target / ".rygor/source-ownership.json").read_bytes() == (
+            ROOT / ".rygor/source-ownership.json"
+        ).read_bytes()
+        assert (target / "scripts/bootstrap/cli.py").read_bytes() == (
+            ROOT / "scripts/bootstrap/cli.py"
+        ).read_bytes()
+        assert (target / "scripts/bootstrap_project.py").is_file()
+        assert (target / ".agents/skills/spec-implement/SKILL.md").is_file()
+
+        assert _ci_job_names({CORE_CI_PATH: (target / CORE_CI_PATH).read_bytes()}) == (
+            expected_jobs
+        )
+
+        manifest = cast(
+            dict[str, object],
+            json.loads((target / ".rygor/project.json").read_text(encoding="utf-8")),
+        )
+        provenance = cast(dict[str, object], manifest["provenance"])
+        assert provenance["generation_path"] == "adopted"
+
+        status = run_cli(["status", "--target", str(target)])
+        assert cli_exit_code(status) == 0
+        assert "no managed drift" in render_text(status)

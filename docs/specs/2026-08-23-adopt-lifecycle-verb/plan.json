@@ -424,7 +424,7 @@
           "description": "Prove adopt composes with the rest of the contract: GitHub and Copier fixture scaffolds refuse adopt pointing at apply; the complete profile/capability matrix installs identically through adopt; repeated adoptions produce byte-identical plans and receipts across runs and entry shapes; restore works on adopted projects - extend the recorded-render reconstruction so installed lifecycle entries are sourced from the template root and accepted only when their identities match the recorded inventory; an adopter edit to an installed lifecycle file is managed drift diagnosed by status before unrelated mutation; reconcile permanently refuses with OPERATION_UNAVAILABLE.",
           "execution": {
             "mode": "inline",
-            "status": "pending",
+            "status": "in_progress",
             "completion": null
           },
           "files": {
