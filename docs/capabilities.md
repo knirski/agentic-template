@@ -17,8 +17,11 @@ normalized non-secret settings.
 
 Capability definitions declare dependencies, artifacts, workflow contributions,
 documentation fragments, runtime metadata, and external activation guidance.
-Unselected capability artifacts and jobs are absent. Bootstrap does not install
-packages, create credentials, or certify external activation.
+Unselected capability artifacts and jobs are absent. The same profile/capability
+matrix installs identically through `apply` on a recognized scaffold and through
+`adopt` on a brownfield tree; the collision declaration is the only
+brownfield-specific input. Bootstrap does not install packages, create credentials, or
+certify external activation.
 
 After generated dependency metadata changes, the adopter owns the follow-up
 `uv lock` and `uv sync` steps. When the append-only capability-addition

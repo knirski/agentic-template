@@ -24,8 +24,21 @@ The lifecycle is inspectable and recoverable:
 uv run --python 3.14 scripts/bootstrap_project.py status --target .
 uv run --python 3.14 scripts/bootstrap_project.py plan apply --bundle ./bundle --target . --out receipt.json
 uv run --python 3.14 scripts/bootstrap_project.py apply --bundle ./bundle --target .
+uv run --python 3.14 scripts/bootstrap_project.py plan adopt --bundle ./bundle --target . --out receipt.json
+uv run --python 3.14 scripts/bootstrap_project.py adopt --bundle ./bundle --target .
 uv run --python 3.14 scripts/bootstrap_project.py recover --target .
 ```
+
+Adoption installs into any verified non-bare Git working tree without a project
+manifest (empty or populated, dirty or clean). Prepare the bundle with `init`,
+then declare every collision between planned managed output — including the
+lifecycle source set — and observed content as `keep-existing` or `replace` in
+the bundle's `collisions` map; undeclared collisions, declarations naming
+non-colliding paths, and `replace` on seed-once legal/provenance paths refuse the
+plan. Adopted projects record `ADOPTED` provenance and behave snapshot-like:
+`restore` works against the recorded baseline (lifecycle entries are sourced from
+the template root and verified against the recorded inventory) and `reconcile` is
+permanently refused.
 
 Recovery never re-runs the project validation hook. Hook-created files and
 external effects are outside the bootstrap transaction.

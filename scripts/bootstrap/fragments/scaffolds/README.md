@@ -15,6 +15,8 @@ software changes with coding agents.
 6. Run `uv run --python 3.14 scripts/validate_repository.py` and address every readiness diagnostic.
 7. Require the `Project validation` check in the default-branch ruleset.
 
+Adopt an existing repository without recreating it via `plan adopt`/`adopt` — see the deterministic bootstrap CLI below and `docs/template-updates.md` for the `collisions` declaration and lifecycle-source ownership.
+
 The template is maintained with [Copier](https://copier.readthedocs.io/):
 
 ```console
@@ -44,13 +46,27 @@ uv run --python 3.14 scripts/bootstrap_project.py init --from ./bootstrap.json -
 uv run --python 3.14 scripts/bootstrap_project.py status --target ./my-project
 uv run --python 3.14 scripts/bootstrap_project.py plan apply --bundle ./bundle --target ./my-project --out receipt.json
 uv run --python 3.14 scripts/bootstrap_project.py apply --bundle ./bundle --target ./my-project
+uv run --python 3.14 scripts/bootstrap_project.py plan adopt --bundle ./bundle --target ./my-project --out receipt.json
+uv run --python 3.14 scripts/bootstrap_project.py adopt --bundle ./bundle --target ./my-project
 uv run --python 3.14 scripts/bootstrap_project.py recover --target ./my-project
 ```
 
 `init` writes a complete reviewable bundle from an input file; there is no interactive mode. `status`
 describes the generation path and mechanical readiness in one observation pass and never runs the
 adopter hook. `plan apply` compiles the plan and writes a canonical receipt without mutating the
-target; only `apply` installs. An install whose adopter hook succeeds exits 0. User-correctable
+target; only `apply` installs. `plan adopt` and `adopt` install the same profile-managed output plus
+the template lifecycle source set into any verified non-bare Git working tree without a project
+manifest (empty or populated, dirty or clean) through an explicit `collisions` map in the bundle
+that declares each collision as `keep-existing` (exclude from the plan and inventory) or `replace`
+(overwrite, prior `FileState` recorded in the receipt); undeclared collisions, declarations naming
+non-colliding paths, and `replace` on seed-once legal/provenance paths refuse the plan. Adopted
+projects record `ADOPTED` provenance and behave snapshot-like: `restore` works against the recorded
+baseline and `reconcile` is permanently refused; installed lifecycle files (the declared `lifecycle_paths` — e.g. `AGENTS.md`, skills,
+`scripts/bootstrap/*.py`, `copier.yml` — plus `.rygor/source-ownership.json` and the regular-file
+`CLAUDE.md` copy) are
+drift-fatal managed inventory, while `keep-existing` paths remain absent and never drift-fatal.
+
+An install whose adopter hook succeeds exits 0. User-correctable
 refusals, unmet preconditions, expected scaffolds, and installed-but-unready hook results exit 1.
 Usage, input, contract, manifest, render-contract, transaction, and internal failures exit 2.
 `apply` on an already-installed project refuses and names `status` or

@@ -84,6 +84,7 @@
     "copier.yml",
     "docs/adr/0001-use-copier-for-template-updates.md",
     "docs/adr/0002-functional-core-domain-ownership.md",
+    "docs/adr/0003-adoption-installs-lifecycle-source.md",
     "docs/agents/domain.md",
     "docs/agents/issue-tracker.md",
     "docs/licensing-provenance-audit.md",

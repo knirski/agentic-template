@@ -124,8 +124,12 @@ def test_documentation_has_no_legacy_hook_contract() -> None:
         text = rendered[path].decode("utf-8")
         assert "scripts/validate-project" in text
         assert legacy_hook not in text
-        assert "adoption" not in text.lower()
         assert "migration" not in text.lower()
+    # Adopt lifecycle is now part of the durable documentation (REQ-015 no per-capability branches)
+    assert "adopt" in rendered["docs/delivery-workflow.md"].decode("utf-8").lower()
+    assert "adopt" in rendered["docs/template-updates.md"].decode("utf-8").lower()
+    assert "adopt" in rendered["docs/capabilities.md"].decode("utf-8").lower()
+    assert "collisions" in rendered["docs/delivery-workflow.md"].decode("utf-8").lower()
 
 
 def test_source_documentation_carries_the_same_operational_contract() -> None:
@@ -137,6 +141,19 @@ def test_source_documentation_carries_the_same_operational_contract() -> None:
         assert "CONTRIBUTING.md" in text
         assert "scripts/validate-project" in text
         assert legacy_hook not in text
+        assert "migration" not in text.lower()
+    # Source docs must carry the same adopt-aware contract as rendered fragments
+    assert (
+        "adopt"
+        in (ROOT / "docs/delivery-workflow.md").read_text(encoding="utf-8").lower()
+    )
+    assert (
+        "adopt"
+        in (ROOT / "docs/template-updates.md").read_text(encoding="utf-8").lower()
+    )
+    assert (
+        "adopt" in (ROOT / "docs/capabilities.md").read_text(encoding="utf-8").lower()
+    )
 
 
 def test_documentation_fragments_are_reproducible() -> None:
@@ -161,9 +178,15 @@ def test_cross_document_operational_contract_is_complete() -> None:
 
     assert "recover" in delivery
     assert "receipt" in delivery
+    assert "adopt" in delivery.lower()
+    assert "collisions" in delivery.lower()
     assert "Copier" in updates
     assert "cannot use" in updates
+    assert "adopted" in updates.lower()
+    assert "ADOPTED" in updates
+    assert "reconcile" in updates.lower()
     assert "Effective dependency closure" in capabilities
+    assert "adopt" in capabilities.lower()
     assert "Available" in github
     assert "Unavailable in this run" in github
     assert "Dependabot" in github

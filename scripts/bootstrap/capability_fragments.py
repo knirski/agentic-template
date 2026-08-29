@@ -1,5 +1,9 @@
 """Declarative capability fragment bodies and render-boundary definitions.
 
+Core durable-adopter documentation fragments are adopt-aware: `delivery-workflow`,
+`template-updates`, and `capabilities` describe the brownfield `adopt` lifecycle
+without per-capability branches (REQ-015).
+
 This module is the compiled-workflow source of truth for the four v1
 capabilities: the byte bodies (templates with render markers, contribution
 bodies, and reusable-workflow templates) and the render-boundary definitions
