@@ -61,8 +61,9 @@ that declares each collision as `keep-existing` (exclude from the plan and inven
 (overwrite, prior `FileState` recorded in the receipt); undeclared collisions, declarations naming
 non-colliding paths, and `replace` on seed-once legal/provenance paths refuse the plan. Adopted
 projects record `ADOPTED` provenance and behave snapshot-like: `restore` works against the recorded
-baseline and `reconcile` is permanently refused; installed lifecycle files (`AGENTS.md`, skills,
-`scripts/bootstrap/*.py`, `.rygor/source-ownership.json`, and the regular-file `CLAUDE.md` copy) are
+baseline and `reconcile` is permanently refused; installed lifecycle files (the declared `lifecycle_paths` — e.g. `AGENTS.md`, skills,
+`scripts/bootstrap/*.py`, `copier.yml` — plus `.rygor/source-ownership.json` and the regular-file
+`CLAUDE.md` copy) are
 drift-fatal managed inventory, while `keep-existing` paths remain absent and never drift-fatal.
 
 An install whose adopter hook succeeds exits 0. User-correctable
