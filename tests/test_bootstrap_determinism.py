@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from typing import cast
+
 from scripts.bootstrap.canonical_json import canonical_json, decode_json
 from scripts.bootstrap.identity import (
     DirectoryEntry,
@@ -222,3 +226,91 @@ def test_target_source_and_manifest_identities_are_tagged_and_immutable() -> Non
         raise AssertionError("expected ValueError for negative device")
     except ValueError:
         pass
+
+
+# --- adoption plan and receipt determinism ------------------------------------
+
+
+def _plan_adopt(target: Path, bundle: Path, out: Path) -> bytes:
+    from tests.adoption_e2e import cli_exit_code, run_cli
+
+    result = run_cli(
+        [
+            "plan",
+            "adopt",
+            "--bundle",
+            str(bundle),
+            "--target",
+            str(target),
+            "--out",
+            str(out),
+        ]
+    )
+    assert cli_exit_code(result) == 0, str(result.outcome)
+    return out.read_bytes()
+
+
+def test_repeated_plan_adopt_receipts_are_byte_identical(tmp_path: Path) -> None:
+    from tests.adoption_e2e import adoption_bundle, empty_adoption_target
+
+    target = empty_adoption_target(tmp_path)
+    record = tmp_path / "hook-runs"
+    _ = record.write_text("", encoding="utf-8")
+    bundle = adoption_bundle(tmp_path / "bundle-input", record)
+    first = _plan_adopt(target, bundle, tmp_path / "receipt-a.json")
+    second = _plan_adopt(target, bundle, tmp_path / "receipt-b.json")
+    assert first == second
+    assert first
+
+
+def test_plan_adopt_receipts_are_identical_across_answer_entry_orders(
+    tmp_path: Path,
+) -> None:
+    from tests.adoption_e2e import ADOPTER_NOTES, adoption_bundle
+    from tests.factory import seed_repo
+
+    # A dirty tree whose planned managed outputs collide with adopter files:
+    # README.md is seed-once (keep-existing only), the other two are
+    # replaceable managed outputs.
+    target = seed_repo(
+        tmp_path,
+        {
+            "README.md": "# Adopter\n",
+            "pyproject.toml": "[project]\nname = 'adopter'\n",
+            "docs/capabilities.md": "# adopter capabilities\n",
+            "notes.txt": ADOPTER_NOTES,
+        },
+        name="adoptee",
+    )
+    record = tmp_path / "hook-runs"
+    _ = record.write_text("", encoding="utf-8")
+    collisions = (
+        ("README.md", "keep-existing"),
+        ("docs/capabilities.md", "replace"),
+        ("pyproject.toml", "replace"),
+    )
+
+    def ordered_bundle(name: str, items: tuple[tuple[str, str], ...]) -> Path:
+        bundle = adoption_bundle(tmp_path / name, record)
+        document = cast(
+            "dict[str, object]",
+            json.loads((bundle / "bootstrap.json").read_text(encoding="utf-8")),
+        )
+        document["collisions"] = dict(items)
+        # Insertion order is preserved on purpose: the two bundles carry the
+        # same declarations in different entry order.
+        _ = (bundle / "bootstrap.json").write_text(json.dumps(document))
+        return bundle
+
+    first = _plan_adopt(
+        target,
+        ordered_bundle("bundle-a", collisions),
+        tmp_path / "receipt-a.json",
+    )
+    second = _plan_adopt(
+        target,
+        ordered_bundle("bundle-b", tuple(reversed(collisions))),
+        tmp_path / "receipt-b.json",
+    )
+    assert first == second
+    assert first

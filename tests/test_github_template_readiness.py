@@ -221,6 +221,30 @@ def test_all_scaffold_apply_installs_exits_one_and_cleans(tmp_path: Path) -> Non
     ) == GENERATED_PYPROJECT
 
 
+def test_adopt_refuses_a_recognized_github_scaffold_pointing_at_apply(
+    tmp_path: Path,
+) -> None:
+    """The GitHub fixture scaffold refuses adopt: the recognized path is apply."""
+    project, record = _snapshot_project(tmp_path, "adopt-refusal")
+    bundle = write_answer_bundle(tmp_path, supplied=True, record=record)
+    result = run(
+        [
+            sys.executable,
+            str(project / "scripts/bootstrap_project.py"),
+            "adopt",
+            "--bundle",
+            str(bundle),
+            "--target",
+            str(project),
+        ]
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    text = result.stdout + result.stderr
+    assert "APPLY_REQUIRED" in text
+    assert not (project / ".rygor/project.json").exists()
+    assert record.read_text(encoding="utf-8") == ""
+
+
 def test_cleanup_mismatch_refuses_then_leave_retains(tmp_path: Path) -> None:
     """A cleanup mismatch refuses apply; --leave retains artifacts."""
     project, record = _snapshot_project(tmp_path, "mismatch")
