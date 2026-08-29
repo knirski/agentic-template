@@ -21,12 +21,21 @@ or internal errors.
 
 The bootstrap CLI reports the same findings without running the hook:
 `uv run --python 3.14 scripts/bootstrap_project.py status --target .` describes the generation path, scaffold
-or installed-project state, cleanup contract, source and managed drift, and any pending journal. It
-never executes or rewrites the hook and never exits 1; run `uv run --python 3.14 scripts/validate_repository.py`
+or installed-project state, cleanup contract, source and managed drift, and any pending journal, and
+for unmanaged trees it describes adoptability and names `init` plus `plan adopt` as the next action.
+It never executes or rewrites the hook and never exits 1; run `uv run --python 3.14 scripts/validate_repository.py`
 for the executed check.
 
 GitHub-generated projects are one-time snapshots. Copier-generated projects retain update lineage;
-Copier owns update and conflict behavior.
+Copier owns update and conflict behavior. Adopted projects behave like snapshots: `restore` works
+against the recorded baseline (installed lifecycle entries are sourced from the template root and
+verified against the recorded inventory) and `reconcile` is permanently refused with
+`OPERATION_UNAVAILABLE`; source-baseline repair/regeneration rules match snapshots and adopted
+projects cannot gain Copier reconcile lineage. An `adopt` install may be performed from any verified
+non-bare manifest-free Git working tree (empty or populated, dirty or clean) with an explicit
+`collisions` declaration; `keep-existing` paths remain permanently adopter-owned and outside the
+managed inventory, while `replace` overwrites only declared paths with the prior `FileState` recorded
+in the receipt and seed-once legal/provenance paths accept only `keep-existing`.
 
 Bootstrap-managed operational guidance is installed in `docs/delivery-workflow.md`,
 `docs/template-updates.md`, `docs/capabilities.md`, and `docs/github-setup.md`. Keep

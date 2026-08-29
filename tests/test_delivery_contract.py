@@ -101,6 +101,18 @@ def main() -> int:
         not in maintainer
     ):
         fail("source release must require the maintainer check suite")
+    prd = (ROOT / "docs/prd.md").read_text(encoding="utf-8")
+    if "REQ-007" not in prd or "adopt" not in prd.lower():
+        fail("REQ-007 must admit adopt brownfield entry")
+    if "REQ-010" not in prd or "plan adopt" not in prd.lower():
+        fail("REQ-010 must list plan adopt lifecycle")
+    if "REQ-009" not in prd or "adopted" not in prd.lower():
+        fail("REQ-009 must note adopted lifecycle inventory")
+    context = (ROOT / "CONTEXT.md").read_text(encoding="utf-8")
+    if "Adopted project" not in context or "Adoption declaration" not in context:
+        fail("CONTEXT.md must define Adopted project and Adoption declaration")
+    if "Unrecognized manifest-free target" not in context:
+        fail("CONTEXT.md must retain Unrecognized manifest-free target term")
     print("delivery contract: ok")
     return 0
 

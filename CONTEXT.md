@@ -29,6 +29,15 @@ A generated project created by Copier with source and answer metadata that suppo
 template updates.
 _Avoid_: GitHub template copy
 
+**Adopted project**:
+A generated project whose manifest records adopted provenance (`GenerationPath.ADOPTED`). It behaves
+snapshot-like: `restore` works against the recorded baseline (lifecycle entries are sourced from the
+template root and verified against the recorded inventory), `reconcile` is permanently refused with
+`OPERATION_UNAVAILABLE`, and source-baseline repair/regeneration rules match snapshot projects. The
+managed inventory includes the installed lifecycle source files, which are drift-fatal; keep-existing
+paths remain absent from the inventory and are never drift-fatal, restored, or reconciled.
+_Avoid_: Copier-generated project, snapshot reconciliation
+
 **Generated-project contract**:
 The readiness behavior, adopter-owned validation hook, CI gate, and onboarding workflow shared by
 all generated projects, independent of generation path.
@@ -55,9 +64,10 @@ alone does not claim that the adopter hook ran or that the project is ready.
 _Avoid_: Project readiness, hook result
 
 **Project bootstrap**:
-The deterministic initial transition from a recognized generated scaffold to a bootstrap installation
-using a validated bootstrap input bundle. It reports project readiness separately; changing the
-selected capabilities after installation is not bootstrap.
+The deterministic initial transition from either a recognized generated scaffold (`apply`) or any
+verified non-bare manifest-free Git working tree via an explicit adoption declaration (`adopt`) to a
+bootstrap installation using a validated bootstrap input bundle. It reports project readiness
+separately; changing the selected capabilities after installation is not bootstrap.
 _Avoid_: Template update, capability reconfiguration, project setup script
 
 **Bootstrap installation**:
@@ -67,8 +77,20 @@ _Avoid_: Project readiness, product correctness
 
 **Bootstrap answer document**:
 The JSON input that supplies project bootstrap's mechanical configuration and references to
-user-authored product content. It contains neither embedded product prose nor secrets.
+user-authored product content, and for adoption an optional `collisions` map declaring per-path
+`keep-existing` or `replace` for every collision between planned managed output (including the
+lifecycle source set) and observed content. It contains neither embedded product prose nor secrets.
 _Avoid_: Project manifest, Copier answers, generated product requirements
+
+**Adoption declaration**:
+The optional per-path collision map inside the bootstrap answer document that maps each colliding
+repository path to `keep-existing` (exclude from the plan and from the managed inventory) or
+`replace` (overwrite with the prior `FileState` recorded in the receipt). Every collision between
+planned managed output — including the lifecycle source set — and observed content must be declared;
+undeclared collisions, declarations naming non-colliding paths, and `replace` on seed-once
+legal/provenance paths (`docs/prd.md` scaffolding is not seed-once legal text) are refused. For the
+seed-once legal/provenance class only `keep-existing` is structurally allowed in v1.
+_Avoid_: Bootstrap-managed inventory, adopter-owned prose
 
 **Bootstrap input bundle**:
 The bootstrap answer document together with the exact bytes of every referenced content file. The
@@ -94,7 +116,10 @@ _Avoid_: Bootstrap answer document, product requirements document, Copier answer
 
 **Managed inventory**:
 The manifest's path-level identity of bootstrap-managed artifacts for one recorded source and
-capability selection. Seed-once files, cleanup files, and the manifest itself are not members.
+capability selection. Seed-once files, cleanup files, and the manifest itself are not members. For
+adopted projects the inventory additionally records the installed template lifecycle source files
+(declared lifecycle paths, `.rygor/source-ownership.json`, and the regular-file `CLAUDE.md` copy of
+the template's `AGENTS.md` bytes), which are restore-able and drift-fatal.
 _Avoid_: Project tree, seed content record
 
 **Managed drift**:
@@ -105,7 +130,9 @@ _Avoid_: Template update, seed-once edit, source drift
 
 **Source baseline**:
 The recorded path-level identity of generated-lifecycle source used by a project. It localizes source
-changes; only Copier projects may advance it through capability reconciliation.
+changes; only Copier projects may advance it through capability reconciliation, while snapshot and
+adopted projects diagnose source changes and offer targeted baseline repair or regeneration and never
+reconcile.
 _Avoid_: Copier lineage, managed inventory, template version
 
 **Source ownership**:
@@ -174,8 +201,10 @@ _Avoid_: Bootstrap-managed artifact, generated-lifecycle source, implicit licenc
 
 **Generated-lifecycle source**:
 The fingerprinted template-owned compiler inputs, policy, validators, capability definitions, and
-durable adopter documentation that Copier may update. Bootstrap reconciles derived managed output
-from this source only for Copier-generated projects.
+durable adopter documentation that Copier may update, plus the lifecycle source set that adoption
+installs into brownfield trees. Bootstrap reconciles derived managed output from this source only for
+Copier-generated projects; adopted projects record lifecycle entries in the source baseline and in
+the managed inventory, where they are restore-able and drift-fatal, but they never reconcile.
 _Avoid_: Bootstrap-managed output, seed-once adopter output, Copier answers
 
 **Durable adopter documentation**:
@@ -218,9 +247,12 @@ observed files that authorizes initial snapshot cleanup. Any disagreement author
 _Avoid_: Managed inventory, recursive cleanup script
 
 **Unrecognized manifest-free target**:
-An empty or populated working tree with no project manifest that does not match either generation
-path's exact scaffold recognition contract. Bootstrap v1 neither installs into, adopts, nor migrates
-this unsupported state.
+A working tree that is non-Git, is a bare repository, already contains a project manifest, or is a
+manifest-free tree whose adoption declaration violates the collision policy (undeclared collisions,
+declarations naming non-colliding paths, or illegal `replace` on seed-once legal/provenance paths).
+Bootstrap v1 neither installs into nor migrates this unsupported state; any other verified non-bare
+manifest-free Git working tree (empty or populated, dirty or clean) is adoptable via the adoption
+declaration.
 _Avoid_: Recognized generated scaffold, bootstrapped project
 
 ## Example dialogue

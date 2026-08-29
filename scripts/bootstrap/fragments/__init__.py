@@ -64,8 +64,21 @@ The bootstrap lifecycle is inspectable and recoverable:
 uv run --python 3.14 scripts/bootstrap_project.py status --target .
 uv run --python 3.14 scripts/bootstrap_project.py plan apply --bundle ./bundle --target . --out receipt.json
 uv run --python 3.14 scripts/bootstrap_project.py apply --bundle ./bundle --target .
+uv run --python 3.14 scripts/bootstrap_project.py plan adopt --bundle ./bundle --target . --out receipt.json
+uv run --python 3.14 scripts/bootstrap_project.py adopt --bundle ./bundle --target .
 uv run --python 3.14 scripts/bootstrap_project.py recover --target .
 ```
+
+Adoption installs into any verified non-bare Git working tree without a project
+manifest (empty or populated, dirty or clean). Prepare the bundle with `init`,
+then declare every collision between planned managed output -- including the
+lifecycle source set -- and observed content as `keep-existing` or `replace` in
+the bundle's `collisions` map; undeclared collisions, declarations naming
+non-colliding paths, and `replace` on seed-once legal/provenance paths refuse the
+plan. Adopted projects record `ADOPTED` provenance and behave snapshot-like:
+`restore` works against the recorded baseline (lifecycle entries are sourced from
+the template root and verified against the recorded inventory) and `reconcile` is
+permanently refused.
 
 Recovery never re-runs the project validation hook. Hook-created files and
 external effects are outside the bootstrap transaction.
@@ -122,6 +135,16 @@ A GitHub-generated project is a snapshot. It receives no later template updates
 to generated-lifecycle source or bootstrap-managed output and cannot use
 `reconcile`. Regeneration is the supported way to obtain a later snapshot.
 
+An adopted project records `ADOPTED` provenance and behaves snapshot-like:
+`restore` works against the recorded baseline (installed lifecycle entries are
+sourced from the template root and verified against the recorded inventory) and
+`reconcile` is permanently refused with `OPERATION_UNAVAILABLE`; source-baseline
+repair/regeneration rules match snapshots, and adopted projects cannot gain
+Copier reconcile lineage. The managed inventory includes the installed lifecycle
+source files (declared lifecycle paths, `.rygor/source-ownership.json`, and the
+regular-file `CLAUDE.md` copy), which are drift-fatal; `keep-existing` paths
+remain absent from the inventory.
+
 This project uses the `rygor:value:generation-path` generation path.
 
 ## Managed drift and restore
@@ -141,11 +164,19 @@ transaction evidence while a journal is pending.
 
 ## Scope and unsupported targets
 
-The initial operation accepts only an exact scaffold produced through GitHub or
-Copier. A manifest-free target that is not such a scaffold is unsupported.
-Snapshot cleanup is authorized only when its declared paths and recorded
-identities agree; `--leave-maintenance-artifacts` retains those paths when
-cleanup is intentionally skipped.
+The initial `apply` accepts only an exact scaffold produced through GitHub or
+Copier; `adopt` accepts any verified non-bare Git working tree without a project
+manifest (empty or populated, dirty or clean) with an explicit `collisions`
+declaration (`keep-existing` or `replace` for every collision, including the
+lifecycle source set). A manifest-free target that is non-Git, bare,
+manifest-bearing, or whose adoption declaration violates the collision policy
+(undeclared collisions, declarations naming non-colliding paths, or illegal
+`replace` on seed-once legal/provenance paths) is unsupported. Adopted
+projects cannot gain Copier reconcile lineage, and seed-once legal/provenance
+paths accept only `keep-existing` in v1. Snapshot cleanup is authorized only
+when its declared paths and recorded identities agree;
+`--leave-maintenance-artifacts` retains those paths when cleanup is
+intentionally skipped.
 
 ## Cleanup ownership
 
@@ -181,7 +212,10 @@ are append-only and do not re-expand or replace the original profile.
 ## Selected capability details
 
 The following details are derived from the selected declarative definitions.
-Unselected capability artifacts and jobs are absent.
+Unselected capability artifacts and jobs are absent. The same profile/capability
+matrix installs identically through `apply` on a recognized scaffold and through
+`adopt` on a brownfield tree; the collision declaration is the only
+brownfield-specific input.
 
 rygor:value:capability-summary
 
