@@ -1948,14 +1948,16 @@
           "validation": {
             "tests": [
               "Release preparation builds wheel and sdist with uv build --no-sources",
+              "One release-identity contract proves pyproject version, wheel METADATA Version, normalized wheel filename version, compatibility-corpus EngineCoordinate.version, and expected semantic-release tag vR all derive from nextRelease.version R",
               "Checksum files name and authenticate the exact produced artifacts",
               "Release preparation freezes and validates tests/data/releases/R from nextRelease.version before publication",
-              "@semantic-release/github assets include wheel, sdist, and checksums from the same run",
+              "@semantic-release/github assets include wheel, sdist, and checksums from the same run and target the release for tag vR",
               "Release configuration contains no PyPI or other registry publication",
               "A simulated release dry run keeps version metadata and asset paths coherent"
             ],
             "acceptance": [
               "The existing release machinery computes R and creates all first-release corpus and artifact outputs",
+              "Any mismatch among R, package metadata, artifact filenames, corpus coordinates, and the expected release tag aborts before publication",
               "No asynchronous post-release asset race is introduced",
               "The uploaded wheel is the candidate artifact that passed the release matrix"
             ]
@@ -2390,7 +2392,8 @@
           "new_abstractions": [],
           "validation": {
             "tests": [
-              "GitHub release R matches semantic-release output and contains wheel, sdist, and checksum assets",
+              "GitHub tag vR, release coordinate R, normalized wheel filename version, wheel METADATA Version, and release-corpus EngineCoordinate.version agree",
+              "The GitHub release for vR contains the wheel, sdist, and checksum assets generated during preparation",
               "The committed compatibility corpus contains the exact R entry generated during release preparation",
               "Downloaded wheel digest matches the published checksum and direct source metadata",
               "Clean uvx direct-wheel invocation succeeds from the immutable release URL",
@@ -2452,7 +2455,7 @@
           "validation": {
             "tests": [
               "project.toml points to the immutable R HTTPS wheel and exact checksum",
-              "state.json records the same verified artifact, resource, and catalog identities",
+              "state.json records EngineCoordinate.version R from the installed wheel metadata and the same verified artifact, resource, and catalog identities",
               "Released engine validates the Rygor repository and calls scripts/validate-project",
               "Managed output matches the integrated profile and passes the full source gate",
               "No local dist path, editable source, secret value, or candidate identity is persisted"

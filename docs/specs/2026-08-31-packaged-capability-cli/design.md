@@ -560,6 +560,14 @@ The first packaged Rygor release `R` is a wheel attached to its release or anoth
 location, accompanied by its SHA-256 digest. Semantic-release determines `R` when the completed breaking
 transition reaches `main`; the initial product is not published to a package registry.
 
+Release identity is one checked handoff. Semantic-release supplies `nextRelease.version` once as `R`
+during preparation. Package metadata, the normalized wheel filename version, the frozen
+compatibility-corpus `EngineCoordinate.version`, and the expected tag under the configured tag format
+(`vR` initially) must all derive from that value. The GitHub publisher attaches the validated wheel,
+source distribution, and checksums to that same tag; post-publication verification confirms the tag and
+release coordinate. Any disagreement aborts publication. The later self-adoption may persist only the
+coordinate verified from that immutable released wheel.
+
 An invocation uses a direct wheel reference with a hash fragment:
 
 The examples use `123.0.0` as a deliberately non-normative stand-in for `R`; implementations and
