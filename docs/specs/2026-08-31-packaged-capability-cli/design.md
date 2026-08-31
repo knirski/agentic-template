@@ -89,6 +89,8 @@ Priority: must.
 - Given a target path that does not exist or is empty, when the adopter runs `rygor new` with a valid
   profile and settings, then Rygor creates a non-bare Git working tree and installs one complete,
   mechanically valid project state.
+- Concurrent `new` attempts for the same canonical target serialize before target creation or Git
+  initialization; an interrupted attempt retains enough evidence to restore an absent or empty target.
 - The generated project records the exact engine coordinate, direct-wheel source, wheel digest,
   normalized capability configuration, and managed inventory.
 - No unselected capability artifact is present.
@@ -163,7 +165,9 @@ never leaves an ambiguous partially managed repository.
 
 Priority: must.
 
-- Every mutation runs under a canonical target lock and write-ahead journal.
+- Every mutation runs under one continuous mutation lease and write-ahead journal. `new` begins with a
+  parent-scoped bootstrap lease before `.git` exists and hands off without a gap to the canonical Git
+  target lock; established repositories use the canonical lock directly.
 - Before sealing, failure restores exact planned bytes and modes or retains evidence for explicit
   recovery.
 - After sealing, recovery verifies the installed state and completes cleanup forward.
@@ -231,8 +235,9 @@ Priority: must.
 - Rygor never stores secret values and does not claim to observe whether a hosting secret is configured.
 - Generated validation remains least-privileged. Secret-bearing automation is isolated from untrusted
   contributor execution.
-- A non-bare Git working tree is required because target identity, durable recovery storage, and managed
-  operations are scoped through Git.
+- A non-bare Git working tree is required after initialization because target identity, durable recovery
+  storage, and managed operations are scoped through Git. The pre-Git portion of `new` uses only the
+  bounded parent-scoped bootstrap evidence defined below.
 - Inspection never mutates. Planning never prompts. Destructive operations have no interactive
   confirmation path and require a freshly bound plan digest.
 - The threat model covers crashes, accidental concurrency, drift, target substitution, unsafe paths, and
@@ -328,7 +333,7 @@ observe
   -> resolve capabilities
   -> render candidate
   -> build bound plan
-  -> acquire target lock
+  -> acquire mutation lease
   -> re-observe
   -> write journal
   -> apply operations
@@ -337,9 +342,11 @@ observe
   -> clean recovery evidence
 ```
 
-The bound plan includes the desired-configuration digest, applied-state checksum, observed managed paths
-and modes, engine coordinate, engine build identity, capability catalog digest, resource digest, and
-ordered operations. Re-observation under the lock must match the plan or execution refuses as stale.
+The mutation lease is the canonical Git target lock for an established repository and the bootstrap
+lease for the pre-Git part of `new`. The bound plan includes the desired-configuration digest,
+applied-state checksum, observed managed paths and modes, engine coordinate, engine build identity,
+capability catalog digest, resource digest, and ordered operations. Re-observation under the applicable
+lease must match the plan or execution refuses as stale.
 
 Before sealing, a failure restores exact planned bytes and modes or retains the journal and backups for
 explicit recovery. After sealing, recovery verifies the installed candidate and completes cleanup
@@ -592,7 +599,7 @@ The public lifecycle is:
 - `rygor restore --plan DIGEST`
 - `rygor plan upgrade`
 - `rygor upgrade --plan DIGEST`
-- `rygor recover`
+- `rygor recover [PATH]`
 
 Creation and adoption accept capability settings through schema-validated command input and materialize
 the complete normalized configuration. Exact flag encoding may use repeated `CAPABILITY.KEY=VALUE`
@@ -600,7 +607,9 @@ arguments or a supplied project configuration, but there is no interactive quest
 ambient default.
 
 `new` applies only to a target that does not exist or is empty, so it may compile and execute its bound
-plan in one command. It refuses a populated target and never acts as adoption implicitly.
+plan in one command. Before creating the target or running `git init`, it acquires the deterministic
+parent-scoped bootstrap lease and re-observes the target under that lease. It refuses a populated target,
+an existing bootstrap transaction, or changed target identity and never acts as adoption implicitly.
 
 `plan adopt` is read-only and requires explicit collision declarations for every planned path that
 already exists. `adopt` repeats the same intent and accepts the plan digest; it re-observes the target
@@ -631,9 +640,12 @@ repairs managed drift. It neither adopts pending desired changes nor changes eng
 pure schema and capability-setting migrations and re-render managed artifacts. It requires a previewed
 plan and is fully journaled.
 
-`recover` classifies the journal and completes rollback or sealed cleanup. It does not run the adopter
-hook. The journal records its writer and minimum recovery engine; an incompatible engine identifies the
-exact compatible source rather than attempting recovery.
+`recover` examines both the deterministic parent bootstrap location and the canonical Git runtime
+location. It classifies the authoritative journal and completes rollback or sealed cleanup, including
+bootstrap-to-Git handoff cleanup. `PATH` defaults to the current working tree; it is required when an
+interrupted `new` left the target absent. Recovery does not run the adopter hook. Each journal records its
+writer and minimum recovery engine; an incompatible engine identifies the exact compatible source rather
+than attempting recovery.
 
 There is no Copier `reconcile` operation.
 
@@ -821,7 +833,8 @@ the inventory. The state checksum detects accidental or partial edits; it is not
 
 ### Runtime state
 
-Runtime evidence lives under the canonical Git common directory, namespaced for the worktree as needed:
+For an established repository, runtime evidence lives under the canonical Git common directory,
+namespaced for the worktree as needed:
 
 ```text
 .git/rygor/
@@ -837,6 +850,58 @@ compatibility, operation sequence, raw backup digests, exact modes, and journal 
 Journal transitions are atomic. The phases distinguish mutating, sealed, restored, and cleanup-complete
 states so no recovery phase both rolls back and completes forward. Recovery is idempotent. A torn or
 invalid journal is an explicit blocked state, not equivalent to absence.
+
+#### Pre-Git initialization lease and handoff
+
+Before a missing or empty target has a Git common directory, `new` uses this deterministic sibling path:
+
+```text
+<resolved-parent>/.rygor-init-<target-locator-sha256>/
+├── lease
+└── journal.json
+```
+
+The target locator is derived from the real path and filesystem identity of the existing parent plus the
+validated final target component. The digest keeps the reserved name bounded and makes aliases through a
+symlinked parent converge on the same lease. The adapter opens the stable `lease` file without truncation
+and atomically acquires the platform's exclusive, non-blocking file lock. Directory existence alone does
+not imply a live owner, and a process owns the lease only after that lock succeeds. A contender that
+cannot acquire it reports initialization in progress without mutating the target. A process that acquires
+it after an earlier owner exited must recover or explicitly clean the recorded transaction before a new
+initialization. Process identifiers and elapsed time are diagnostic only and never authorize lock
+stealing.
+
+The lease adapter revalidates after acquisition that the locked file is still the file named by the
+deterministic path. This closes the unlink-and-recreate race during cleanup; a waiter holding an unlinked
+or replaced file releases it and retries before observing or mutating the target. A process crash releases
+the platform lock, while the sibling directory and journal remain as durable recovery evidence.
+
+After acquiring the bootstrap lease, `new` re-observes the target and atomically writes and syncs the
+journal before any target mutation. The journal records a unique transaction ID, canonical target
+locator, target pre-state (`absent` or `empty-directory`), engine and build identity, bound-plan digest,
+and phase. A lease directory with no journal means the previous holder stopped before target mutation;
+after acquiring the lease, `recover` may remove that empty evidence without changing the target. A
+malformed journal or a target that no longer matches an allowed state is blocked for explicit inspection.
+Only a valid durable journal permits target creation and `git init`.
+
+Once Git initialization exposes the canonical common directory, `new` performs a gap-free handoff:
+
+1. Keep the bootstrap file lease held and acquire `.git/rygor/lock`.
+2. Write and sync the canonical journal with the same transaction ID, bootstrap pre-state, operation
+   evidence, and a `bootstrap-handoff` phase.
+3. Mark the bootstrap journal as handed off and remove the sibling bootstrap evidence and lease path only
+   after the canonical journal is durable, while continuing to hold both locks; release the bootstrap
+   file lock last.
+
+Every command targeting the repository checks the deterministic bootstrap location before treating a
+missing, empty, or newly initialized target as unmanaged. If bootstrap and canonical evidence coexist,
+recovery requires matching transaction IDs and gives the canonical handoff journal authority; any
+mismatch is an unknown third state and preserves both. A pre-handoff rollback removes only paths proven
+to have been created by that transaction, removes the target directory only when its recorded pre-state
+was absent and the resulting directory is empty, and leaves a recorded empty-directory pre-state in
+place. After handoff, the normal canonical journal governs rollback or forward cleanup and also removes
+matching bootstrap residue. Thus a crash has no phase in which neither lease nor recovery evidence owns
+the initialization.
 
 ### Plans
 
@@ -889,6 +954,17 @@ proved secretless and read-only.
 ### Lifecycle and failure tests
 
 - Exercise desired edit, plan, apply, status, restore, upgrade, and recover sequences.
+- Run concurrent `new` commands against the same missing and empty target; prove exactly one acquires the
+  bootstrap lease and every loser performs no target mutation.
+- Interrupt `new` before the first bootstrap journal, after each pre-Git mutation, during `git init`, and
+  at every canonical-lock handoff step. Prove the pre-journal case changes no target bytes, later recovery
+  restores the distinct absent and empty pre-states, and handoff continues from the authoritative
+  canonical journal without an unowned phase.
+- Race a waiter with bootstrap cleanup and path recreation; prove lease-file identity revalidation rejects
+  an unlinked lock inode before target observation or mutation.
+- Exercise bootstrap aliases, malformed or mismatched bootstrap and canonical journals, adopter changes
+  during interrupted initialization, and leftover handed-off markers as explicit third-state or
+  idempotent-cleanup cases.
 - Inject failure and process interruption before and after every journaled operation.
 - Prove exact raw bytes and modes are restored, including CRLF and non-UTF-8 adopter pre-state where
   replacement is allowed.
@@ -974,8 +1050,9 @@ Dogfooding is evidence in addition to, not a substitute for, the full profile an
   trusted events. A hosting renderer cannot infer permission broadening from arbitrary capability data.
 - Capabilities cannot execute arbitrary code inside the Rygor process. The only adopter execution boundary
   is the explicit validation hook.
-- Plans bind target and content identities. Locks prevent accidental concurrent Rygor mutation, and
-  double observation prevents ordinary time-of-check/time-of-use divergence.
+- Plans bind target and content identities. Atomic bootstrap and canonical locks prevent accidental
+  concurrent Rygor mutation, and double observation prevents ordinary time-of-check/time-of-use
+  divergence. Bootstrap leases are never reclaimed solely from a process ID or timeout.
 - Rygor does not claim atomic visibility across multiple files. It claims exact rollback before seal or
   verified completion after seal.
 - Rygor does not roll back network effects or adopter-hook effects.
