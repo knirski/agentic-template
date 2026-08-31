@@ -1,0 +1,2470 @@
+{
+  "feature": "packaged-capability-cli",
+  "spec": "docs/specs/2026-08-31-packaged-capability-cli/design.md",
+  "goal": "Replace the template-repository product with a package-only, checksummed-wheel Rygor CLI whose first packaged release coordinate is computed by semantic-release and whose provider-neutral capabilities are managed through deterministic and recoverable lifecycle operations.",
+  "preserved_behavior": [
+    "Existing Git history, tags, releases, accepted historical ADR bodies, release notes, and archived specifications remain unchanged.",
+    "Pure policy and state-transition decisions remain separate from filesystem, Git, process, environment, clock, network, and terminal effects.",
+    "Managed mutations preserve exact rollback, durable recovery evidence, third-state refusal, path safety, and linked-worktree locking guarantees.",
+    "Adopter-owned content, hook effects, secret values, and external hosting activation remain outside Rygor's mutation and recovery authority.",
+    "The first packaged release R is computed by semantic-release, distributed as an HTTPS wheel with a mandatory SHA-256 digest, and not published to a package registry.",
+    "No compatibility or migration path is retained for template-era v1 or v2 project manifests or copied engines."
+  ],
+  "phases": [
+    {
+      "id": "P1",
+      "name": "Establish the package product contract and artifact boundary",
+      "tasks": [
+        {
+          "id": "T1",
+          "name": "Replace the template PRD with the packaged CLI contract",
+          "depends_on": [],
+          "inputs": [
+            "Approved packaged capability CLI design",
+            "Current docs/prd.md template contract",
+            "AGENTS.md rule that docs/prd.md is the product source of truth"
+          ],
+          "description": "Replace the active product requirements before implementation relies on the new behavior. Define the package-only public surface, semantic-release coordinate R, direct-wheel distribution, desired/applied state split, capability composition, lifecycle commands, same-major compatibility within M = R.major, recovery, validation, release assets, and dogfooding acceptance criteria. Remove active Copier, GitHub-template, copied-engine, reconcile, and v1/v2 migration requirements without editing historical records.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "docs/specs/2026-08-31-packaged-capability-cli/design.md",
+              "docs/prd.md"
+            ],
+            "create": [
+              "tests/test_product_contract.py"
+            ],
+            "modify": [
+              "docs/prd.md"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "Product-contract test rejects active template and Copier requirements",
+              "Product-contract test requires every approved public command and persisted file",
+              "Product-contract test requires semantic-release coordinate R, direct-wheel checksum, same-major compatibility, and dogfooding acceptance"
+            ],
+            "acceptance": [
+              "docs/prd.md is the packaged CLI source of truth",
+              "No active requirement promises registry publication, GitLab implementation, external plugins, or v1/v2 migration",
+              "Historical ADRs, release notes, and archived specifications are untouched"
+            ]
+          }
+        },
+        {
+          "id": "T2",
+          "name": "Adopt the capability CLI domain language and superseding ADR",
+          "depends_on": [
+            "T1"
+          ],
+          "inputs": [
+            "Approved domain model in design.md",
+            "Existing CONTEXT.md terminology",
+            "ADRs 0001, 0002, and 0003"
+          ],
+          "description": "Rewrite the active ubiquitous language around engine coordinate, source, build identity, desired configuration, applied state, capabilities, provided contracts, contributions, consumers, ownership classes, plans, transactions, and recovery. Add one ADR that supersedes the Copier and adopted copied-lifecycle decisions while affirming the applicable functional-core and ownership principles. Do not edit accepted historical ADR bodies.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "CONTEXT.md",
+              "docs/adr/0001-use-copier-for-template-updates.md",
+              "docs/adr/0002-functional-core-domain-ownership.md",
+              "docs/adr/0003-adoption-installs-lifecycle-source.md"
+            ],
+            "create": [
+              "docs/adr/0004-package-only-capability-cli.md"
+            ],
+            "modify": [
+              "CONTEXT.md",
+              "tests/test_product_contract.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "Domain contract contains every term used by the new PRD and ADR",
+              "Domain contract contains no active generation-path, source-baseline, cleanup-inventory, or reconcile terminology",
+              "ADR status and supersession links identify ADRs 0001 and 0003 without changing their contents"
+            ],
+            "acceptance": [
+              "CONTEXT.md is authoritative for the package-only domain",
+              "ADR 0004 records the accepted trade-offs and dependency direction",
+              "ADR 0002 remains explicitly applicable where its principles survive"
+            ]
+          }
+        },
+        {
+          "id": "T3",
+          "name": "Build and invoke Rygor as an installed Python distribution",
+          "depends_on": [
+            "T1"
+          ],
+          "inputs": [
+            "Current pyproject.toml and uv.lock",
+            "Python 3.14 floor",
+            "Package boundary approved in design.md"
+          ],
+          "description": "Add the build backend, src-package discovery, package-data declaration, and rygor console script. Establish a minimal CLI composition root supporting help and version without exposing internal modules as a stable library API. Expand Ruff, basedpyright, pytest, coverage, and mutation-tool paths from scripts-only code to src/rygor while preserving locked dependency management.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "pyproject.toml",
+              "uv.lock",
+              "scripts/bootstrap/cli.py",
+              "scripts/bootstrap/presentation.py"
+            ],
+            "create": [
+              "src/rygor/__init__.py",
+              "src/rygor/__main__.py",
+              "src/rygor/cli/__init__.py",
+              "src/rygor/cli/main.py",
+              "src/rygor/application/__init__.py",
+              "src/rygor/core/__init__.py",
+              "src/rygor/capabilities/__init__.py",
+              "src/rygor/adapters/__init__.py",
+              "tests/test_package_distribution.py"
+            ],
+            "modify": [
+              "pyproject.toml",
+              "uv.lock"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "Wheel and sdist build with uv build --no-sources",
+              "Clean environment installs the wheel and invokes rygor --help and rygor --version",
+              "Installed package imports without the source checkout on sys.path"
+            ],
+            "acceptance": [
+              "pyproject.toml declares a reproducible build backend and console entry point",
+              "Ruff and basedpyright include src/rygor",
+              "The product can be invoked from an installed wheel"
+            ]
+          }
+        },
+        {
+          "id": "T4",
+          "name": "Load only fingerprinted resources embedded in the installed wheel",
+          "depends_on": [
+            "T3"
+          ],
+          "inputs": [
+            "Existing content-addressed blob and capability-fragment behavior",
+            "Approved resource index and no-checkout-access requirements"
+          ],
+          "description": "Move reusable artifact bodies into package resources, generate a deterministic resource index at build time, and load resources through importlib rather than checkout-relative paths. The index records path, content digest, and executable mode; missing, extra, or mismatched packaged resources fail before rendering. The build step is deterministic and does not inspect untracked checkout content.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/blobs.py",
+              "scripts/bootstrap/canonical_json.py",
+              "scripts/bootstrap/capability_fragments.py",
+              "scripts/bootstrap/fragments"
+            ],
+            "create": [
+              "src/rygor/core/canonical_json.py",
+              "src/rygor/core/resources.py",
+              "src/rygor/adapters/resources.py",
+              "src/rygor/resources/index.json",
+              "src/rygor/resources/core",
+              "src/rygor/resources/capabilities",
+              "scripts/build_resource_index.py",
+              "tests/test_resource_distribution.py"
+            ],
+            "modify": [
+              "pyproject.toml"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "ResourceIndex",
+              "requirement": "Authenticate every artifact body and mode embedded in one wheel",
+              "consumers": [
+                "Engine build identity",
+                "Candidate renderer",
+                "Built-wheel validation"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Resource index generation is byte-deterministic",
+              "Every declared resource exists and every packaged resource is declared",
+              "Changing resource bytes or mode changes the resource digest",
+              "Resource loading succeeds with the checkout unavailable and rejects tampering"
+            ],
+            "acceptance": [
+              "Runtime resource access uses the installed distribution only",
+              "The wheel contains one complete fingerprinted resource set",
+              "No template-root lookup remains in the package path"
+            ]
+          }
+        },
+        {
+          "id": "T5",
+          "name": "Authenticate direct-wheel engine identity before project operations",
+          "depends_on": [
+            "T3",
+            "T4"
+          ],
+          "inputs": [
+            "Direct-wheel identity model in design.md",
+            "Installed distribution metadata and PEP 610 direct_url.json",
+            "Resource index digest from T4"
+          ],
+          "description": "Represent logical engine coordinate, acquisition source, and observed build identity separately. Decode only HTTPS direct-wheel sources in the initial implementation, require a pre-acquisition SHA-256, verify distribution name, version, entry point, and acquired wheel bytes, then combine the observed artifact, resource, and catalog digests into build identity. Permit local wheel paths only in explicitly marked disposable candidate fixtures and never as release-style persisted sources.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/identity.py",
+              "scripts/bootstrap/result.py",
+              "scripts/bootstrap/errors.py",
+              "scripts/bootstrap/vocabulary.py"
+            ],
+            "create": [
+              "src/rygor/core/result.py",
+              "src/rygor/core/errors.py",
+              "src/rygor/core/identity.py",
+              "src/rygor/core/engine.py",
+              "src/rygor/adapters/distribution.py",
+              "tests/test_engine_identity.py"
+            ],
+            "modify": [],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "EngineCoordinate",
+              "requirement": "Identify the logical distribution independently of its acquisition mechanism",
+              "consumers": [
+                "Desired configuration",
+                "Applied state",
+                "Compatibility classifier",
+                "Upgrade planning"
+              ]
+            },
+            {
+              "name": "EngineSource",
+              "requirement": "Represent authenticated direct-wheel acquisition while leaving a future registry discriminator additive",
+              "consumers": [
+                "New and adopt commands",
+                "Applied state",
+                "Upgrade planning"
+              ]
+            },
+            {
+              "name": "BuildIdentity",
+              "requirement": "Bind project output to exact artifact, resource, and catalog bytes",
+              "consumers": [
+                "Plan digest",
+                "Applied state",
+                "Recovery journal",
+                "Drift and integrity validation"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Matching expected and observed wheel digest is accepted",
+              "Digest, distribution, version, or entry-point mismatch is rejected before rendering or persistence",
+              "Non-HTTPS and hashless remote sources are rejected",
+              "Registry sources are rejected as unsupported initial variants",
+              "Local candidate sources cannot be serialized as released project state"
+            ],
+            "acceptance": [
+              "Expected source sha256 always equals observed artifact_sha256 for an accepted direct wheel",
+              "Engine identity is ready for a future registry source without changing lifecycle state",
+              "Integrity failure performs no project mutation"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P2",
+      "name": "Persist desired intent, applied evidence, and same-major compatibility",
+      "tasks": [
+        {
+          "id": "T6",
+          "name": "Decode and normalize adopter-controlled project configuration",
+          "depends_on": [
+            "T5"
+          ],
+          "inputs": [
+            "Desired configuration schema in design.md",
+            "Existing strict schema and identifier validation",
+            "Engine identity contracts from T5"
+          ],
+          "description": "Implement strict .rygor/project.toml decoding and deterministic writing. Materialize the explicit effective capability set, normalized non-secret settings including defaults, creation-time profile provenance, engine coordinate, and direct-wheel source. Reject unknown fields, duplicate or malformed identifiers, secret-shaped values, unsupported capability IDs, and local development sources outside candidate fixtures. Profiles expand only when new or adopt creates the file.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/schemas.py",
+              "scripts/bootstrap/manifest.py",
+              "scripts/bootstrap/vocabulary.py",
+              "scripts/bootstrap/result.py"
+            ],
+            "create": [
+              "src/rygor/core/config.py",
+              "tests/test_project_config.py"
+            ],
+            "modify": [],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "DesiredConfig",
+              "requirement": "Keep adopter intent reviewable and separate from the last applied render",
+              "consumers": [
+                "New and adopt planning",
+                "Apply planning",
+                "Status",
+                "Upgrade planning"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Valid TOML normalizes to deterministic complete settings",
+              "Profile provenance round-trips without acting as live policy",
+              "Unknown fields, capabilities, source variants, and secret values are rejected",
+              "Equivalent input ordering produces byte-identical normalized TOML"
+            ],
+            "acceptance": [
+              ".rygor/project.toml is adopter-controlled and has no hidden ambient defaults",
+              "All persisted settings are explicit and non-secret",
+              "Template-era project.json is not decoded or migrated"
+            ]
+          }
+        },
+        {
+          "id": "T7",
+          "name": "Record canonical applied state and managed inventory",
+          "depends_on": [
+            "T6"
+          ],
+          "inputs": [
+            "Applied-state example and checksum rules in design.md",
+            "Canonical JSON and identity helpers",
+            "DesiredConfig and BuildIdentity"
+          ],
+          "description": "Implement strict canonical .rygor/state.json encoding, decoding, and checksum verification. Record schema and project-format versions, minimum engine, exact applied engine/source/build identity, normalized applied configuration, managed path identities and modes, contributor provenance, and external activation guidance. Exclude the state file from its own inventory and exclude adopter prose, timestamps, absolute paths, local sources, and secret values.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/manifest.py",
+              "scripts/bootstrap/state.py",
+              "scripts/bootstrap/canonical_json.py",
+              "scripts/bootstrap/identity.py"
+            ],
+            "create": [
+              "src/rygor/core/state.py",
+              "tests/test_applied_state.py"
+            ],
+            "modify": [
+              "src/rygor/core/identity.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "AppliedState",
+              "requirement": "Reproduce and validate the last sealed installation independently of pending desired edits",
+              "consumers": [
+                "Status",
+                "Apply planning",
+                "Restore planning",
+                "Upgrade planning",
+                "Validation"
+              ]
+            },
+            {
+              "name": "ManagedInventoryEntry",
+              "requirement": "Classify managed drift and restore exact normalized content and executable mode",
+              "consumers": [
+                "Repository observation",
+                "Restore planning",
+                "Mechanical validation"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Canonical state round-trips byte-for-byte with a valid checksum",
+              "Checksum, schema, inventory ordering, path, digest, and mode corruption is rejected",
+              "State contains no secret values, timestamps, absolute paths, adopter prose, or self-inventory entry",
+              "Pending desired edits cannot change decoded applied configuration"
+            ],
+            "acceptance": [
+              ".rygor/state.json is sufficient to reproduce the recorded render with its exact engine build",
+              "Unknown template-era state is rejected rather than migrated",
+              "Inventory contributor provenance does not split whole-file ownership"
+            ]
+          }
+        },
+        {
+          "id": "T8",
+          "name": "Classify same-major engine compatibility and pure upgrades",
+          "depends_on": [
+            "T7"
+          ],
+          "inputs": [
+            "Directional compatibility table in design.md",
+            "Desired and applied schemas",
+            "Existing state-machine compatibility evidence"
+          ],
+          "description": "Classify exact engines, newer compatible engines within packaged major M, engines below minimum_engine, unsupported majors, schema gaps, unrelated coordinates, and recovery-engine requirements without mutation. Add a pure ordered migration registry for additive same-major schema and capability-setting migrations. Keep project format and schema counters independent of engine major. Preserve all explicit settings and unknown data during limited old-engine inspection; only upgrade planning may materialize new defaults or change engine identity.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/manifest.py",
+              "scripts/bootstrap/state.py",
+              "tests/test_bootstrap_stateful.py"
+            ],
+            "create": [
+              "src/rygor/core/compatibility.py",
+              "src/rygor/core/migrations.py",
+              "tests/test_compatibility.py",
+              "tests/test_migrations.py"
+            ],
+            "modify": [
+              "src/rygor/core/config.py",
+              "src/rygor/core/state.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "CompatibilityDecision",
+              "requirement": "Allow safe inspection and refuse unsupported semantic operations directionally within packaged major M",
+              "consumers": [
+                "Status",
+                "Validation",
+                "Lifecycle planning",
+                "Recovery"
+              ]
+            },
+            {
+              "name": "MigrationStep",
+              "requirement": "Apply explicit non-lossy same-major schema or setting evolution during upgrade only",
+              "consumers": [
+                "Upgrade planning",
+                "Compatibility corpus"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "3.1 reads 3.0 state and proposes a non-blocking upgrade without rewriting",
+              "3.0 inspecting state with minimum_engine 3.1 warns, marks inspection incomplete, and refuses semantic operations",
+              "Unsupported major, schema gap, unrelated coordinate, and incompatible recovery journal identify the required engine",
+              "Migrations preserve explicit settings and materialize new defaults without reinterpretation",
+              "Limited inspection preserves unknown fields and capability data byte-for-byte"
+            ],
+            "acceptance": [
+              "Only major-version incompatibility is inherently breaking",
+              "Newer minor execution never silently upgrades a repository",
+              "Older engines cannot erase newer capability behavior"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P3",
+      "name": "Compile built-in capabilities through provider-neutral contracts",
+      "tasks": [
+        {
+          "id": "T9",
+          "name": "Define the built-in capability catalog and creation profiles",
+          "depends_on": [
+            "T6"
+          ],
+          "inputs": [
+            "Initial catalog and profile tables in design.md",
+            "Existing catalog and dependency metadata",
+            "Normalized project settings"
+          ],
+          "description": "Define immutable built-in capability and profile metadata for github-ci, semantic-release, nix, cachix-publish, and pr-agent. Include provided contracts, abstract requirements, exclusive contracts, conflicts, setting schemas, standalone artifacts, contribution declarations, readiness obligations, external secret references, documentation, and minimum-engine information. Profiles expand to explicit selections only during new or adopt.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/catalog.py",
+              "scripts/bootstrap/dependencies.py",
+              "scripts/fixtures/catalog-surface-v1.json"
+            ],
+            "create": [
+              "src/rygor/core/capabilities.py",
+              "src/rygor/capabilities/catalog.py",
+              "src/rygor/capabilities/profiles.py",
+              "tests/test_capability_catalog.py"
+            ],
+            "modify": [
+              "src/rygor/core/config.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "CapabilityDefinition",
+              "requirement": "Represent every selectable extension unit as immutable data and pure transformations",
+              "consumers": [
+                "Capability resolver",
+                "Capability inspection commands",
+                "Catalog digest"
+              ]
+            },
+            {
+              "name": "ProvidedContract",
+              "requirement": "Depend on substitutable behavior such as hosting instead of concrete GitHub identity",
+              "consumers": [
+                "Capability requirements",
+                "Contribution routing"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Catalog has exactly the five approved stable capability IDs",
+              "Profiles expand to the approved explicit capability sets",
+              "pr-agent accepts only the Gemini backend schema and never uses pr-agent-gemini as an ID",
+              "nix declares no hosting requirement",
+              "Every setting, artifact, contract, secret reference, and minimum engine contributes to the catalog digest"
+            ],
+            "acceptance": [
+              "Capability definitions cannot access effect adapters",
+              "GitHub is a selectable provider, not an assumption in core",
+              "No external plugin loading or stable Python capability API is introduced"
+            ]
+          }
+        },
+        {
+          "id": "T10",
+          "name": "Resolve providers, requirements, conflicts, and exclusive hosting",
+          "depends_on": [
+            "T9"
+          ],
+          "inputs": [
+            "Capability definitions and provided-contract rules",
+            "Existing deterministic resolver behavior",
+            "Normalized desired selections"
+          ],
+          "description": "Resolve selected IDs and settings over provided contracts, reject missing or incompatible providers, enforce exclusive hosting, validate conflicts and minimum-engine requirements, and produce deterministic capability closure. Requirements use concrete IDs only where exact identity is semantically required. Resolution is pure and canonically orders selections and diagnostics.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/resolver.py",
+              "scripts/bootstrap/dependencies.py",
+              "tests/test_bootstrap_catalog.py"
+            ],
+            "create": [
+              "src/rygor/core/resolution.py",
+              "tests/test_capability_resolution.py"
+            ],
+            "modify": [
+              "src/rygor/core/capabilities.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "ResolvedCapabilities",
+              "requirement": "Provide one deterministic validated input to rendering, state, and explanation",
+              "consumers": [
+                "Candidate renderer",
+                "Applied state",
+                "Plan presentation",
+                "Status"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "hosting.github satisfies hosting and hosting.github",
+              "Missing, multiple exclusive, and incompatible providers are rejected",
+              "nix resolves without github-ci",
+              "cachix-publish requires toolchain.nix and delivery.ci",
+              "Resolution and diagnostics are stable across input order",
+              "Property-based selections never yield an unresolved required contract"
+            ],
+            "acceptance": [
+              "A future gitlab-ci definition can satisfy hosting without a core change",
+              "Invalid closure fails before rendering",
+              "Resolution contains no filesystem or hosting-service effects"
+            ]
+          }
+        },
+        {
+          "id": "T11",
+          "name": "Route typed contributions and configure the Gemini backend",
+          "depends_on": [
+            "T10"
+          ],
+          "inputs": [
+            "Closed contribution vocabulary in design.md",
+            "Existing contribution compiler and PR Agent workflows",
+            "Resolved capability closure"
+          ],
+          "description": "Implement ValidationCheck, PublishJob, ReleaseJob, and ReviewAutomation declarations with explicit optional or required consumption. Route each declaration to exactly one compatible selected consumer, allow optional Nix validation to remain unconsumed, and reject missing or multiple consumers for required contributions. Define Gemini as the sole internal PR-agent backend with model defaults, allowed configuration, required symbolic secret names, environment wiring, and readiness guidance.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/contributions.py",
+              "scripts/bootstrap/capability_fragments.py",
+              ".github/workflows/pr-agent.yml",
+              ".github/workflows/pr-agent-commands.yml"
+            ],
+            "create": [
+              "src/rygor/core/contributions.py",
+              "src/rygor/capabilities/backends.py",
+              "tests/test_contribution_routing.py",
+              "tests/test_pr_agent_backend.py"
+            ],
+            "modify": [
+              "src/rygor/capabilities/catalog.py",
+              "src/rygor/core/resolution.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "ValidationCheck | PublishJob | ReleaseJob | ReviewAutomation",
+              "requirement": "Share current provider-neutral intent without modeling arbitrary CI syntax",
+              "consumers": [
+                "github-ci consumer"
+              ]
+            },
+            {
+              "name": "AiBackendDefinition",
+              "requirement": "Keep PR Agent identity stable while allowing a future backend choice",
+              "consumers": [
+                "pr-agent capability normalization",
+                "ReviewAutomation rendering",
+                "Capability inspection"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Nix optional validation may remain unconsumed without hosting",
+              "Cachix, release, and review contributions require exactly one consumer",
+              "github-ci receives only contributions from selected capabilities",
+              "Gemini defaults normalize deterministically and unknown backends or invalid models are rejected",
+              "Secret values are rejected from definitions, settings, resolved state, plans, diagnostics, and rendered documentation"
+            ],
+            "acceptance": [
+              "Contributions contain intent rather than raw GitHub YAML",
+              "GEMINI_API_KEY is represented only as a symbolic external requirement",
+              "Adding another AI backend later does not require a new capability ID"
+            ]
+          }
+        },
+        {
+          "id": "T12",
+          "name": "Render complete GitHub CI artifacts from selected contributions",
+          "depends_on": [
+            "T4",
+            "T11"
+          ],
+          "inputs": [
+            "Current generated workflow fixtures and live GitHub workflows",
+            "Typed routed contributions",
+            "Resource loader"
+          ],
+          "description": "Implement github-ci as the only initial hosting and delivery-CI consumer. Render complete whole-file GitHub workflows for generic validation plus selected Nix validation, Cachix publication, semantic release, and PR Agent review behavior. Keep untrusted contributor validation secretless and read-only, isolate privileged trusted jobs, pin actions, avoid persisted checkout credentials, and emit external activation guidance without querying GitHub.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/capability_fragments.py",
+              "scripts/fixtures/workflows/cachix-publish.yml",
+              "scripts/fixtures/workflows/nix.yml",
+              "scripts/fixtures/workflows/pr-agent-gemini.yml",
+              "scripts/fixtures/workflows/semantic-release.yml",
+              ".github/workflows/ci.yml",
+              ".github/workflows/project-validation.yml"
+            ],
+            "create": [
+              "src/rygor/capabilities/github_ci.py",
+              "src/rygor/resources/capabilities/github-ci",
+              "src/rygor/resources/capabilities/semantic-release",
+              "src/rygor/resources/capabilities/nix",
+              "src/rygor/resources/capabilities/cachix-publish",
+              "src/rygor/resources/capabilities/pr-agent",
+              "tests/test_github_ci_rendering.py"
+            ],
+            "modify": [
+              "src/rygor/capabilities/catalog.py",
+              "src/rygor/core/contributions.py",
+              "src/rygor/resources/index.json"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "github-ci alone renders only the portable validation foundation",
+              "Each selected contribution changes only its declared jobs and guidance",
+              "Nix standalone output exists without github-ci and enriches CI when github-ci is selected",
+              "Generated workflows pass structural policy checks and actionlint",
+              "Untrusted jobs have no secret, write permission, privileged environment, or persisted credential",
+              "Trusted jobs receive only their declared permissions and secret references"
+            ],
+            "acceptance": [
+              "Core imports no GitHub-specific module",
+              "One consumer owns each complete generated workflow",
+              "A future GitLab consumer can consume the same typed contributions"
+            ]
+          }
+        },
+        {
+          "id": "T13",
+          "name": "Partition managed, seed-once, and adopter-owned candidate output",
+          "depends_on": [
+            "T7",
+            "T12"
+          ],
+          "inputs": [
+            "Ownership and render model in design.md",
+            "Existing renderer, scaffold, and ownership checks",
+            "Resolved capabilities and embedded resources"
+          ],
+          "description": "Compile a deterministic candidate render partitioned into whole-file managed artifacts, initial seed-once product scaffolding, and untouched adopter-owned paths. Record normalized content digest, mode, owning consumer, and contributor provenance for managed output. Never generate a product pyproject.toml or copy Rygor implementation. Reject catalog path collisions, reserved paths, unsafe paths, and overlapping ownership before any filesystem operation.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/render.py",
+              "scripts/bootstrap/ownership.py",
+              "scripts/bootstrap/scaffold.py",
+              "scripts/bootstrap/blobs.py",
+              "tests/test_bootstrap_render.py",
+              "tests/test_bootstrap_scaffold.py"
+            ],
+            "create": [
+              "src/rygor/core/rendering.py",
+              "src/rygor/core/ownership.py",
+              "src/rygor/resources/core/scripts/validate-project",
+              "tests/test_candidate_render.py",
+              "tests/test_render_ownership.py"
+            ],
+            "modify": [
+              "src/rygor/core/state.py",
+              "src/rygor/resources/index.json"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "CandidateRender",
+              "requirement": "Provide one complete deterministic artifact set to planning and validation",
+              "consumers": [
+                "New and adopt planning",
+                "Apply planning",
+                "Restore planning",
+                "Upgrade planning"
+              ]
+            },
+            {
+              "name": "ArtifactOwnership",
+              "requirement": "Keep managed, seed-once, and adopter-owned authority disjoint",
+              "consumers": [
+                "Candidate renderer",
+                "Collision planning",
+                "Drift classification"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Same normalized input and build identity produce byte-identical files, modes, inventory, and ordering",
+              "Unselected capability artifacts are absent",
+              "Managed workflow provenance lists all contributors without fragment ownership",
+              "Seed-once and adopter-owned files are absent from managed inventory",
+              "Product pyproject.toml and Rygor package source are never rendered",
+              "Every output-affecting resource or definition perturbation changes the relevant digest"
+            ],
+            "acceptance": [
+              "Managed files are reproducible only from applied configuration and exact engine build",
+              "Seed-once content becomes adopter-owned immediately after creation",
+              "Output collisions fail before planning mutations"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P4",
+      "name": "Inspect, explain, validate, and plan lifecycle changes",
+      "tasks": [
+        {
+          "id": "T14",
+          "name": "Observe Git repositories and managed paths without mutation",
+          "depends_on": [
+            "T7"
+          ],
+          "inputs": [
+            "Existing Git, path, identity, and observation modules",
+            "Desired and applied file locations",
+            "Linked-worktree and runtime-state design"
+          ],
+          "description": "Observe target, worktree, common Git directory, desired configuration, applied state, runtime journal, managed path bytes and modes, unsupported node types, and target identity in one bounded read-only snapshot. Preserve exact raw bytes for possible rollback and distinguish missing, corrupt, unmanaged, healthy, drifted, and recovery-required repositories. Remove all template provenance and generation-path observations.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/paths.py",
+              "scripts/bootstrap/identity.py",
+              "scripts/bootstrap/git_state.py",
+              "scripts/bootstrap/observation.py",
+              "tests/test_bootstrap_observation.py",
+              "tests/test_bootstrap_state_root.py"
+            ],
+            "create": [
+              "src/rygor/core/paths.py",
+              "src/rygor/core/observation.py",
+              "src/rygor/adapters/filesystem.py",
+              "src/rygor/adapters/git.py",
+              "src/rygor/adapters/observation.py",
+              "tests/test_repository_observation.py"
+            ],
+            "modify": [
+              "src/rygor/core/identity.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "RepositoryObservation",
+              "requirement": "Give status, planning, validation, and execution the same stable target evidence",
+              "consumers": [
+                "Status",
+                "Lifecycle planners",
+                "Mechanical validation",
+                "Transaction re-observation"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Non-bare normal and linked worktrees resolve the correct common Git directory",
+              "Observation is read-only and does not invoke processes outside explicit Git queries",
+              "Symlinks, special nodes, root substitution, and unsafe paths are rejected",
+              "CRLF, non-UTF-8 bytes, modes, device, and inode identities are preserved",
+              "Template-era metadata has no effect on classification"
+            ],
+            "acceptance": [
+              "All lifecycle commands consume one explicit observation value",
+              "No hosting service is queried",
+              "Recovery evidence takes precedence over normal unmanaged classification"
+            ]
+          }
+        },
+        {
+          "id": "T15",
+          "name": "Report deterministic status and compatibility diagnostics",
+          "depends_on": [
+            "T8",
+            "T10",
+            "T14"
+          ],
+          "inputs": [
+            "Repository observation",
+            "Compatibility and capability decisions",
+            "Existing typed diagnostics and presentation behavior"
+          ],
+          "description": "Classify healthy state, pending desired configuration, managed drift, update availability, engine-too-old limited inspection, invalid capability resolution, unverified external activation, corrupt state, and pending recovery. Define stable diagnostics and one canonical command outcome used by text and JSON presentation. Older-engine status may compare recorded inventory but must mark the result incomplete and preserve unknown data.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/diagnostics.py",
+              "scripts/bootstrap/errors.py",
+              "scripts/bootstrap/presentation.py",
+              "scripts/bootstrap/validation_presentation.py"
+            ],
+            "create": [
+              "src/rygor/core/diagnostics.py",
+              "src/rygor/core/status.py",
+              "src/rygor/application/inspection.py",
+              "src/rygor/cli/presentation.py",
+              "tests/test_status.py",
+              "tests/test_command_envelope.py"
+            ],
+            "modify": [
+              "src/rygor/cli/main.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "CommandOutcome",
+              "requirement": "Give every command one closed success, action-required, invalid, blocked, or internal result",
+              "consumers": [
+                "Text presentation",
+                "JSON presentation",
+                "CLI exit-code mapping"
+              ]
+            },
+            {
+              "name": "Diagnostic",
+              "requirement": "Expose stable identifiers, subjects, mutation status, and next actions",
+              "consumers": [
+                "Status",
+                "Planning",
+                "Validation",
+                "Recovery",
+                "Capability inspection"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Every approved state classification maps to stable text and canonical JSON",
+              "Text and JSON contain the same identifiers, paths, capabilities, and next actions",
+              "Status never prompts, mutates, invokes the adopter hook, or queries hosting",
+              "RYGOR_UPDATE_AVAILABLE and ENGINE_TOO_OLD include exact coordinates and next action",
+              "Exit 0, 1, and 2 follow the approved health, action-required, and invalid mapping"
+            ],
+            "acceptance": [
+              "JSON emits exactly one canonical envelope on stdout",
+              "Incomplete old-engine inspection cannot be reported as healthy",
+              "External activation is reported as unverified, never inferred"
+            ]
+          }
+        },
+        {
+          "id": "T16",
+          "name": "Plan collision-safe adoption of existing repositories",
+          "depends_on": [
+            "T13",
+            "T14",
+            "T15"
+          ],
+          "inputs": [
+            "Candidate render and ownership partition",
+            "Existing adoption collision decisions and plan digests",
+            "Manifest-free non-bare Git entry condition"
+          ],
+          "description": "Build read-only adopt plans from explicit profile or capability settings and per-path collision declarations. Report every collision and resulting ownership, require keep-existing or replace for each colliding planned path, forbid undeclared and irrelevant decisions, and bind the canonical plan digest to intent, target/worktree identity, observed bytes and modes, desired configuration, engine build, catalog, resources, and ordered operations. Adoption never runs implicitly from new.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/bundles.py",
+              "scripts/bootstrap/decisions.py",
+              "scripts/bootstrap/intents.py",
+              "scripts/bootstrap/planner.py",
+              "scripts/bootstrap/plan_digest.py",
+              "tests/adoption_e2e.py"
+            ],
+            "create": [
+              "src/rygor/core/planning.py",
+              "src/rygor/core/plan_digest.py",
+              "src/rygor/application/adopt.py",
+              "tests/test_adopt_planning.py"
+            ],
+            "modify": [
+              "src/rygor/core/ownership.py",
+              "src/rygor/cli/main.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "AdoptIntent",
+              "requirement": "Recompute the exact reviewed adoption request at execution time",
+              "consumers": [
+                "Adopt planner",
+                "Adopt executor"
+              ]
+            },
+            {
+              "name": "BoundPlan",
+              "requirement": "Reject stale or replayed mutation requests after any relevant evidence changes",
+              "consumers": [
+                "Adopt",
+                "Apply",
+                "Restore",
+                "Upgrade",
+                "Transaction runner"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "All observed collisions require exactly one valid declaration",
+              "keep-existing remains adopter-owned and replace becomes managed",
+              "Changed target, bytes, mode, config, engine, catalog, resource, or operation ordering changes or invalidates the plan digest",
+              "Unsafe target, bare repository, existing state, special node, or stale digest refuses without mutation",
+              "Planning never prompts or writes a receipt trusted by execution"
+            ],
+            "acceptance": [
+              "plan adopt describes every mutation and ownership result",
+              "adopt execution can re-derive the plan from explicit intent",
+              "Unrelated adopter files are not claimed"
+            ]
+          }
+        },
+        {
+          "id": "T17",
+          "name": "Plan declarative capability application without conflating drift",
+          "depends_on": [
+            "T13",
+            "T14",
+            "T16"
+          ],
+          "inputs": [
+            "Desired and applied configuration",
+            "Candidate rendering",
+            "Bound plan contract"
+          ],
+          "description": "Compare desired configuration, recorded applied state, and observed managed paths to plan capability enablement, disablement, and reconfiguration. Report closure and setting changes, artifact operations, ownership effects, activation notes, and digest. Managed drift blocks unrelated apply and points to restore; apply never repairs drift implicitly or changes engine identity. Remove the need for separate add, remove, configure, and reconcile commands.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/planner.py",
+              "scripts/bootstrap/decisions.py",
+              "scripts/bootstrap/intents.py",
+              "tests/test_bootstrap_add.py",
+              "tests/test_bootstrap_reconcile.py"
+            ],
+            "create": [
+              "src/rygor/application/apply.py",
+              "tests/test_apply_planning.py"
+            ],
+            "modify": [
+              "src/rygor/core/planning.py",
+              "src/rygor/cli/main.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "ApplyIntent",
+              "requirement": "Represent one desired-to-applied capability transition without hidden command families",
+              "consumers": [
+                "Apply planner",
+                "Apply executor"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Desired edits alone produce pending configuration and no filesystem mutation",
+              "Enable, disable, and backend reconfiguration produce one complete shared-workflow replacement",
+              "Managed drift blocks apply and does not alter the desired file",
+              "Same desired and applied configuration produces a no-op plan",
+              "Apply plans cannot change engine coordinate or source"
+            ],
+            "acceptance": [
+              "plan apply is the only preview for ordinary capability changes",
+              "apply transitions exactly the bound desired state",
+              "Pending desired changes remain distinct from drift"
+            ]
+          }
+        },
+        {
+          "id": "T18",
+          "name": "Plan recorded-state restore and explicit engine upgrades",
+          "depends_on": [
+            "T8",
+            "T13",
+            "T14",
+            "T17"
+          ],
+          "inputs": [
+            "Applied-state reproduction contract",
+            "Compatibility and migration decisions",
+            "Bound plan machinery"
+          ],
+          "description": "Plan restore solely from recorded applied configuration and its exact compatible engine build, ignoring pending desired edits and never touching seed-once or adopter-owned files. Plan upgrade as the only transition allowed to change engine coordinate or source, apply pure schema/setting migrations, update desired engine metadata, re-render managed output, and advance minimum_engine only when required. Both operations require a fresh digest and report unsupported engine acquisition precisely.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/planner.py",
+              "tests/test_bootstrap_restore.py",
+              "tests/test_bootstrap_restore_cli.py",
+              "tests/test_bootstrap_stateful.py"
+            ],
+            "create": [
+              "src/rygor/application/restore.py",
+              "src/rygor/application/upgrade.py",
+              "tests/test_restore_planning.py",
+              "tests/test_upgrade_planning.py"
+            ],
+            "modify": [
+              "src/rygor/core/planning.py",
+              "src/rygor/core/migrations.py",
+              "src/rygor/cli/main.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "RestoreIntent",
+              "requirement": "Repair only recorded managed output without adopting pending desired state",
+              "consumers": [
+                "Restore planner",
+                "Restore executor"
+              ]
+            },
+            {
+              "name": "UpgradeIntent",
+              "requirement": "Make every engine/source transition and migration explicit and reviewable",
+              "consumers": [
+                "Upgrade planner",
+                "Upgrade executor"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Restore reproduces recorded managed bytes and modes despite pending desired edits",
+              "Restore never changes engine identity, desired config, seed-once, or adopter-owned paths",
+              "Upgrade changes engine metadata only through an explicit plan",
+              "Upgrade preserves explicit settings and re-renders with the authenticated target build",
+              "Older incompatible engines refuse restore and upgrade with an exact compatible-source diagnostic"
+            ],
+            "acceptance": [
+              "Restore and upgrade have non-overlapping authority",
+              "No inspection command rewrites state",
+              "A newer minor proposes rather than silently performs upgrade"
+            ]
+          }
+        },
+        {
+          "id": "T19",
+          "name": "Validate mechanical state and invoke the adopter-owned hook",
+          "depends_on": [
+            "T13",
+            "T15"
+          ],
+          "inputs": [
+            "Mechanical validation contract in design.md",
+            "Existing process execution and bounded presentation",
+            "Adopter-owned scripts/validate-project boundary"
+          ],
+          "description": "Validate compatible config, state checksum, inventory, managed content and modes, resource/catalog/build identities, workflow structure, capability readiness, and path safety before invoking an executable extensionless scripts/validate-project hook. Capture bounded stdout/stderr and return typed point-in-time evidence. Status and recovery never invoke the hook; hook results and effects are never persisted, rolled back, or treated as managed state.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/validation_program.py",
+              "scripts/bootstrap/process_effects.py",
+              "scripts/bootstrap/validation_presentation.py",
+              "scripts/validate_repository.py"
+            ],
+            "create": [
+              "src/rygor/core/validation.py",
+              "src/rygor/application/validation.py",
+              "src/rygor/adapters/process.py",
+              "tests/test_mechanical_validation.py",
+              "tests/test_validation_hook.py"
+            ],
+            "modify": [
+              "src/rygor/cli/main.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "HookEvidence",
+              "requirement": "Report one bounded adopter validation attempt without making it durable lifecycle state",
+              "consumers": [
+                "Validate command",
+                "Post-mutation gate presentation"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Mechanical failure prevents hook execution",
+              "Missing, non-executable, timed-out, signaled, or failing hook yields bounded diagnostics",
+              "Hook success and failure are absent from persisted state and recovery journals",
+              "Status and recover never execute the hook",
+              "Hook failure after mechanically valid installation does not roll back the installation or claim hook effects"
+            ],
+            "acceptance": [
+              "rygor validate is technology-stack-neutral",
+              "Rygor generates no product Python dependency contract",
+              "The only adopter execution boundary is scripts/validate-project"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P5",
+      "name": "Execute every mutation under durable recovery",
+      "tasks": [
+        {
+          "id": "T20",
+          "name": "Represent safe filesystem operations and exact preconditions",
+          "depends_on": [
+            "T13",
+            "T14"
+          ],
+          "inputs": [
+            "Existing closed operation plan and path validation",
+            "Candidate render ownership",
+            "Security and failure model"
+          ],
+          "description": "Define the closed file and directory operations used by all lifecycle plans with explicit target-relative paths, expected pre-state, resulting bytes and modes, and rollback evidence. Reject traversal, absolute paths, reserved runtime paths, unsafe symlink traversal, unsupported nodes, target-root substitution, and writes outside the canonical worktree before effects. Preserve arbitrary prior raw bytes and permitted modes for replacement rollback.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/planner.py",
+              "scripts/bootstrap/paths.py",
+              "scripts/bootstrap/identity.py",
+              "scripts/bootstrap/rollback.py",
+              "tests/test_bootstrap_planner.py"
+            ],
+            "create": [
+              "src/rygor/core/operations.py",
+              "tests/test_operations.py",
+              "tests/test_path_safety.py"
+            ],
+            "modify": [
+              "src/rygor/core/planning.py",
+              "src/rygor/core/paths.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "FilesystemOperation",
+              "requirement": "Make the complete mutation and rollback authority explicit and closed",
+              "consumers": [
+                "Bound plans",
+                "Transaction machine",
+                "Recovery"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Every operation has explicit precondition, postcondition, and rollback evidence",
+              "Absolute, traversing, reserved, symlinked, substituted-root, and unsupported-node targets are rejected",
+              "CRLF and non-UTF-8 replacement pre-state round-trips exactly",
+              "Operation ordering and serialization are deterministic",
+              "Closed-union dispatch remains exhaustive under basedpyright"
+            ],
+            "acceptance": [
+              "Effects cannot expand a plan's path authority",
+              "Rollback has enough evidence to restore exact planned pre-state",
+              "No arbitrary command or capability code becomes an operation"
+            ]
+          }
+        },
+        {
+          "id": "T21",
+          "name": "Acquire one canonical lock and persist established-repository journals",
+          "depends_on": [
+            "T20"
+          ],
+          "inputs": [
+            "Existing never-unlinked flock implementation",
+            "Git common-directory runtime-state design",
+            "Bound plan and operation contracts"
+          ],
+          "description": "Port the canonical .git/rygor state-root lock and journal envelope for established repositories. Resolve linked worktrees to one common lock, validate state-root and lock inode types, acquire non-blocking, never unlink the canonical lock file, and atomically write and sync journals before mutation. Record writer/minimum recovery engine, target identity, plan digest, exact pre-state, operations, preparation identities, and phase.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/locking.py",
+              "scripts/bootstrap/journal.py",
+              "scripts/bootstrap/state.py",
+              "tests/test_bootstrap_state_root.py"
+            ],
+            "create": [
+              "src/rygor/core/journal.py",
+              "src/rygor/adapters/locking.py",
+              "src/rygor/adapters/journal.py",
+              "tests/test_repository_locking.py",
+              "tests/test_journal.py"
+            ],
+            "modify": [
+              "src/rygor/core/operations.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "RecoveryJournal",
+              "requirement": "Retain authoritative durable evidence across crashes before and after seal",
+              "consumers": [
+                "Transaction runner",
+                "Recovery classifier",
+                "Status"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Normal and linked worktrees contend on one common-directory lock",
+              "Lock refusal performs no mutation and closes failed descriptors",
+              "Canonical lock is never unlinked or replaced",
+              "Journal writes are atomic, synced, checksummed, and strictly decoded",
+              "Writer and minimum recovery engine are always present"
+            ],
+            "acceptance": [
+              "Every established-repository mutation has one continuous lease",
+              "A corrupt journal blocks normal mutation",
+              "git clean -fdx does not remove runtime recovery state"
+            ]
+          }
+        },
+        {
+          "id": "T22",
+          "name": "Execute, gate, seal, and roll back established-repository plans",
+          "depends_on": [
+            "T17",
+            "T19",
+            "T21"
+          ],
+          "inputs": [
+            "Existing pure transaction machine and filesystem effects",
+            "Mechanical validation gate",
+            "Canonical lock and journal"
+          ],
+          "description": "Port the pure transaction state machine and thin effect runner for adopt, apply, restore, and upgrade. Under the lock, re-observe and reject stale plans, persist each phase, prepare exact backups, apply one operation at a time, verify candidate post-state, run only mechanical gates, seal durable state, and clean forward. Before seal, any refusal or failure restores exact planned bytes and modes or retains evidence; adopter-hook evidence is outside rollback.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/transaction.py",
+              "scripts/bootstrap/transaction_machine.py",
+              "scripts/bootstrap/fs_effects.py",
+              "scripts/bootstrap/rollback.py",
+              "tests/test_bootstrap_transaction.py"
+            ],
+            "create": [
+              "src/rygor/core/transaction.py",
+              "src/rygor/core/transaction_machine.py",
+              "src/rygor/adapters/transaction_runner.py",
+              "tests/test_transaction_machine.py",
+              "tests/test_transaction_runner.py"
+            ],
+            "modify": [
+              "src/rygor/adapters/filesystem.py",
+              "src/rygor/adapters/journal.py",
+              "src/rygor/application/adopt.py",
+              "src/rygor/application/apply.py",
+              "src/rygor/application/restore.py",
+              "src/rygor/application/upgrade.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "Re-observation mismatch refuses before journaled mutation",
+              "Failure before seal restores exact bytes and modes or leaves a valid recovery journal",
+              "Successful mechanical gates seal applied state before cleanup",
+              "Interruption before and after every journaled operation yields a classified recoverable state",
+              "Adopter-hook failure never enters transaction rollback"
+            ],
+            "acceptance": [
+              "The pure machine owns phase and rollback direction decisions",
+              "The effect runner cannot invent operations or transitions",
+              "Rygor claims exact rollback or verified forward completion, not atomic multi-file visibility"
+            ]
+          }
+        },
+        {
+          "id": "T23",
+          "name": "Recover established repositories without overwriting third states",
+          "depends_on": [
+            "T22"
+          ],
+          "inputs": [
+            "Established journal phases and rollback evidence",
+            "Existing recovery reducer and tests",
+            "Compatibility classifier"
+          ],
+          "description": "Classify established journals as pre-seal rollback, durably restored cleanup, sealed forward cleanup, already complete, incompatible writer, corrupt, or unknown third state. Recovery is idempotent, uses the journal-compatible engine, never invokes the adopter hook, and preserves evidence when current bytes, modes, identities, or journal contents cannot be proved to belong to either expected state.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/recovery.py",
+              "scripts/bootstrap/rollback.py",
+              "tests/test_bootstrap_recovery.py",
+              "tests/test_bootstrap_stateful.py"
+            ],
+            "create": [
+              "src/rygor/core/recovery.py",
+              "src/rygor/application/recover.py",
+              "tests/test_repository_recovery.py"
+            ],
+            "modify": [
+              "src/rygor/adapters/transaction_runner.py",
+              "src/rygor/cli/main.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "RecoveryDecision",
+              "requirement": "Choose rollback, forward cleanup, no-op, or refusal from explicit durable evidence",
+              "consumers": [
+                "Recover command",
+                "Status recovery diagnostics"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Each pre-seal phase restores and cleans idempotently",
+              "Sealed phases verify installed state and clean only forward",
+              "Durably restored state is distinct from partial rollback",
+              "Third-party edits, invalid journals, and identity mismatch preserve all evidence",
+              "Incompatible recovery engine reports the exact required source"
+            ],
+            "acceptance": [
+              "Recovery never guesses from process IDs or elapsed time",
+              "Recovery never runs product validation",
+              "Unknown third states are reported rather than overwritten"
+            ]
+          }
+        },
+        {
+          "id": "T24",
+          "name": "Serialize pre-Git initialization with a deterministic bootstrap lease",
+          "depends_on": [
+            "T20"
+          ],
+          "inputs": [
+            "Parent-scoped bootstrap path algorithm in design.md",
+            "Canonical lock safety behavior",
+            "Absent and empty target pre-states"
+          ],
+          "description": "Derive the bounded sibling bootstrap path from the resolved parent filesystem identity and validated final target component. Open a stable lease file without truncation, acquire a non-blocking OS lock, revalidate that the held inode is still named by the deterministic path, and treat directory presence or PID only as diagnostic evidence. After acquisition, re-observe the target and durably journal absent or empty-directory pre-state before target creation or git init.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/locking.py",
+              "scripts/bootstrap/observation.py",
+              "scripts/bootstrap/identity.py"
+            ],
+            "create": [
+              "src/rygor/core/bootstrap.py",
+              "src/rygor/adapters/bootstrap_lock.py",
+              "tests/test_bootstrap_lock.py"
+            ],
+            "modify": [
+              "src/rygor/adapters/filesystem.py",
+              "src/rygor/adapters/journal.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [
+            {
+              "name": "BootstrapTargetLocator",
+              "requirement": "Make aliases of one pre-Git target contend on one bounded sibling lease",
+              "consumers": [
+                "New command",
+                "Bootstrap recovery",
+                "All commands checking interrupted initialization"
+              ]
+            }
+          ],
+          "validation": {
+            "tests": [
+              "Aliases through a symlinked parent converge on one lease path",
+              "Concurrent contenders perform no target mutation when lock acquisition fails",
+              "Unlinked or replaced lease inode is rejected and retried before observation",
+              "Pre-journal interruption changes no target bytes",
+              "Malformed evidence or changed target state blocks initialization"
+            ],
+            "acceptance": [
+              "new serializes before target creation and git init",
+              "Only OS lock ownership authorizes mutation",
+              "A crash releases the lock but retains durable recovery evidence"
+            ]
+          }
+        },
+        {
+          "id": "T25",
+          "name": "Create a new repository with gap-free lock handoff",
+          "depends_on": [
+            "T16",
+            "T21",
+            "T24"
+          ],
+          "inputs": [
+            "New command entry conditions",
+            "Bootstrap and canonical locks",
+            "Candidate render and bound plan"
+          ],
+          "description": "Implement rygor new for only missing or empty targets. Compile its bound plan in one command, acquire and retain the bootstrap lease, journal target creation and git init, acquire the canonical Git lock after the common directory exists, write the canonical handoff journal with the same transaction ID, mark bootstrap evidence handed off, and remove sibling evidence only after canonical durability while both locks remain held. Continue installation under the canonical transaction pipeline.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/transaction.py",
+              "scripts/bootstrap/git_state.py",
+              "tests/test_source_bootstrap.py"
+            ],
+            "create": [
+              "src/rygor/application/new.py",
+              "tests/test_new_command.py",
+              "tests/test_bootstrap_handoff.py"
+            ],
+            "modify": [
+              "src/rygor/core/bootstrap.py",
+              "src/rygor/adapters/bootstrap_lock.py",
+              "src/rygor/adapters/transaction_runner.py",
+              "src/rygor/cli/main.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "Missing target becomes one complete non-bare managed repository",
+              "Empty target remains the same directory and becomes managed",
+              "Populated target and existing bootstrap transaction are refused without adoption",
+              "Concurrent new attempts yield exactly one mutator",
+              "Every handoff interruption retains bootstrap or canonical authority with no unowned phase",
+              "Same engine and normalized input produce byte-identical managed output and operation ordering"
+            ],
+            "acceptance": [
+              "new never silently adopts a populated repository",
+              "Bootstrap and canonical journals share one transaction ID",
+              "The installed repository records exact engine, source, build, capabilities, and inventory"
+            ]
+          }
+        },
+        {
+          "id": "T26",
+          "name": "Recover interrupted initialization across bootstrap and Git state",
+          "depends_on": [
+            "T23",
+            "T25"
+          ],
+          "inputs": [
+            "Bootstrap journal and handoff protocol",
+            "Established recovery classifier",
+            "Absent and empty target rollback rules"
+          ],
+          "description": "Extend recover [PATH] and every target command to inspect deterministic bootstrap evidence before unmanaged classification. Resolve no-journal residue, pre-handoff rollback, authoritative matching canonical handoff, handed-off residue cleanup, and mismatched or malformed dual evidence. Restore absent targets by removing only transaction-created paths and an empty created root; preserve an original empty directory. Never remove evidence when transaction IDs or current state are ambiguous.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/bootstrap/recovery.py",
+              "tests/test_bootstrap_recovery.py"
+            ],
+            "create": [
+              "tests/test_bootstrap_recovery_package.py"
+            ],
+            "modify": [
+              "src/rygor/core/recovery.py",
+              "src/rygor/application/recover.py",
+              "src/rygor/adapters/bootstrap_lock.py",
+              "src/rygor/cli/main.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "Lease directory without journal is cleaned only after acquiring the lease and without target mutation",
+              "Pre-handoff recovery restores distinct absent and empty-directory pre-states",
+              "Matching canonical handoff evidence is authoritative and cleans bootstrap residue forward",
+              "Mismatched IDs, malformed journals, adopter edits, and unknown nodes preserve both evidence sets",
+              "Waiter/cleanup/path-recreation race rejects an unlinked lock inode",
+              "recover requires PATH when interrupted new left the target absent"
+            ],
+            "acceptance": [
+              "There is no crash phase without a recovery authority",
+              "Bootstrap recovery is idempotent",
+              "All normal commands stop on unresolved bootstrap evidence"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P6",
+      "name": "Prove the installed artifact, compatibility, and release path",
+      "tasks": [
+        {
+          "id": "T27",
+          "name": "Exercise public commands from a clean installed candidate wheel",
+          "depends_on": [
+            "T5",
+            "T15",
+            "T16",
+            "T17",
+            "T18",
+            "T19",
+            "T26"
+          ],
+          "inputs": [
+            "Complete public CLI",
+            "Wheel build and resource index",
+            "Disposable repository fixtures"
+          ],
+          "description": "Build wheel and sdist, create isolated tool environments, remove source-checkout access, and exercise capability inspection, new, plan/adopt, plan/apply, status, validate, plan/restore, plan/upgrade, and recover through the installed console script. Candidate fixtures may use a local wheel for execution but must not persist that local path in release-style state. Add a fresh-clone path that acquires an exact HTTPS checksummed released fixture when such an artifact is supplied.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "tests/bootstrap_fixtures.py",
+              "tests/adoption_e2e.py",
+              "tests/test_bootstrap_cli.py",
+              "tests/test_copier_bootstrap.py"
+            ],
+            "create": [
+              "tests/wheel_fixtures.py",
+              "tests/test_built_wheel.py",
+              "tests/test_cli_contract.py"
+            ],
+            "modify": [
+              "tests/conftest.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "Installed CLI works with repository checkout paths unavailable",
+              "All public command families execute through the wheel boundary",
+              "Every embedded resource matches the installed resource index",
+              "Candidate local source is excluded from release-style persisted config and state",
+              "Fresh clone can acquire and run an exact checksummed released-wheel fixture",
+              "Text and JSON command contracts are deterministic across clean environments"
+            ],
+            "acceptance": [
+              "Source-tree execution is not release evidence",
+              "Wheel and sdist both contain the declared package and resources",
+              "The artifact under test is the artifact eligible for release"
+            ]
+          }
+        },
+        {
+          "id": "T28",
+          "name": "Validate every supported capability selection and workflow security boundary",
+          "depends_on": [
+            "T12",
+            "T13",
+            "T27"
+          ],
+          "inputs": [
+            "Initial five-capability catalog and profiles",
+            "Built-wheel fixture",
+            "GitHub workflow security constraints"
+          ],
+          "description": "Enumerate every supported valid custom capability selection plus every profile, and assert deterministic resources, inventory, contributions, activation guidance, and absence of unselected output. Exercise invalid provider and contribution combinations separately. Run structural workflow policy and actionlint against every distinct generated workflow set, including secretless contributor validation and isolated trusted release, publish, and review jobs.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "tests/test_capability_matrix.py",
+              "tests/test_delivery_contract.py",
+              "scripts/fixtures/workflows"
+            ],
+            "create": [
+              "tests/test_capability_matrix_package.py",
+              "tests/test_workflow_security.py"
+            ],
+            "modify": [
+              "tests/wheel_fixtures.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "Every valid custom selection and profile passes from the installed wheel",
+              "Nix-only selection produces standalone value and no hosting artifact",
+              "Every invalid missing-provider, exclusive-provider, conflict, or unconsumed-required-contribution case is rejected",
+              "All distinct workflow sets pass actionlint",
+              "Permission, event, checkout, credential, secret, and dependency policies hold for every generated job",
+              "No secret value can enter config, state, plans, diagnostics, logs, backups, or rendered docs"
+            ],
+            "acceptance": [
+              "Representative sampling is not used in place of the complete finite initial matrix",
+              "Contributor validation remains read-only and secretless",
+              "Catalog combinations are tested through the installed artifact"
+            ]
+          }
+        },
+        {
+          "id": "T29",
+          "name": "Exercise lifecycle failures, races, rollback, and recovery exhaustively",
+          "depends_on": [
+            "T22",
+            "T23",
+            "T25",
+            "T26",
+            "T27"
+          ],
+          "inputs": [
+            "Transaction and bootstrap phase machines",
+            "Existing stateful failure harness",
+            "Built-wheel lifecycle fixture"
+          ],
+          "description": "Adapt the stateful failure harness to inject failure or interruption before and after every established and bootstrap journaled effect. Cover stale plans, concurrent mutation, target replacement, symlink substitution, invalid journals, linked worktrees, git clean survival, third states, exact raw-byte and mode restoration, bootstrap aliases, handoff residue, and adopter changes. Prove point-in-time hook failure never becomes transaction state.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "tests/test_bootstrap_stateful.py",
+              "tests/test_bootstrap_transaction.py",
+              "tests/test_bootstrap_recovery.py",
+              "tests/test_bootstrap_lifecycle.py"
+            ],
+            "create": [
+              "tests/test_lifecycle_failures_package.py",
+              "tests/test_lifecycle_stateful_package.py"
+            ],
+            "modify": [
+              "tests/wheel_fixtures.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "Every journal phase has interruption-before and interruption-after coverage",
+              "Exact CRLF, non-UTF-8 bytes, executable modes, absent paths, and empty directories restore correctly",
+              "Stale plan, concurrent writer, root replacement, symlink, and unknown third state never overwrite evidence",
+              "Bootstrap concurrency and inode-replacement race have deterministic losers with no target mutation",
+              "Pending desired config never affects restore",
+              "Hook failure after seal neither rolls back nor becomes recoverable state"
+            ],
+            "acceptance": [
+              "All recoverable phases are idempotent",
+              "All unprovable states fail closed",
+              "Failure testing covers both source-level reducers and installed-wheel user flows"
+            ]
+          }
+        },
+        {
+          "id": "T30",
+          "name": "Establish the release-coordinate compatibility corpus and older-engine harness",
+          "depends_on": [
+            "T8",
+            "T18",
+            "T23",
+            "T26",
+            "T27"
+          ],
+          "inputs": [
+            "Compatibility and migration contracts",
+            "Canonical config, state, plan, resource, catalog, and journal encodings",
+            "Installed-wheel harness"
+          ],
+          "description": "Create a compatibility-corpus layout keyed by exact released engine coordinate, plus deterministic generation and validation for configuration, state, plan, resource, capability, and established/bootstrap journal fixtures. Use synthetic same-major coordinates before release to test current-engine inspection, migration, and a deliberately constrained older-engine harness. Semantic-release preparation later freezes and validates the actual first packaged coordinate R without predicting it in advance. Preserve unknown fields during limited inspection and require precise compatible-engine guidance for schema gaps, unsupported major versions, and recovery journals.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/fixtures/catalog-surface-v1.json",
+              "tests/test_bootstrap_stateful.py"
+            ],
+            "create": [
+              "tests/data/releases/README.md",
+              "tests/data/releases/synthetic-same-major",
+              "tests/test_compatibility_corpus.py",
+              "tests/older_engine_harness.py",
+              "scripts/freeze_compatibility_corpus.py"
+            ],
+            "modify": [],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "Current engine reads every frozen earlier same-major fixture",
+              "Newer engine produces normal behavior or an explicit non-lossy upgrade plan",
+              "Older harness warns and refuses semantic operations when minimum_engine is newer",
+              "Unknown fields and capability data survive limited inspection unchanged",
+              "Migration preserves explicit settings and materializes only declared new defaults"
+            ],
+            "acceptance": [
+              "Corpus generation accepts an explicit release coordinate and never predicts semantic-release output",
+              "Corpus updates are additive and keyed by exact released coordinate",
+              "The actual first packaged release entry is generated and validated during semantic-release preparation",
+              "No v1/v2 template fixture is treated as compatible input"
+            ]
+          }
+        },
+        {
+          "id": "T31",
+          "name": "Attach the validated wheel and checksum through existing semantic release",
+          "depends_on": [
+            "T27",
+            "T28",
+            "T29",
+            "T30"
+          ],
+          "inputs": [
+            "Existing .releaserc and semantic-release workflow",
+            "Candidate wheel validation boundary",
+            "No-registry publication constraint"
+          ],
+          "description": "Extend the existing semantic-release prepare and GitHub publisher configuration to use nextRelease.version as authoritative coordinate R, update package metadata, freeze and validate the exact R compatibility-corpus entry, build the exact release wheel and sdist, calculate deterministic SHA-256 checksum assets, and attach the wheel, sdist, and checksum files to the same GitHub release. Commit only version metadata and the generated release-corpus entry. Do not add a post-release workflow, package-registry publisher, or generic Python-publication capability. Preserve the current gated maintainer release path for the first package release.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              ".releaserc",
+              ".github/workflows/semantic-release.yml",
+              "scripts/check-release-eligibility.py",
+              "scripts/freeze_compatibility_corpus.py"
+            ],
+            "create": [
+              "scripts/build_release_assets.py",
+              "tests/test_release_assets.py",
+              "tests/data/releases/<nextRelease.version>"
+            ],
+            "modify": [
+              ".releaserc",
+              ".github/workflows/semantic-release.yml"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "Release preparation builds wheel and sdist with uv build --no-sources",
+              "Checksum files name and authenticate the exact produced artifacts",
+              "Release preparation freezes and validates tests/data/releases/R from nextRelease.version before publication",
+              "@semantic-release/github assets include wheel, sdist, and checksums from the same run",
+              "Release configuration contains no PyPI or other registry publication",
+              "A simulated release dry run keeps version metadata and asset paths coherent"
+            ],
+            "acceptance": [
+              "The existing release machinery computes R and creates all first-release corpus and artifact outputs",
+              "No asynchronous post-release asset race is introduced",
+              "The uploaded wheel is the candidate artifact that passed the release matrix"
+            ]
+          }
+        },
+        {
+          "id": "T32",
+          "name": "Make Rygor source validation prove candidate-wheel readiness",
+          "depends_on": [
+            "T19",
+            "T27",
+            "T28",
+            "T31"
+          ],
+          "inputs": [
+            "Adopter-owned validation-hook contract",
+            "Canonical repository commands",
+            "Built-wheel and capability matrices"
+          ],
+          "description": "Replace the current sentinel hook with Rygor's adopter-owned source validation program. It runs Ruff format/check, basedpyright, canonical parallel pytest, wheel/sdist build, clean installed-wheel checks, resource verification, complete capability matrix, generated-workflow validation, and release-asset checks. Keep the hook source-specific and outside generic capability ownership so released engine N can call it while candidate N+1 is tested only in disposable repositories.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/validate-project",
+              ".github/workflows/template-ci.yml",
+              "flake.nix",
+              "tests/test_delivery_contract.py"
+            ],
+            "create": [
+              "tests/test_source_validation.py"
+            ],
+            "modify": [
+              "scripts/validate-project",
+              "tests/test_delivery_contract.py"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "Hook invokes the exact canonical pytest command uv run pytest -n auto --dist=worksteal",
+              "Hook covers format, lint, type, build, installed-wheel, resources, matrix, workflow, and release assets",
+              "Hook is directly executable and has no managed-state side effects",
+              "Candidate validation never persists dist or editable-checkout identity into a project"
+            ],
+            "acceptance": [
+              "The Rygor repository uses the same adopter hook contract it provides",
+              "Candidate testing does not create a circular self-hosting dependency",
+              "Source validation is suitable for invocation by released engine N"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P7",
+      "name": "Transition the repository and retire the template product",
+      "tasks": [
+        {
+          "id": "T33",
+          "name": "Rewrite active adopter and maintainer documentation",
+          "depends_on": [
+            "T2",
+            "T15",
+            "T16",
+            "T17",
+            "T18",
+            "T19"
+          ],
+          "inputs": [
+            "Implemented CLI and lifecycle contracts",
+            "New domain language and ADR",
+            "Current active documentation references"
+          ],
+          "description": "Document direct-wheel invocation, checksum pinning, capability selection, desired configuration, plan/apply, status, validation, restore, upgrade, recovery, external activation, GitHub capability setup, release assets, compatibility, and two-level dogfooding. Replace the inaccurately named template update guide with engine upgrade guidance. Update legal/provenance and troubleshooting guidance so no active document instructs users to regenerate template cleanup state or run retired validators.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "README.md",
+              "CONTRIBUTING.md",
+              "AGENTS.md",
+              "NOTICE.md",
+              "docs/capabilities.md",
+              "docs/delivery-workflow.md",
+              "docs/github-setup.md",
+              "docs/project-readiness.md",
+              "docs/template-updates.md",
+              "docs/licensing-provenance-audit.md",
+              "docs/agents/test-troubleshooting.md"
+            ],
+            "create": [
+              "docs/engine-upgrades.md"
+            ],
+            "modify": [
+              "README.md",
+              "CONTRIBUTING.md",
+              "AGENTS.md",
+              "NOTICE.md",
+              "docs/capabilities.md",
+              "docs/delivery-workflow.md",
+              "docs/github-setup.md",
+              "docs/project-readiness.md",
+              "docs/licensing-provenance-audit.md",
+              "docs/agents/test-troubleshooting.md",
+              "tests/test_product_contract.py"
+            ],
+            "delete": [
+              "docs/template-updates.md"
+            ]
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "Documentation contract finds every public command and direct-wheel example",
+              "Active docs contain no Copier, GitHub-template, generation-path, copied-engine, cleanup-inventory, reconcile, project.json, or retired-validator instructions",
+              "Engine upgrade guide explains newer-minor proposal and older-minor refusal",
+              "GitHub guidance is scoped to github-ci rather than core"
+            ],
+            "acceptance": [
+              "New users can install, create, adopt, configure, validate, recover, and upgrade from active docs",
+              "AGENTS.md names the new canonical source and generated-project validation boundaries",
+              "Historical ADRs, release notes, changelog, and archived specs remain unchanged"
+            ]
+          }
+        },
+        {
+          "id": "T34",
+          "name": "Retarget source CI, Nix, mutation, and contract checks to the package",
+          "depends_on": [
+            "T28",
+            "T31",
+            "T32",
+            "T33"
+          ],
+          "inputs": [
+            "Rygor source validation hook",
+            "Installed-wheel and workflow test suites",
+            "Current template-maintainer automation"
+          ],
+          "description": "Replace template-source CI naming and commands with package-source validation, installed-wheel fixtures, actionlint, release-asset checks, and the canonical hook. Update Nix checks and focused mutation targets to src/rygor and retained validation code. Keep semantic release gated on complete source validation and preserve least-privilege workflow behavior. Do not self-adopt managed workflows until released wheel R exists.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              ".github/workflows/ci.yml",
+              ".github/workflows/template-ci.yml",
+              ".github/workflows/project-validation.yml",
+              ".github/workflows/mutation.yml",
+              ".github/workflows/semantic-release.yml",
+              "flake.nix",
+              "flake.lock",
+              "pyproject.toml",
+              "tests/test_mutation_contract.py",
+              "tests/test_delivery_contract.py"
+            ],
+            "create": [
+              ".github/workflows/source-ci.yml"
+            ],
+            "modify": [
+              ".github/workflows/ci.yml",
+              ".github/workflows/project-validation.yml",
+              ".github/workflows/mutation.yml",
+              ".github/workflows/semantic-release.yml",
+              "flake.nix",
+              "pyproject.toml",
+              "tests/test_mutation_contract.py",
+              "tests/test_delivery_contract.py"
+            ],
+            "delete": [
+              ".github/workflows/template-ci.yml"
+            ]
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "Source CI invokes scripts/validate-project and blocks semantic release",
+              "Nix checks use package-source commands and no retired readiness validator",
+              "Mutation configuration names only live src/rygor and validation targets",
+              "All source and generated workflow files pass actionlint",
+              "CI permissions and checkout credential policy remain least-privileged"
+            ],
+            "acceptance": [
+              "No source automation identifies Rygor as a template",
+              "Release cannot run before the full candidate-wheel gate",
+              "Hand-maintained first-release workflows remain operational until self-adoption"
+            ]
+          }
+        },
+        {
+          "id": "T35",
+          "name": "Remove Copier, copied-engine, and template lifecycle source",
+          "depends_on": [
+            "T30",
+            "T34"
+          ],
+          "inputs": [
+            "Passing replacement package and lifecycle suites",
+            "Active documentation transition",
+            "Approved no-legacy-users decision"
+          ],
+          "description": "Delete the active template configuration, copied bootstrap engine, source ownership and cleanup inventories, template readiness and aggregate validators, generated-project dependency fixtures, and snapshot/Copier smoke workflow after all reusable behavior has moved under src/rygor. Preserve generic secret scanning and release eligibility code, adapting imports to the package where necessary. Do not delete historical specs, ADRs, release notes, tags, or releases.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/secret_scan.py",
+              "scripts/check-release-eligibility.py"
+            ],
+            "create": [],
+            "modify": [
+              "scripts/secret_scan.py",
+              "tests/test_secret_scan.py"
+            ],
+            "delete": [
+              "copier.yml",
+              ".rygor/source-ownership.json",
+              ".rygor/maintenance-artifacts.json",
+              ".github/workflows/copier-smoke.yml",
+              "scripts/bootstrap",
+              "scripts/bootstrap_project.py",
+              "scripts/check_project_readiness.py",
+              "scripts/validate_repository.py",
+              "scripts/validate_template.py",
+              "scripts/regenerate_cleanup_inventory.py",
+              "scripts/fixtures"
+            ]
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "No live Python import references scripts.bootstrap",
+              "No active configuration or workflow references Copier or retired validators",
+              "Secret scan still covers tracked source and generated fixture output",
+              "All reusable transaction, identity, rendering, and presentation contracts have replacement tests before deletion"
+            ],
+            "acceptance": [
+              "Generated repositories no longer receive Rygor source code",
+              "No template cleanup or source-baseline runtime remains",
+              "Historical documentation and Git objects are preserved"
+            ]
+          }
+        },
+        {
+          "id": "T36",
+          "name": "Remove retired template tests and fixtures after replacement coverage passes",
+          "depends_on": [
+            "T35"
+          ],
+          "inputs": [
+            "Replacement unit, installed-wheel, matrix, compatibility, and failure suites",
+            "Repository test inventory"
+          ],
+          "description": "Delete tests whose only contract is template generation, copied bootstrap, source baselines, cleanup inventory, readiness scaffolds, generated dependencies, add/reconcile commands, or old project.json. Retain and retarget generic plan, mutation, secret-scan, release, and package contract tests. Simplify shared fixtures so they build installed-wheel repositories rather than copied source trees.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "tests/test_plan_contract.py",
+              "tests/test_mutation_contract.py",
+              "tests/test_secret_scan.py",
+              "tests/conftest.py"
+            ],
+            "create": [],
+            "modify": [
+              "tests/test_plan_contract.py",
+              "tests/test_mutation_contract.py",
+              "tests/test_secret_scan.py",
+              "tests/conftest.py"
+            ],
+            "delete": [
+              "tests/adoption_e2e.py",
+              "tests/bootstrap_fixtures.py",
+              "tests/factory.py",
+              "tests/fixtures.py",
+              "tests/test_bootstrap_add.py",
+              "tests/test_bootstrap_bundles.py",
+              "tests/test_bootstrap_catalog.py",
+              "tests/test_bootstrap_cli.py",
+              "tests/test_bootstrap_coverage.py",
+              "tests/test_bootstrap_decisions.py",
+              "tests/test_bootstrap_determinism.py",
+              "tests/test_bootstrap_documentation.py",
+              "tests/test_bootstrap_foundations.py",
+              "tests/test_bootstrap_lifecycle.py",
+              "tests/test_bootstrap_observation.py",
+              "tests/test_bootstrap_planner.py",
+              "tests/test_bootstrap_presentation.py",
+              "tests/test_bootstrap_readiness.py",
+              "tests/test_bootstrap_readiness_rules.py",
+              "tests/test_bootstrap_reconcile.py",
+              "tests/test_bootstrap_reconcile_cli.py",
+              "tests/test_bootstrap_recovery.py",
+              "tests/test_bootstrap_render.py",
+              "tests/test_bootstrap_restore.py",
+              "tests/test_bootstrap_restore_cli.py",
+              "tests/test_bootstrap_scaffold.py",
+              "tests/test_bootstrap_schemas.py",
+              "tests/test_bootstrap_state_root.py",
+              "tests/test_bootstrap_stateful.py",
+              "tests/test_bootstrap_transaction.py",
+              "tests/test_capability_matrix.py",
+              "tests/test_copier.py",
+              "tests/test_copier_bootstrap.py",
+              "tests/test_factory.py",
+              "tests/test_generated_dependencies.py",
+              "tests/test_github_template_readiness.py",
+              "tests/test_project_readiness.py",
+              "tests/test_regenerate_cleanup_inventory.py",
+              "tests/test_repository_validation.py",
+              "tests/test_script_cores.py",
+              "tests/test_source_bootstrap.py",
+              "tests/test_template_contract.py",
+              "tests/test_vocabulary.py"
+            ]
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "pytest collection contains no imports from deleted template modules",
+              "Replacement tests cover every retained pure and transaction invariant",
+              "Plan contract validates the current packaged-capability plan rather than the old bootstrap plan",
+              "Canonical parallel suite passes after retired fixtures are removed"
+            ],
+            "acceptance": [
+              "No test preserves behavior explicitly declared out of scope",
+              "Deletion occurs only after replacement boundary tests pass",
+              "The remaining suite is organized around package, state, capability, lifecycle, and artifact contracts"
+            ]
+          }
+        },
+        {
+          "id": "T37",
+          "name": "Pass the complete first-packaged-release readiness gate",
+          "depends_on": [
+            "T36"
+          ],
+          "inputs": [
+            "Completed package transition",
+            "Repository-defined validation commands",
+            "Semantic-release version calculation"
+          ],
+          "description": "Run the full repository validation boundary and inspect the final diff for unintended template residue or historical edits. Prove formatting, linting, typing, canonical parallel tests, package builds, clean wheel installs, resource integrity, full capability matrix, workflow security/actionlint, compatibility corpus, lifecycle failure matrix, release assets, Nix checks, mutation contract, and secret scan. Keep the complete transition on one unmerged integration branch until this gate passes. Ensure the implementation delivery contains an explicit conventional-commit breaking-change signal so semantic-release computes the next major release R from whatever latest release exists when the completed PR reaches main, without manually rewriting history, versions, or tags.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/validate-project",
+              "pyproject.toml",
+              ".releaserc",
+              "flake.nix"
+            ],
+            "create": [],
+            "modify": [],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "uv run ruff format --check",
+              "uv run ruff check",
+              "uv run basedpyright",
+              "uv run pytest -n auto --dist=worksteal",
+              "uv build --no-sources",
+              "scripts/validate-project",
+              "Generated workflow actionlint and policy validation",
+              "Nix flake checks",
+              "Secret and diff checks",
+              "Semantic-release dry run classifies the approved transition as a major release without assuming its exact coordinate"
+            ],
+            "acceptance": [
+              "All release-attached artifact bytes passed the installed-wheel gate",
+              "No runtime path depends on the source checkout or retired template implementation",
+              "No history, tag, release record, historical ADR, release note, or archived spec was rewritten",
+              "No incomplete release-triggering package transition merged before the full gate passed",
+              "The implementation is ready to merge and release but does not perform the release automatically"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "P8",
+      "name": "Perform separately authorized release and self-adoption rollout",
+      "tasks": [
+        {
+          "id": "T38",
+          "name": "Authorize merge and verify the first immutable packaged release R",
+          "depends_on": [
+            "T37"
+          ],
+          "inputs": [
+            "Breaking implementation PR with green CI and complete release gate",
+            "Explicit maintainer authorization to merge, which also authorizes the main-branch semantic release",
+            "Existing semantic-release credentials and branch protections"
+          ],
+          "description": "This is a post-implementation rollout checkpoint, not work performed inside the implementation PR. Because semantic-release runs for main updates, explicit authorization to merge the completed breaking PR is also authorization for the gated workflow to compute and create R. After merge, verify the computed coordinate, release corpus entry, tag, release record, wheel, sdist, checksums, artifact metadata, checksum match, and clean remote acquisition. Do not publish to a registry or alter earlier tags/releases. A release failure returns to release-path repair before self-adoption.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              ".releaserc",
+              ".github/workflows/semantic-release.yml",
+              "scripts/build_release_assets.py"
+            ],
+            "create": [],
+            "modify": [],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "GitHub release R matches semantic-release output and contains wheel, sdist, and checksum assets",
+              "The committed compatibility corpus contains the exact R entry generated during release preparation",
+              "Downloaded wheel digest matches the published checksum and direct source metadata",
+              "Clean uvx direct-wheel invocation succeeds from the immutable release URL",
+              "No registry publication occurred"
+            ],
+            "acceptance": [
+              "Merge and its automatic semantic release had explicit maintainer authorization",
+              "The verified immutable wheel is available for self-adoption",
+              "Existing history, tags, and releases remain intact"
+            ]
+          }
+        },
+        {
+          "id": "T39",
+          "name": "Adopt the Rygor repository with the released wheel in a follow-up PR",
+          "depends_on": [
+            "T38"
+          ],
+          "inputs": [
+            "Verified immutable wheel R URL and checksum",
+            "Integrated capability profile",
+            "Explicit authorization for a separate self-adoption PR"
+          ],
+          "description": "Use the released checksummed wheel, never dist or an editable checkout, to plan adoption of the Rygor repository with the integrated profile. Review explicit collisions, apply the bound plan, and create a separate PR containing .rygor/project.toml, .rygor/state.json, and managed repository artifacts. Keep scripts/validate-project and the Rygor-specific release-asset preparation adopter-owned. Re-run source validation through the released engine and prove candidate-wheel testing remains confined to disposable repositories.",
+          "execution": {
+            "mode": "inline",
+            "status": "pending",
+            "completion": null
+          },
+          "files": {
+            "reuse": [
+              "scripts/validate-project",
+              "scripts/build_release_assets.py",
+              ".github/workflows/ci.yml",
+              ".github/workflows/project-validation.yml",
+              ".github/workflows/semantic-release.yml",
+              ".github/workflows/pr-agent.yml",
+              ".github/workflows/pr-agent-commands.yml",
+              "flake.nix",
+              "flake.lock"
+            ],
+            "create": [
+              ".rygor/project.toml",
+              ".rygor/state.json"
+            ],
+            "modify": [
+              ".github/workflows/ci.yml",
+              ".github/workflows/project-validation.yml",
+              ".github/workflows/semantic-release.yml",
+              ".github/workflows/pr-agent.yml",
+              ".github/workflows/pr-agent-commands.yml",
+              ".releaserc",
+              "flake.nix",
+              "flake.lock"
+            ],
+            "delete": []
+          },
+          "new_abstractions": [],
+          "validation": {
+            "tests": [
+              "project.toml points to the immutable R HTTPS wheel and exact checksum",
+              "state.json records the same verified artifact, resource, and catalog identities",
+              "Released engine validates the Rygor repository and calls scripts/validate-project",
+              "Managed output matches the integrated profile and passes the full source gate",
+              "No local dist path, editable source, secret value, or candidate identity is persisted"
+            ],
+            "acceptance": [
+              "Self-adoption is delivered in a separate reviewable PR after release",
+              "Released Rygor N manages source while candidate N+1 tests disposable repositories",
+              "Rygor-specific release assets and validation hook remain adopter-owned"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

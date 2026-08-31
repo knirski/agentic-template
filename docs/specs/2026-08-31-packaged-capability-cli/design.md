@@ -2,8 +2,8 @@
 
 ## Status
 
-Approved design for the Rygor 3.0.0 product reset. This design replaces the current template-repository
-product direction without rewriting Git history, tags, release records, or archived specifications.
+Approved design for Rygor's first packaged-release product reset. This design replaces the current
+template-repository product direction without rewriting Git history, tags, release records, or archived specifications.
 The current product requirements document remains authoritative until implementation replaces it with
 the contract defined here; the implementation must update that document before relying on the new
 requirements.
@@ -28,8 +28,10 @@ behaviors already present, while capability contracts must permit future GitLab 
 AI backends without redesigning the core.
 
 There are no users of the current v1 or v2 generated-project contracts. The current implementation may
-therefore be removed rather than migrated. Repository history is retained and the package redesign is
-released as 3.0.0.
+therefore be removed rather than migrated. Repository history is retained. The package redesign is
+released at the version semantic-release computes from the repository state and the transition's
+breaking-change signal when the completed implementation reaches `main`; this design calls that exact
+version `R` and its major component `M`. Neither value is frozen in advance.
 
 ## Scope
 
@@ -62,8 +64,8 @@ released as 3.0.0.
 
 ### Out of scope
 
-- A `gitlab-ci` implementation in 3.0.0.
-- AI backends other than Gemini in 3.0.0.
+- A `gitlab-ci` implementation in the first packaged release.
+- AI backends other than Gemini in the first packaged release.
 - Third-party capability packages, Python entry-point discovery, subprocess plugins, or a stable external
   capability API.
 - Publication to PyPI or another package registry.
@@ -175,20 +177,23 @@ Priority: must.
 - `restore` uses the recorded applied configuration and engine identity, never pending desired
   configuration, and does not upgrade the project.
 
-### US-7: Evolve within a stable major version
+### US-7: Evolve within the packaged release's stable major version
 
-As an adopter, I want newer Rygor 3.x releases to understand older v3 repositories and older engines to
-fail safely on newer behavior so that minor updates add value without creating breaking migrations.
+As an adopter, I want newer Rygor releases within packaged major `M` to understand repositories created
+by earlier releases in that major, and older engines to fail safely on newer behavior, so that minor
+updates add value without creating breaking migrations.
 
 Priority: must.
 
-- A newer 3.x engine reads every valid earlier v3 state and can propose a non-lossy upgrade.
+- A newer engine in major `M` reads every valid earlier same-major state and can propose a non-lossy
+  upgrade.
 - Running a newer minor against an older project gives a non-blocking update notice during inspection;
   no manifest is rewritten automatically.
 - A repository records its exact applied engine and minimum compatible engine.
 - An older engine may provide limited inventory inspection, but it refuses validation, rendering,
   restoration, and mutation when the repository requires a newer minor.
-- Major version 4 is required only when valid v3 configuration cannot be preserved or interpreted safely.
+- Major version `M + 1` is required only when valid major-`M` configuration cannot be preserved or
+  interpreted safely.
 
 ### US-8: Extend hosting and AI choices without a core redesign
 
@@ -201,7 +206,7 @@ Priority: should.
   contracts such as `hosting.github`.
 - `nix` remains independently useful without hosting and contributes optional CI validation when a
   compatible consumer is present.
-- `pr-agent` remains the stable capability ID; `ai_backend = "gemini"` selects the only v3 backend.
+- `pr-agent` remains the stable capability ID; `ai_backend = "gemini"` selects the only initial backend.
 - Adding an AI backend later does not require a new capability ID or hosting templates for every
   host/backend combination.
 
@@ -223,13 +228,17 @@ Priority: must.
 
 - `docs/prd.md` is the product source of truth. Its current template/Copier requirements conflict with
   this design and must be replaced as the first authoritative product-document change.
-- The release is 3.0.0 in the existing repository lineage. Existing history, tags, and releases remain.
+- Semantic-release is authoritative for the release coordinate. The completed package transition carries
+  a breaking-change signal and is delivered through one release-triggering integration boundary; `R` is
+  the next major version computed from the latest release that exists when that boundary reaches `main`.
+  Intermediate incomplete states do not merge as release-triggering package changes. Existing history,
+  tags, and releases remain.
 - The Python floor remains the repository's supported floor and the project uses uv, Ruff, basedpyright,
   pytest, and the canonical parallel test invocation.
 - The build must produce a wheel and source distribution; release validation must exercise the built
   wheel in a clean environment.
 - The first distribution source is an HTTPS direct wheel with a mandatory SHA-256 digest. Registry
-  resolution is a future source variant, not a v3 implementation requirement.
+  resolution is a future source variant, not an initial implementation requirement.
 - Only built-in capabilities execute. Capability definitions are data and pure transformations; they do
   not receive direct filesystem, process, network, environment, clock, Git, or terminal access.
 - Rygor never stores secret values and does not claim to observe whether a hosting secret is configured.
@@ -321,7 +330,7 @@ the dependency direction: CLI and adapters depend on application and core contra
 not import effect adapters. The built-in registry is the composition root.
 
 The public product surface is the `rygor` CLI, `.rygor/project.toml`, `.rygor/state.json`, and the JSON
-command envelope. Internal `rygor.*` modules are not a stable library API in v3.
+command envelope. Internal `rygor.*` modules are not a stable library API in the initial packaged release.
 
 ### Operational pipeline
 
@@ -391,7 +400,7 @@ policy.
 entry point.
 
 **Engine source** describes acquisition. For `direct-wheel`, `sha256` is the expected digest supplied
-before acquisition and used to authenticate the downloaded bytes. `direct-wheel` is the only v3
+before acquisition and used to authenticate the downloaded bytes. `direct-wheel` is the only initial
 implementation. The discriminator exists from schema 1 so a future `registry` source can be added without
 changing lifecycle concepts.
 
@@ -511,7 +520,7 @@ model = "gemini/gemini-3.7-flash"
 fallback_models = ["gemini/gemini-3.5-flash-lite"]
 ```
 
-The v3 backend registry contains only `gemini`. Its definition supplies allowed model configuration,
+The initial backend registry contains only `gemini`. Its definition supplies allowed model configuration,
 required secret references, environment wiring declarations, and readiness guidance. It requires the
 external secret name `GEMINI_API_KEY`; the value is never accepted or persisted.
 
@@ -547,14 +556,18 @@ files are never restored.
 
 ### Distribution and invocation
 
-Rygor 3.0.0 is a wheel attached to a release or another HTTPS artifact location, accompanied by its
-SHA-256 digest. The initial product is not published to a package registry.
+The first packaged Rygor release `R` is a wheel attached to its release or another HTTPS artifact
+location, accompanied by its SHA-256 digest. Semantic-release determines `R` when the completed breaking
+transition reaches `main`; the initial product is not published to a package registry.
 
 An invocation uses a direct wheel reference with a hash fragment:
 
+The examples use `123.0.0` as a deliberately non-normative stand-in for `R`; implementations and
+documentation substitute the exact semantic-release coordinate.
+
 ```console
 uvx \
-  --from 'https://example.invalid/releases/v3.0.0/rygor-3.0.0-py3-none-any.whl#sha256=<digest>' \
+  --from 'https://example.invalid/releases/v123.0.0/rygor-123.0.0-py3-none-any.whl#sha256=<digest>' \
   rygor status
 ```
 
@@ -578,7 +591,7 @@ EngineSource(kind, acquisition fields, integrity fields)
 BuildIdentity(artifact_sha256, resource_digest, catalog_digest)
 ```
 
-The v3 decoder accepts only `source.kind = "direct-wheel"`. A future release can add
+The initial decoder accepts only `source.kind = "direct-wheel"`. A future release can add
 `source.kind = "registry"`, resolving the same coordinate as an exact package requirement, without
 changing commands, capability state, inventory, or lifecycle semantics.
 
@@ -672,8 +685,9 @@ action-required rather than healthy.
 
 ### Engine compatibility and upgrade proposal
 
-Semantic compatibility is directional. A newer 3.x engine must read every valid earlier v3 project. An
-older engine is not required to understand later capabilities, settings, or render behavior.
+Semantic compatibility is directional. A newer engine in packaged major `M` must read every valid
+earlier same-major project. An older engine is not required to understand later capabilities, settings,
+or render behavior.
 
 The compatibility classifier considers the running coordinate, recorded applied coordinate, project
 format, manifest schema, repository minimum engine, and the running engine's embedded compatibility
@@ -682,25 +696,26 @@ metadata:
 | Condition | Result |
 |---|---|
 | Exact applied coordinate | Normal operation |
-| Recognized newer v3 engine on older v3 state | Backward-compatible inspection and non-blocking update proposal |
+| Recognized newer same-major engine on older same-major state | Backward-compatible inspection and non-blocking update proposal |
 | Running engine below repository minimum | Limited warning inspection; semantic commands refuse with `ENGINE_TOO_OLD` |
 | Running engine older than the repository's supported major | Refuse as unsupported downgrade |
 | Unrelated or unrecognized coordinate | Refuse with `ENGINE_IDENTITY_MISMATCH` |
 | Unsupported schema gap | Refuse and identify a compatible engine or intermediary |
 | Recovery journal requiring another engine | Recovery takes precedence; identify the journal-compatible engine |
 
-Running 3.1.0 against a repository applied by 3.0.0 does not silently rewrite anything. `status` and other
-safe inspection report `RYGOR_UPDATE_AVAILABLE` with recorded and running coordinates, schema information,
-and the exact `plan upgrade` action. A mutation that would use the newer catalog must include the engine
-transition in its explicit plan.
+Running a later minor `M.y` against a repository applied by earlier `M.x` does not silently rewrite
+anything. `status` and other safe inspection report `RYGOR_UPDATE_AVAILABLE` with recorded and running
+coordinates, schema information, and the exact `plan upgrade` action. A mutation that would use the newer
+catalog must include the engine transition in its explicit plan.
 
-Running 3.0.0 against state whose `minimum_engine` is 3.1.0 reports `ENGINE_TOO_OLD`. It may compare
-recorded inventory identities with observed paths, but marks the result incomplete and refuses validation,
-resolution, rendering, restore, and mutation. It never discards unknown configuration or state.
+Running earlier `M.x` against state whose `minimum_engine` is later `M.y` reports `ENGINE_TOO_OLD`. It may
+compare recorded inventory identities with observed paths, but marks the result incomplete and refuses
+validation, resolution, rendering, restore, and mutation. It never discards unknown configuration or
+state.
 
-Within major version 3:
+Within packaged major `M`:
 
-- New engines read all earlier valid v3 state.
+- New engines read all earlier valid same-major state.
 - Schema changes are additive or have a pure, non-lossy migration.
 - Stable capability IDs, setting meanings, provided contracts, and diagnostic meanings are not
   reinterpreted.
@@ -708,7 +723,12 @@ Within major version 3:
   variants may be added.
 - A repository may raise its minimum engine when persisted behavior cannot be reproduced safely by an
   older minor.
-- Major version 4 is required when valid v3 configuration cannot be preserved or interpreted.
+- Major version `M + 1` is required when valid major-`M` configuration cannot be preserved or interpreted.
+
+Engine major `M` scopes semantic compatibility; it does not replace the independently versioned persisted
+contracts. The first packaged release starts project format 1 and schema 1. Those counters may evolve
+additively or through pure non-lossy migration within `M`, while an incompatible persisted-contract change
+still requires `M + 1` regardless of the numeric schema value.
 
 Package version ordering helps present updates but is not the sole compatibility test. Embedded supported
 predecessor and schema metadata decides whether a transition is valid. A distribution rename is an
@@ -737,12 +757,12 @@ initial_profile = "integrated"
 
 [engine]
 distribution = "rygor"
-version = "3.0.0"
+version = "123.0.0"
 entrypoint = "rygor"
 
 [engine.source]
 kind = "direct-wheel"
-url = "https://example.invalid/releases/v3.0.0/rygor-3.0.0-py3-none-any.whl"
+url = "https://example.invalid/releases/v123.0.0/rygor-123.0.0-py3-none-any.whl"
 sha256 = "..."
 
 [capabilities.github-ci]
@@ -780,12 +800,12 @@ until both contracts are addressed by an appropriate plan.
   "engine": {
     "coordinate": {
       "distribution": "rygor",
-      "version": "3.0.0",
+      "version": "123.0.0",
       "entrypoint": "rygor"
     },
     "source": {
       "kind": "direct-wheel",
-      "url": "https://example.invalid/releases/v3.0.0/rygor-3.0.0-py3-none-any.whl",
+      "url": "https://example.invalid/releases/v123.0.0/rygor-123.0.0-py3-none-any.whl",
       "sha256": "..."
     },
     "build": {
@@ -795,8 +815,8 @@ until both contracts are addressed by an appropriate plan.
     }
   },
   "compatibility": {
-    "engine_major": 3,
-    "minimum_engine": "3.0.0"
+    "engine_major": 123,
+    "minimum_engine": "123.0.0"
   },
   "origin": {
     "kind": "new"
@@ -980,8 +1000,8 @@ proved secretless and read-only.
 Each released minor contributes frozen project configuration, state, plan, resource, capability, and
 journal fixtures sufficient to prove the next minor's promised compatibility.
 
-- Newer v3 engines inspect every older valid fixture and produce either normal behavior or an explicit
-  non-lossy upgrade plan.
+- Newer same-major engines inspect every older valid fixture in packaged major `M` and produce either
+  normal behavior or an explicit non-lossy upgrade plan.
 - An older-engine harness inspecting a newer fixture reports a warning and refuses semantic operations
   whenever `minimum_engine` exceeds the running version.
 - Unknown fields and capability data are never rewritten by limited inspection.
@@ -1012,8 +1032,8 @@ released Rygor N  --manages-->  Rygor source repository
 candidate wheel N+1 --tests-->  disposable repositories
 ```
 
-After the 3.0.0 wheel is built by the existing hand-maintained release path and attached as a checksummed
-release asset, the released wheel adopts the Rygor repository using the integrated profile. The committed
+After wheel `R` is built by the existing hand-maintained release path and attached as a checksummed
+release asset, that released wheel adopts the Rygor repository using the integrated profile. The committed
 project source points to the immutable release artifact, never to `dist/` or an editable checkout.
 
 The adopter-owned `scripts/validate-project` hook in the Rygor repository runs its source-specific Ruff,
@@ -1141,7 +1161,7 @@ presence of Nix.
 and AI combinations. An explicit backend setting preserves one stable capability and supports future
 reconfiguration.
 
-### Rejected: publish to a registry in 3.0.0
+### Rejected: publish the first packaged release to a registry
 
 The distribution name and longer-term versioning policy may change. A checksummed direct wheel provides
 the needed installability and reproducibility without reserving a registry contract prematurely. Keeping
@@ -1162,7 +1182,7 @@ when the repository minimum exceeds the running engine.
 
 - A direct release asset can become unavailable. The checksum prevents substitution but cannot provide
   availability; operators must restore the exact artifact or move through an explicit upgrade.
-- GitHub is the only implemented hosting consumer in 3.0.0, even though the architecture is not
+- GitHub is the only implemented hosting consumer in the first packaged release, even though the architecture is not
   GitHub-specific.
 - Gemini is the only implemented PR Agent backend.
 - External secret activation and branch protection remain human-administered and unverified.
@@ -1177,9 +1197,10 @@ These limitations are explicit product boundaries rather than hidden degradation
 
 ## Open Questions
 
-None. The future registry hostname, final distribution name, and longer-term version presentation are
-deliberately not frozen by 3.0.0. They are represented by the approved engine-coordinate and source model
-and do not block direct-wheel delivery.
+None. The future registry hostname, final distribution name, exact first packaged release coordinate,
+and longer-term version presentation are deliberately not frozen in advance. Semantic-release determines
+`R`; the approved engine-coordinate and source model record the result and do not block direct-wheel
+delivery.
 
 ## References
 
