@@ -790,7 +790,11 @@ until both contracts are addressed by an appropriate plan.
     "kind": "new"
   },
   "applied_config": {
-    "capabilities": {}
+    "capabilities": {
+      "github-ci": {},
+      "nix": {},
+      "semantic-release": {}
+    }
   },
   "config_digest": "sha256:...",
   "inventory": {
