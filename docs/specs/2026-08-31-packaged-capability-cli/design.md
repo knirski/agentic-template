@@ -383,10 +383,14 @@ policy.
 **Engine coordinate** is the logical distribution identity: distribution name, release version, and
 entry point.
 
-**Engine source** describes acquisition. `direct-wheel` is the only v3 implementation. The discriminator
-exists from schema 1 so a future `registry` source can be added without changing lifecycle concepts.
+**Engine source** describes acquisition. For `direct-wheel`, `sha256` is the expected digest supplied
+before acquisition and used to authenticate the downloaded bytes. `direct-wheel` is the only v3
+implementation. The discriminator exists from schema 1 so a future `registry` source can be added without
+changing lifecycle concepts.
 
-**Build identity** is the exact artifact SHA-256 plus embedded resource and catalog digests.
+**Build identity** is the observed SHA-256 computed from the acquired artifact bytes plus embedded
+resource and catalog digests. For a direct wheel, observed `artifact_sha256` must equal the source's
+expected `sha256` before Rygor executes the wheel or seals project state.
 
 **Minimum engine** is the earliest compatible engine coordinate permitted to interpret the repository's
 persisted semantics. It is advanced only when a capability, setting, state field, migration, or rendered
@@ -553,7 +557,11 @@ cannot persist a local development wheel path as its released engine source; loc
 disposable candidate-wheel fixtures.
 
 The direct wheel's metadata must match the declared engine distribution and version. The CLI entry point
-may differ from the distribution name and is part of the engine coordinate.
+may differ from the distribution name and is part of the engine coordinate. `EngineSource.sha256` is the
+expected digest established before acquisition; `BuildIdentity.artifact_sha256` is computed from the
+acquired wheel bytes. The two values identify the same direct wheel and must be equal. A mismatch is an
+integrity failure: Rygor must not execute the candidate, render resources from it, or persist it as the
+applied engine.
 
 The model separates:
 
@@ -850,6 +858,9 @@ unsupported node types, target-root substitution, and writes outside the canonic
   declarations only when selected.
 - Reject required contributions with no consumer or multiple consumers.
 - Prove no secret value can enter configuration, normalized state, plans, diagnostics, or rendered docs.
+- Acquire direct-wheel fixtures with matching and mismatching digests; prove source `sha256` equals
+  observed `artifact_sha256` in every accepted build identity and that a mismatch is rejected before
+  execution or state mutation.
 - Prove all closed unions are exhaustively dispatched and basedpyright detects missing variants.
 - Perturb every resource and definition field that affects output and assert the relevant digest changes.
 
