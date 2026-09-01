@@ -234,7 +234,7 @@
             "Installed distribution metadata and PEP 610 direct_url.json",
             "Resource index digest from T4"
           ],
-          "description": "Represent logical engine coordinate, acquisition source, and observed build identity separately. Decode only HTTPS direct-wheel sources in the initial implementation, require a pre-acquisition SHA-256, verify distribution name, version, entry point, and acquired wheel bytes, then combine the observed artifact, resource, and catalog digests into build identity. Permit local wheel paths only in explicitly marked disposable candidate fixtures and never as release-style persisted sources.",
+          "description": "Represent logical engine coordinate, acquisition source, and build identity separately. Decode only HTTPS direct-wheel sources in the initial implementation, require a pre-acquisition SHA-256, and verify distribution name, version, and entry point against the installed distribution. Read artifact_sha256 from PEP 610 direct_url.json archive_info.hashes or explicit source metadata rather than recomputing it: the installed tree holds no wheel bytes and Rygor must not re-download the artifact to hash it. Recompute resource_digest and catalog_digest from the installed package so post-installation tampering is still detected directly. Permit local wheel paths only in explicitly marked disposable candidate fixtures and never as release-style persisted sources.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -280,7 +280,7 @@
             },
             {
               "name": "BuildIdentity",
-              "requirement": "Bind project output to exact artifact, resource, and catalog bytes",
+              "requirement": "Bind project output to exact artifact, resource, and catalog bytes, distinguishing the attested artifact digest from the locally recomputed resource and catalog digests",
               "consumers": [
                 "Plan digest",
                 "Applied state",
@@ -291,14 +291,18 @@
           ],
           "validation": {
             "tests": [
-              "Matching expected and observed wheel digest is accepted",
+              "Attested direct-URL hash equal to the declared source sha256 is accepted",
               "Digest, distribution, version, or entry-point mismatch is rejected before rendering or persistence",
+              "Missing or unverifiable direct-URL attestation is rejected rather than assumed correct",
+              "No code path re-downloads the wheel in order to recompute artifact_sha256",
+              "Resource and catalog digests are recomputed from the installed package and detect post-installation tampering",
               "Non-HTTPS and hashless remote sources are rejected",
               "Registry sources are rejected as unsupported initial variants",
               "Local candidate sources cannot be serialized as released project state"
             ],
             "acceptance": [
-              "Expected source sha256 always equals observed artifact_sha256 for an accepted direct wheel",
+              "Declared source sha256 always equals the attested artifact_sha256 in an accepted build identity",
+              "artifact_sha256 is installer-attested and documented as such, never presented as an independent re-verification of the original bytes",
               "Engine identity is ready for a future registry source without changing lifecycle state",
               "Integrity failure performs no project mutation"
             ]
@@ -321,7 +325,7 @@
             "Existing strict schema and identifier validation",
             "Engine identity contracts from T5"
           ],
-          "description": "Implement strict .rygor/project.toml decoding and deterministic writing. Materialize the explicit effective capability set, normalized non-secret settings including defaults, creation-time profile provenance, engine coordinate, and direct-wheel source. Reject unknown fields, duplicate or malformed identifiers, secret-shaped values, unsupported capability IDs, and local development sources outside candidate fixtures. Profiles expand only when new or adopt creates the file.",
+          "description": "Implement strict .rygor/project.toml decoding and deterministic writing against a project_format counter, named apart from the state file's state_schema so the two persisted contracts never share a field name. Materialize the explicit effective capability set, normalized non-secret settings including defaults, the closed [project] table carrying name and default_branch, creation-time profile provenance, engine coordinate, and direct-wheel source. default_branch is stored rather than observed from Git so rendering stays reproducible from recorded configuration alone; new and adopt accept the project values as command input, and adopt may propose default_branch from observed Git HEAD and name from the target directory as capture-time values written once into desired configuration, which is distinct from the prohibited render-time read. Reject unknown fields, duplicate or malformed identifiers, secret-shaped values, unsupported capability IDs, and local development sources outside candidate fixtures. Refuse hand edits to [engine] and [engine.source] as invalid desired configuration rather than accepting them as pending changes: no command could apply such an edit, because upgrade targets the running engine rather than a version declared in a file. Profiles expand only when new or adopt creates the file, and initial_profile is provenance excluded from the desired-versus-applied comparison.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -358,7 +362,12 @@
               "Valid TOML normalizes to deterministic complete settings",
               "Profile provenance round-trips without acting as live policy",
               "Unknown fields, capabilities, source variants, and secret values are rejected",
-              "Equivalent input ordering produces byte-identical normalized TOML"
+              "Equivalent input ordering produces byte-identical normalized TOML",
+              "[project] accepts only name and default_branch, requires default_branch, and rejects unknown keys",
+              "default_branch is never inferred from the observed Git repository",
+              "adopt proposes default_branch from observed HEAD at capture time, and re-rendering on a checkout with a different HEAD produces identical bytes",
+              "A hand-edited [engine] or [engine.source] value is reported as invalid and never becomes a pending change",
+              "Editing initial_profile alone produces no pending change and no plan"
             ],
             "acceptance": [
               ".rygor/project.toml is adopter-controlled and has no hidden ambient defaults",
@@ -378,7 +387,7 @@
             "Canonical JSON and identity helpers",
             "DesiredConfig and BuildIdentity"
           ],
-          "description": "Implement strict canonical .rygor/state.json encoding, decoding, and checksum verification. Record schema and project-format versions, minimum engine, exact applied engine/source/build identity, normalized applied configuration, managed path identities and modes, contributor provenance, and external activation guidance. Exclude the state file from its own inventory and exclude adopter prose, timestamps, absolute paths, local sources, and secret values.",
+          "description": "Implement strict canonical .rygor/state.json encoding, decoding, and checksum verification. Record state_schema and project_format as separately named counters beside the format string discriminator, origin as branch-free provenance, minimum engine, exact applied engine/source/build identity, the complete normalized applied configuration including the [project] table and every capability setting with defaults materialized, no digest of applied_config because the state checksum already covers it and a derived copy can disagree with its source, managed path identities and modes, contributor provenance, and external activation guidance. Store no packaged-major field: the major is derived from engine.coordinate.version so a second copy cannot disagree with it. Exclude the state file from its own inventory and exclude adopter prose, timestamps, absolute paths, local sources, and secret values.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -427,12 +436,22 @@
               "Canonical state round-trips byte-for-byte with a valid checksum",
               "Checksum, schema, inventory ordering, path, digest, and mode corruption is rejected",
               "State contains no secret values, timestamps, absolute paths, adopter prose, or self-inventory entry",
-              "Pending desired edits cannot change decoded applied configuration"
+              "State stores no packaged-major field and the classifier derives the major from engine.coordinate.version",
+              "Pending desired edits cannot change decoded applied configuration",
+              "applied_config round-trips the project table and a changed default_branch registers as a pending desired change",
+              "applied_config carries every capability setting with defaults materialized, so restore needs no other input",
+              "State carries no digest of applied_config and pending desired state is detected structurally",
+              "format, state_schema, and project_format are distinct fields and no two persisted counters share a name",
+              "origin decodes to new or adopt and no decision, plan, render, or recovery path reads it",
+              "Reformatting, table reordering, and explicitly spelling a default in the desired file are not pending changes",
+              "A change to any normalized value in the desired file is a pending change",
+              "initial_profile is absent from applied_config"
             ],
             "acceptance": [
               ".rygor/state.json is sufficient to reproduce the recorded render with its exact engine build",
               "Unknown template-era state is rejected rather than migrated",
-              "Inventory contributor provenance does not split whole-file ownership"
+              "Inventory contributor provenance does not split whole-file ownership",
+              "Pending desired state is detected by normalizing the desired file against applied_config, not by digesting desired-file bytes"
             ]
           }
         },
@@ -447,7 +466,7 @@
             "Desired and applied schemas",
             "Existing state-machine compatibility evidence"
           ],
-          "description": "Classify exact engines, newer compatible engines within packaged major M, engines below minimum_engine, unsupported majors, schema gaps, unrelated coordinates, and recovery-engine requirements without mutation. Add a pure ordered migration registry for additive same-major schema and capability-setting migrations. Keep project format and schema counters independent of engine major. Preserve all explicit settings and unknown data during limited old-engine inspection; only upgrade planning may materialize new defaults or change engine identity.",
+          "description": "Classify exact engines, newer compatible engines within packaged major M, engines below minimum_engine, unsupported majors, schema gaps, unrelated coordinates, build-identity mismatch for apply and restore, and recovery-engine requirements without mutation. Derive the packaged major from the recorded coordinate and express every fixture and test in synthetic same-major terms (M.0, M.1) so nothing presumes a concrete major before semantic-release computes R. Add a pure ordered migration registry for additive same-major schema and capability-setting migrations. Keep project_format and state_schema independent of each other and of the engine major, reading each by its own name. Preserve all explicit settings and unknown data during limited old-engine inspection; only upgrade planning may materialize new defaults or change engine identity.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -493,11 +512,13 @@
           ],
           "validation": {
             "tests": [
-              "3.1 reads 3.0 state and proposes a non-blocking upgrade without rewriting",
-              "3.0 inspecting state with minimum_engine 3.1 warns, marks inspection incomplete, and refuses semantic operations",
+              "M.1 reads M.0 state and proposes a non-blocking upgrade without rewriting",
+              "M.0 inspecting state with minimum_engine M.1 warns, marks inspection incomplete, and refuses semantic operations",
+              "A running engine whose resource or catalog digest differs from the recorded build classifies apply and restore as ENGINE_BUILD_MISMATCH and names the recorded coordinate, source, and digest, while new, adopt, and upgrade stay permitted",
               "Unsupported major, schema gap, unrelated coordinate, and incompatible recovery journal identify the required engine",
               "Migrations preserve explicit settings and materialize new defaults without reinterpretation",
-              "Limited inspection preserves unknown fields and capability data byte-for-byte"
+              "Limited inspection preserves unknown fields and capability data byte-for-byte",
+              "No test, fixture, or classifier branch hardcodes a concrete packaged major"
             ],
             "acceptance": [
               "Only major-version incompatibility is inherently breaking",
@@ -523,7 +544,7 @@
             "Existing catalog and dependency metadata",
             "Normalized project settings"
           ],
-          "description": "Define immutable built-in capability and profile metadata for github-ci, semantic-release, nix, cachix-publish, and pr-agent. Include provided contracts, abstract requirements, exclusive contracts, conflicts, setting schemas, standalone artifacts, contribution declarations, readiness obligations, external secret references, documentation, and minimum-engine information. Profiles expand to explicit selections only during new or adopt.",
+          "description": "Define immutable built-in capability and profile metadata for github-ci, semantic-release, nix, cachix-publish, and pr-agent. pr-agent requires hosting and delivery.ci, matching semantic-release and cachix-publish, so a required contribution never survives requirement checking only to fail at routing. semantic-release declares prepare_hook defaulting to false, commit_assets and release_assets defaulting to empty, a readiness obligation that the seeded hook exists and is executable whenever prepare_hook is set, and seeds scripts/release-prepare; nix seeds flake.nix and flake.lock as seed-once product toolchain rather than managed artifacts, because a dev shell is a product-toolchain declaration Rygor does not own. Include provided contracts, abstract requirements, exclusive contracts, conflicts, setting schemas, standalone artifacts, contribution declarations, readiness obligations, external secret references, documentation, and minimum-engine information. Profiles expand to explicit selections only during new or adopt.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -570,13 +591,22 @@
               "Catalog has exactly the five approved stable capability IDs",
               "Profiles expand to the approved explicit capability sets",
               "pr-agent accepts only the Gemini backend schema and never uses pr-agent-gemini as an ID",
+              "pr-agent declares both hosting and delivery.ci requirements",
+              "Every capability emitting a required contribution declares a requirement on the contract its consumer provides",
               "nix declares no hosting requirement",
-              "Every setting, artifact, contract, secret reference, and minimum engine contributes to the catalog digest"
+              "Every setting, artifact, contract, secret reference, and minimum engine contributes to the catalog digest",
+              "semantic-release declares prepare_hook, commit_assets, and release_assets with normalized defaults",
+              "commit_assets and release_assets reject absolute paths, traversal, and reserved runtime paths",
+              "nix declares flake.nix and flake.lock as seed-once and lists no managed flake artifact",
+              "scripts/release-prepare is declared seed-once and extensionless",
+              "prepare_hook defaults to false and both asset lists default to empty, so release-automated and integrated release successfully with no adopter script",
+              "Capability inspection reports each artifact's ownership class and every readiness obligation"
             ],
             "acceptance": [
               "Capability definitions cannot access effect adapters",
               "GitHub is a selectable provider, not an assumption in core",
-              "No external plugin loading or stable Python capability API is introduced"
+              "No external plugin loading or stable Python capability API is introduced",
+              "No capability renders a managed artifact that hardcodes a product toolchain"
             ]
           }
         },
@@ -591,7 +621,7 @@
             "Existing deterministic resolver behavior",
             "Normalized desired selections"
           ],
-          "description": "Resolve selected IDs and settings over provided contracts, reject missing or incompatible providers, enforce exclusive hosting, validate conflicts and minimum-engine requirements, and produce deterministic capability closure. Requirements use concrete IDs only where exact identity is semantically required. Resolution is pure and canonically orders selections and diagnostics.",
+          "description": "Resolve selected IDs and settings over provided contracts, reject missing or incompatible providers, enforce exclusive hosting, validate conflicts and minimum-engine requirements, and produce deterministic capability closure. Requirements use concrete IDs only where exact identity is semantically required. Reject any catalog definition whose required contributions have no corresponding declared requirement, so the requirement graph and the routing graph cannot disagree. Resolution is pure and canonically orders selections and diagnostics.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -630,6 +660,8 @@
               "Missing, multiple exclusive, and incompatible providers are rejected",
               "nix resolves without github-ci",
               "cachix-publish requires toolchain.nix and delivery.ci",
+              "A definition whose required contribution has no matching declared requirement is rejected as a catalog error",
+              "pr-agent selected without a delivery.ci provider fails at requirement resolution, not at contribution routing",
               "Resolution and diagnostics are stable across input order",
               "Property-based selections never yield an unresolved required contract"
             ],
@@ -651,7 +683,7 @@
             "Existing contribution compiler and PR Agent workflows",
             "Resolved capability closure"
           ],
-          "description": "Implement ValidationCheck, PublishJob, ReleaseJob, and ReviewAutomation declarations with explicit optional or required consumption. Route each declaration to exactly one compatible selected consumer, allow optional Nix validation to remain unconsumed, and reject missing or multiple consumers for required contributions. Define Gemini as the sole internal PR-agent backend with model defaults, allowed configuration, required symbolic secret names, environment wiring, and readiness guidance.",
+          "description": "Implement ValidationCheck, PublishJob, ReleaseJob, and ReviewAutomation declarations with explicit optional or required consumption. ReleaseJob carries whether the job invokes the adopter release-preparation hook and never carries command text, so a consumer renders a fixed scripts/release-prepare invocation and may wrap it in the project's Nix environment when toolchain.nix is selected. Route each declaration to exactly one compatible selected consumer, allow optional Nix validation to remain unconsumed, and reject missing or multiple consumers for required contributions. Define Gemini as the sole internal PR-agent backend with model defaults, allowed configuration, required symbolic secret names, environment wiring, and readiness guidance.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -698,9 +730,11 @@
             "tests": [
               "Nix optional validation may remain unconsumed without hosting",
               "Cachix, release, and review contributions require exactly one consumer",
+              "A missing consumer for a required contribution is reported as a capability requirement failure whenever the emitting capability declared that requirement",
               "github-ci receives only contributions from selected capabilities",
               "Gemini defaults normalize deterministically and unknown backends or invalid models are rejected",
-              "Secret values are rejected from definitions, settings, resolved state, plans, diagnostics, and rendered documentation"
+              "Secret values are rejected from definitions, settings, resolved state, plans, diagnostics, and rendered documentation",
+              "ReleaseJob carries a hook flag and no adopter command text"
             ],
             "acceptance": [
               "Contributions contain intent rather than raw GitHub YAML",
@@ -721,7 +755,7 @@
             "Typed routed contributions",
             "Resource loader"
           ],
-          "description": "Implement github-ci as the only initial hosting and delivery-CI consumer. Render complete whole-file GitHub workflows for generic validation plus selected Nix validation, Cachix publication, semantic release, and PR Agent review behavior. Keep untrusted contributor validation secretless and read-only, isolate privileged trusted jobs, pin actions, avoid persisted checkout credentials, and emit external activation guidance without querying GitHub.",
+          "description": "Implement github-ci as the only initial hosting and delivery-CI consumer. Render complete whole-file GitHub workflows for generic validation plus selected Nix validation, Cachix publication, semantic release, and PR Agent review behavior. Render .releaserc from the semantic-release settings: a fixed scripts/release-prepare ${nextRelease.version} exec command when prepare_hook is set, commit_assets as the git plugin asset list, and release_assets as the github plugin asset list. Take the release branch and push triggers from the [project] table rather than from observed Git state, and omit the git plugin entirely when commit_assets is empty. Render the release job to invoke that hook, wrapped as nix develop -c when toolchain.nix is selected. Keep untrusted contributor validation secretless and read-only, isolate privileged trusted jobs, pin actions, avoid persisted checkout credentials, and emit external activation guidance without querying GitHub.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -761,12 +795,21 @@
               "Nix standalone output exists without github-ci and enriches CI when github-ci is selected",
               "Generated workflows pass structural policy checks and actionlint",
               "Untrusted jobs have no secret, write permission, privileged environment, or persisted credential",
-              "Trusted jobs receive only their declared permissions and secret references"
+              "Trusted jobs receive only their declared permissions and secret references",
+              "Rendered .releaserc contains no adopter command text beyond the fixed hook invocation",
+              "commit_assets and release_assets reach the git and github plugin asset lists verbatim and in order",
+              "prepare_hook = false renders no exec plugin",
+              "The release job wraps the hook in the project Nix environment when toolchain.nix is selected and invokes it directly otherwise",
+              "The release hook is never invoked on a pull_request event",
+              "Empty commit_assets omits the @semantic-release/git plugin rather than rendering an empty asset list",
+              "Rendered branch and trigger values come from [project].default_branch and never from repository observation",
+              "Rendering is byte-identical across checkouts whose observed HEAD differs from [project].default_branch"
             ],
             "acceptance": [
               "Core imports no GitHub-specific module",
               "One consumer owns each complete generated workflow",
-              "A future GitLab consumer can consume the same typed contributions"
+              "A future GitLab consumer can consume the same typed contributions",
+              "A rendered .releaserc names no language, package manager, or build command"
             ]
           }
         },
@@ -782,7 +825,7 @@
             "Existing renderer, scaffold, and ownership checks",
             "Resolved capabilities and embedded resources"
           ],
-          "description": "Compile a deterministic candidate render partitioned into whole-file managed artifacts, initial seed-once product scaffolding, and untouched adopter-owned paths. Record normalized content digest, mode, owning consumer, and contributor provenance for managed output. Never generate a product pyproject.toml or copy Rygor implementation. Reject catalog path collisions, reserved paths, unsafe paths, and overlapping ownership before any filesystem operation.",
+          "description": "Compile a deterministic candidate render partitioned into whole-file managed artifacts, initial seed-once product scaffolding, and untouched adopter-owned paths. Record normalized content digest, mode, owning consumer, and contributor provenance for managed output. Never generate a product pyproject.toml or copy Rygor implementation. Seed-once covers scripts/validate-project, scripts/release-prepare, flake.nix, and flake.lock: each declares product toolchain or product behavior that becomes adopter-owned immediately after creation. Seed scripts/release-prepare as an executable working no-op that exits 0 and documents its calling convention, so enabling the hook before filling it in cannot break a release. Disabling a capability removes its managed artifacts and nothing else: files it seeded once stay, because they became adopter-owned when written, and re-enabling does not re-seed or overwrite them. Reject catalog path collisions, reserved paths, unsafe paths, and overlapping ownership before any filesystem operation.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -801,6 +844,7 @@
               "src/rygor/core/rendering.py",
               "src/rygor/core/ownership.py",
               "src/rygor/resources/core/scripts/validate-project",
+              "src/rygor/resources/capabilities/semantic-release/scripts/release-prepare",
               "tests/test_candidate_render.py",
               "tests/test_render_ownership.py"
             ],
@@ -838,7 +882,10 @@
               "Managed workflow provenance lists all contributors without fragment ownership",
               "Seed-once and adopter-owned files are absent from managed inventory",
               "Product pyproject.toml and Rygor package source are never rendered",
-              "Every output-affecting resource or definition perturbation changes the relevant digest"
+              "Every output-affecting resource or definition perturbation changes the relevant digest",
+              "scripts/validate-project, scripts/release-prepare, flake.nix, and flake.lock are seeded once, executable where required, and absent from the managed inventory",
+              "The seeded scripts/release-prepare is executable, exits 0 unmodified, and documents its version argument",
+              "Disabling nix removes its managed artifacts and leaves flake.nix and flake.lock untouched, and re-enabling does not overwrite them"
             ],
             "acceptance": [
               "Managed files are reproducible only from applied configuration and exact engine build",
@@ -986,7 +1033,9 @@
               "Text and JSON contain the same identifiers, paths, capabilities, and next actions",
               "Status never prompts, mutates, invokes the adopter hook, or queries hosting",
               "RYGOR_UPDATE_AVAILABLE and ENGINE_TOO_OLD include exact coordinates and next action",
-              "Exit 0, 1, and 2 follow the approved health, action-required, and invalid mapping"
+              "Exit 0, 1, and 2 follow the approved health, action-required, and invalid mapping",
+              "ENGINE_BUILD_MISMATCH renders in text and JSON with the recorded coordinate, source URL, digest, and the plan upgrade next action",
+              "Capability inspection output distinguishes managed from seed-once artifacts in text and JSON"
             ],
             "acceptance": [
               "JSON emits exactly one canonical envelope on stdout",
@@ -1008,7 +1057,7 @@
             "Existing adoption collision decisions and plan digests",
             "Manifest-free non-bare Git entry condition"
           ],
-          "description": "Build read-only adopt plans from explicit profile or capability settings and per-path collision declarations. Report every collision and resulting ownership, require keep-existing or replace for each colliding planned path, forbid undeclared and irrelevant decisions, and bind the canonical plan digest to intent, target/worktree identity, observed bytes and modes, desired configuration, engine build, catalog, resources, and ordered operations. Adoption never runs implicitly from new.",
+          "description": "Build read-only adopt plans from explicit profile or capability settings and per-path collision declarations. Report every collision and resulting ownership, require keep-existing or replace for each colliding planned managed path while a pre-existing seed-once path needs no decision and is reported as retained adopter-owned content, forbid undeclared and irrelevant decisions, and bind the canonical plan digest to intent, target/worktree identity, observed bytes and modes, desired configuration, engine build, catalog, resources, and ordered operations. Adoption never runs implicitly from new.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -1062,7 +1111,8 @@
               "keep-existing remains adopter-owned and replace becomes managed",
               "Changed target, bytes, mode, config, engine, catalog, resource, or operation ordering changes or invalidates the plan digest",
               "Unsafe target, bare repository, existing state, special node, or stale digest refuses without mutation",
-              "Planning never prompts or writes a receipt trusted by execution"
+              "Planning never prompts or writes a receipt trusted by execution",
+              "A pre-existing seed-once path requires no collision decision, is never rewritten, and is reported as retained"
             ],
             "acceptance": [
               "plan adopt describes every mutation and ownership result",
@@ -1084,7 +1134,7 @@
             "Candidate rendering",
             "Bound plan contract"
           ],
-          "description": "Compare desired configuration, recorded applied state, and observed managed paths to plan capability enablement, disablement, and reconfiguration. Report closure and setting changes, artifact operations, ownership effects, activation notes, and digest. Managed drift blocks unrelated apply and points to restore; apply never repairs drift implicitly or changes engine identity. Remove the need for separate add, remove, configure, and reconcile commands.",
+          "description": "Compare desired configuration, recorded applied state, and observed managed paths to plan capability enablement, disablement, and reconfiguration. Report closure and setting changes, artifact operations, ownership effects, activation notes, and digest. Managed drift blocks unrelated apply and points to restore; apply never repairs drift implicitly or changes engine identity. Apply also obeys the shared rendering invariant: it requires the running build identity to equal the recorded one and otherwise refuses with ENGINE_BUILD_MISMATCH, because re-rendering under a different build is an engine transition and upgrade owns those. Remove the need for separate add, remove, configure, and reconcile commands.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -1124,12 +1174,15 @@
               "Enable, disable, and backend reconfiguration produce one complete shared-workflow replacement",
               "Managed drift blocks apply and does not alter the desired file",
               "Same desired and applied configuration produces a no-op plan",
-              "Apply plans cannot change engine coordinate or source"
+              "Apply plans cannot change engine coordinate or source",
+              "Apply under a newer same-major engine refuses with ENGINE_BUILD_MISMATCH instead of folding an engine transition into the plan",
+              "An [engine] edit in the desired file yields an invalid-configuration diagnostic pointing at plan upgrade, never an apply plan"
             ],
             "acceptance": [
               "plan apply is the only preview for ordinary capability changes",
               "apply transitions exactly the bound desired state",
-              "Pending desired changes remain distinct from drift"
+              "Pending desired changes remain distinct from drift",
+              "No mutation is possible under a newer wheel until an explicit upgrade lands"
             ]
           }
         },
@@ -1147,7 +1200,7 @@
             "Compatibility and migration decisions",
             "Bound plan machinery"
           ],
-          "description": "Plan restore solely from recorded applied configuration and its exact compatible engine build, ignoring pending desired edits and never touching seed-once or adopter-owned files. Plan upgrade as the only transition allowed to change engine coordinate or source, apply pure schema/setting migrations, update desired engine metadata, re-render managed output, and advance minimum_engine only when required. Both operations require a fresh digest and report unsupported engine acquisition precisely.",
+          "description": "Plan restore solely from recorded applied configuration under the exact recorded engine build, ignoring pending desired edits and never touching seed-once or adopter-owned files. Restore obeys the same rendering invariant as apply: the inventory records digests rather than content, so repairing drift means re-rendering, and a running engine whose resource_digest or catalog_digest differs from the recorded build refuses with ENGINE_BUILD_MISMATCH naming the recorded coordinate, source URL, and digest, rather than silently adopting its own rendering. Plan upgrade as the only transition allowed to change engine coordinate or source, targeting the running engine by recording its coordinate and the source metadata that acquired it, apply pure schema/setting migrations, update desired engine metadata, re-render managed output, and advance minimum_engine only when required. Both operations require a fresh digest and report unsupported engine acquisition precisely.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -1195,14 +1248,19 @@
             "tests": [
               "Restore reproduces recorded managed bytes and modes despite pending desired edits",
               "Restore never changes engine identity, desired config, seed-once, or adopter-owned paths",
+              "A newer same-major engine that reads the repository normally still refuses restore with ENGINE_BUILD_MISMATCH when its resource or catalog digest differs from the recorded build",
+              "The ENGINE_BUILD_MISMATCH diagnostic names the recorded coordinate, source URL, and digest needed to repair the repository",
+              "Restore under the exact recorded build succeeds where the newer engine refused",
               "Upgrade changes engine metadata only through an explicit plan",
               "Upgrade preserves explicit settings and re-renders with the authenticated target build",
-              "Older incompatible engines refuse restore and upgrade with an exact compatible-source diagnostic"
+              "Older incompatible engines refuse restore and upgrade with an exact compatible-source diagnostic",
+              "plan upgrade proposes the running engine's coordinate and captured source metadata, and refuses when that metadata is unavailable and unsupplied"
             ],
             "acceptance": [
               "Restore and upgrade have non-overlapping authority",
               "No inspection command rewrites state",
-              "A newer minor proposes rather than silently performs upgrade"
+              "A newer minor proposes rather than silently performs upgrade",
+              "Restore is a repair under the recorded build, never an implicit adoption of a newer engine's rendering"
             ]
           }
         },
@@ -1218,7 +1276,7 @@
             "Existing process execution and bounded presentation",
             "Adopter-owned scripts/validate-project boundary"
           ],
-          "description": "Validate compatible config, state checksum, inventory, managed content and modes, resource/catalog/build identities, workflow structure, capability readiness, and path safety before invoking an executable extensionless scripts/validate-project hook. Capture bounded stdout/stderr and return typed point-in-time evidence. Status and recovery never invoke the hook; hook results and effects are never persisted, rolled back, or treated as managed state.",
+          "description": "Validate compatible config, state checksum, inventory, managed content and modes, resource/catalog/build identities, workflow structure, capability readiness including the presence and executability of scripts/release-prepare whenever prepare_hook is set, and path safety before invoking an executable extensionless scripts/validate-project hook. Capture bounded stdout/stderr and return typed point-in-time evidence. Status and recovery never invoke the hook; hook results and effects are never persisted, rolled back, or treated as managed state.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -1259,12 +1317,15 @@
               "Missing, non-executable, timed-out, signaled, or failing hook yields bounded diagnostics",
               "Hook success and failure are absent from persisted state and recovery journals",
               "Status and recover never execute the hook",
-              "Hook failure after mechanically valid installation does not roll back the installation or claim hook effects"
+              "Hook failure after mechanically valid installation does not roll back the installation or claim hook effects",
+              "No command implemented in this task can invoke scripts/release-prepare",
+              "validate fails when prepare_hook is set and the seeded release hook is missing or non-executable, even though seed-once paths are excluded from drift"
             ],
             "acceptance": [
               "rygor validate is technology-stack-neutral",
               "Rygor generates no product Python dependency contract",
-              "The only adopter execution boundary is scripts/validate-project"
+              "The adopter execution boundaries are exactly scripts/validate-project and scripts/release-prepare, and rygor validate invokes only the first",
+              "scripts/validate-project runs with no secrets and no write permission; scripts/release-prepare is never invoked by any inspection, validation, or recovery command"
             ]
           }
         }
@@ -1744,7 +1805,7 @@
             "acceptance": [
               "Source-tree execution is not release evidence",
               "Wheel and sdist both contain the declared package and resources",
-              "The artifact under test is the artifact eligible for release"
+              "The candidate artifact under test is the pre-bump build; it is byte-identical to the published wheel except for version metadata, and the published wheel is revalidated separately during release preparation"
             ]
           }
         },
@@ -1790,7 +1851,9 @@
               "Every invalid missing-provider, exclusive-provider, conflict, or unconsumed-required-contribution case is rejected",
               "All distinct workflow sets pass actionlint",
               "Permission, event, checkout, credential, secret, and dependency policies hold for every generated job",
-              "No secret value can enter config, state, plans, diagnostics, logs, backups, or rendered docs"
+              "No secret value can enter config, state, plans, diagnostics, logs, backups, or rendered docs",
+              "The rendered release job invokes scripts/release-prepare only on trusted events and never on pull_request",
+              "Rendered .releaserc asset lists contain only declared, path-safe target-relative globs"
             ],
             "acceptance": [
               "Representative sampling is not used in place of the complete finite initial matrix",
@@ -1920,7 +1983,7 @@
             "Candidate wheel validation boundary",
             "No-registry publication constraint"
           ],
-          "description": "Extend the existing semantic-release prepare and GitHub publisher configuration to use nextRelease.version as authoritative coordinate R, update package metadata, freeze and validate the exact R compatibility-corpus entry, build the exact release wheel and sdist, calculate deterministic SHA-256 checksum assets, and attach the wheel, sdist, and checksum files to the same GitHub release. Commit only version metadata and the generated release-corpus entry. Do not add a post-release workflow, package-registry publisher, or generic Python-publication capability. Preserve the current gated maintainer release path for the first package release.",
+          "description": "Extend the existing semantic-release prepare and GitHub publisher configuration to use nextRelease.version as authoritative coordinate R, update package metadata, freeze and validate the exact R compatibility-corpus entry, build the exact release wheel and sdist, re-run the installed-wheel boundary suite against that rebuilt wheel before anything is published, calculate deterministic SHA-256 checksum assets, and attach the wheel, sdist, and checksum files to the same GitHub release. The rebuilt wheel is not byte-identical to the pre-release candidate because preparation stamps R into package metadata, so pre-bump evidence alone does not validate the artifact that would ship; nothing beyond version metadata and the filenames and digests derived from it may differ. Put every Rygor-specific prepare step in scripts/release-prepare, the same adopter-owned hook the semantic-release capability renders an invocation for, and declare Rygor's commit and release assets as capability settings. Before self-adoption the hand-maintained .releaserc calls that hook; after self-adoption the rendered .releaserc calls it unchanged, so no path needs a keep-existing exception. Commit only version metadata and the generated release-corpus entry. Do not add a post-release workflow, package-registry publisher, or generic Python-publication capability. Preserve the current gated maintainer release path for the first package release.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -1934,6 +1997,7 @@
               "scripts/freeze_compatibility_corpus.py"
             ],
             "create": [
+              "scripts/release-prepare",
               "scripts/build_release_assets.py",
               "tests/test_release_assets.py",
               "tests/data/releases/<nextRelease.version>"
@@ -1948,18 +2012,22 @@
           "validation": {
             "tests": [
               "Release preparation builds wheel and sdist with uv build --no-sources",
+              "The installed-wheel boundary suite, capability matrix, and resource index verification run against the post-bump rebuilt wheel inside prepare, before @semantic-release/github publishes",
+              "A rebuilt wheel differing from the candidate in anything beyond version metadata and version-derived filenames aborts preparation",
               "One release-identity contract proves pyproject version, wheel METADATA Version, normalized wheel filename version, compatibility-corpus EngineCoordinate.version, and expected semantic-release tag vR all derive from nextRelease.version R",
               "Checksum files name and authenticate the exact produced artifacts",
               "Release preparation freezes and validates tests/data/releases/R from nextRelease.version before publication",
               "@semantic-release/github assets include wheel, sdist, and checksums from the same run and target the release for tag vR",
               "Release configuration contains no PyPI or other registry publication",
-              "A simulated release dry run keeps version metadata and asset paths coherent"
+              "A simulated release dry run keeps version metadata and asset paths coherent",
+              "scripts/release-prepare performs the version stamp, corpus freeze, build, rebuilt-wheel revalidation, and checksum generation, and is invoked identically by the hand-maintained and rendered .releaserc"
             ],
             "acceptance": [
               "The existing release machinery computes R and creates all first-release corpus and artifact outputs",
               "Any mismatch among R, package metadata, artifact filenames, corpus coordinates, and the expected release tag aborts before publication",
               "No asynchronous post-release asset race is introduced",
-              "The uploaded wheel is the candidate artifact that passed the release matrix"
+              "The uploaded wheel passed the installed-wheel gate in its own right during preparation, not only as its pre-bump predecessor",
+              "Rygor's release preparation is expressible through the capability contract every adopter uses"
             ]
           }
         },
@@ -1977,7 +2045,7 @@
             "Canonical repository commands",
             "Built-wheel and capability matrices"
           ],
-          "description": "Replace the current sentinel hook with Rygor's adopter-owned source validation program. It runs Ruff format/check, basedpyright, canonical parallel pytest, wheel/sdist build, clean installed-wheel checks, resource verification, complete capability matrix, generated-workflow validation, and release-asset checks. Keep the hook source-specific and outside generic capability ownership so released engine N can call it while candidate N+1 is tested only in disposable repositories.",
+          "description": "Replace the current sentinel hook with Rygor's adopter-owned source validation program. It runs Ruff format/check, basedpyright, canonical parallel pytest, wheel/sdist build, clean installed-wheel checks, resource verification, complete capability matrix, generated-workflow validation, and release-asset checks. Keep scripts/validate-project and scripts/release-prepare source-specific and outside generic capability ownership so released engine N can call it while candidate N+1 is tested only in disposable repositories.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -1988,7 +2056,8 @@
               "scripts/validate-project",
               ".github/workflows/template-ci.yml",
               "flake.nix",
-              "tests/test_delivery_contract.py"
+              "tests/test_delivery_contract.py",
+              "scripts/release-prepare"
             ],
             "create": [
               "tests/test_source_validation.py"
@@ -2036,7 +2105,7 @@
             "New domain language and ADR",
             "Current active documentation references"
           ],
-          "description": "Document direct-wheel invocation, checksum pinning, capability selection, desired configuration, plan/apply, status, validation, restore, upgrade, recovery, external activation, GitHub capability setup, release assets, compatibility, and two-level dogfooding. Replace the inaccurately named template update guide with engine upgrade guidance. Update legal/provenance and troubleshooting guidance so no active document instructs users to regenerate template cleanup state or run retired validators.",
+          "description": "Reconcile docs/prd.md against as-built behavior: it was written in T1 before any implementation existed, so every requirement is re-read against the delivered commands, diagnostics, state, and compatibility rules, and corrected where implementation revealed a better or different contract. Document direct-wheel invocation, checksum pinning, capability selection, desired configuration, plan/apply, status, validation, restore, upgrade, recovery, external activation, GitHub capability setup, release assets, compatibility, and two-level dogfooding. Replace the inaccurately named template update guide with engine upgrade guidance. Update legal/provenance and troubleshooting guidance so no active document instructs users to regenerate template cleanup state or run retired validators.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -2044,6 +2113,7 @@
           },
           "files": {
             "reuse": [
+              "docs/prd.md",
               "README.md",
               "CONTRIBUTING.md",
               "AGENTS.md",
@@ -2060,6 +2130,7 @@
               "docs/engine-upgrades.md"
             ],
             "modify": [
+              "docs/prd.md",
               "README.md",
               "CONTRIBUTING.md",
               "AGENTS.md",
@@ -2079,12 +2150,15 @@
           "new_abstractions": [],
           "validation": {
             "tests": [
+              "Every command, diagnostic identifier, persisted file, and exit-code rule named in docs/prd.md exists in the implementation",
+              "Every public command and persisted file in the implementation is covered by a docs/prd.md requirement",
               "Documentation contract finds every public command and direct-wheel example",
               "Active docs contain no Copier, GitHub-template, generation-path, copied-engine, cleanup-inventory, reconcile, project.json, or retired-validator instructions",
               "Engine upgrade guide explains newer-minor proposal and older-minor refusal",
               "GitHub guidance is scoped to github-ci rather than core"
             ],
             "acceptance": [
+              "docs/prd.md describes the product that was actually built, not only the one that was designed",
               "New users can install, create, adopt, configure, validate, recover, and upgrade from active docs",
               "AGENTS.md names the new canonical source and generated-project validation boundaries",
               "Historical ADRs, release notes, changelog, and archived specs remain unchanged"
@@ -2105,7 +2179,7 @@
             "Installed-wheel and workflow test suites",
             "Current template-maintainer automation"
           ],
-          "description": "Replace template-source CI naming and commands with package-source validation, installed-wheel fixtures, actionlint, release-asset checks, and the canonical hook. Update Nix checks and focused mutation targets to src/rygor and retained validation code. Keep semantic release gated on complete source validation and preserve least-privilege workflow behavior. Do not self-adopt managed workflows until released wheel R exists.",
+          "description": "Consolidate source CI into the single .github/workflows/ci.yml and delete the template-specific workflow, replacing template-source naming and commands with package-source validation, installed-wheel fixtures, actionlint, release-asset checks, and the canonical hook. Do not add a second source workflow: ci.yml is the path self-adoption later manages, so a parallel hand-maintained workflow would duplicate it and leave an unowned file after adoption. Update Nix checks and focused mutation targets to src/rygor and retained validation code. Keep semantic release gated on complete source validation and preserve least-privilege workflow behavior. Do not self-adopt managed workflows until released wheel R exists.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -2124,9 +2198,7 @@
               "tests/test_mutation_contract.py",
               "tests/test_delivery_contract.py"
             ],
-            "create": [
-              ".github/workflows/source-ci.yml"
-            ],
+            "create": [],
             "modify": [
               ".github/workflows/ci.yml",
               ".github/workflows/project-validation.yml",
@@ -2144,6 +2216,7 @@
           "new_abstractions": [],
           "validation": {
             "tests": [
+              "Exactly one source CI workflow exists and it is .github/workflows/ci.yml",
               "Source CI invokes scripts/validate-project and blocks semantic release",
               "Nix checks use package-source commands and no retired readiness validator",
               "Mutation configuration names only live src/rygor and validation targets",
@@ -2153,7 +2226,8 @@
             "acceptance": [
               "No source automation identifies Rygor as a template",
               "Release cannot run before the full candidate-wheel gate",
-              "Hand-maintained first-release workflows remain operational until self-adoption"
+              "Hand-maintained first-release workflows remain operational until self-adoption",
+              "No hand-maintained source workflow survives self-adoption as a duplicate of a managed path"
             ]
           }
         },
@@ -2235,7 +2309,9 @@
               "tests/test_plan_contract.py",
               "tests/test_mutation_contract.py",
               "tests/test_secret_scan.py",
-              "tests/conftest.py"
+              "tests/conftest.py",
+              "tests/git_config.py",
+              "tests/test_secret_preflight.py"
             ],
             "create": [],
             "modify": [
@@ -2296,7 +2372,8 @@
               "pytest collection contains no imports from deleted template modules",
               "Replacement tests cover every retained pure and transaction invariant",
               "Plan contract validates the current packaged-capability plan rather than the old bootstrap plan",
-              "Canonical parallel suite passes after retired fixtures are removed"
+              "Canonical parallel suite passes after retired fixtures are removed",
+              "Retained helpers tests/git_config.py and tests/test_secret_preflight.py still import and pass after the deletion pass"
             ],
             "acceptance": [
               "No test preserves behavior explicitly declared out of scope",
@@ -2316,7 +2393,7 @@
             "Repository-defined validation commands",
             "Semantic-release version calculation"
           ],
-          "description": "Run the full repository validation boundary and inspect the final diff for unintended template residue or historical edits. Prove formatting, linting, typing, canonical parallel tests, package builds, clean wheel installs, resource integrity, full capability matrix, workflow security/actionlint, compatibility corpus, lifecycle failure matrix, release assets, Nix checks, mutation contract, and secret scan. Keep the complete transition on one unmerged integration branch until this gate passes. Ensure the implementation delivery contains an explicit conventional-commit breaking-change signal so semantic-release computes the next major release R from whatever latest release exists when the completed PR reaches main, without manually rewriting history, versions, or tags.",
+          "description": "Run the full repository validation boundary and inspect the final diff for unintended template residue or historical edits. Prove formatting, linting, typing, canonical parallel tests, package builds, clean wheel installs, resource integrity, full capability matrix, workflow security/actionlint, compatibility corpus, lifecycle failure matrix, release assets, Nix checks, mutation contract, and secret scan. Preparatory work carrying no release-triggering conventional-commit type may land on main incrementally while every intermediate state keeps repository validation green and the template-era product buildable and releasable: packaging metadata, embedded resources, engine identity, and documentation qualify. Capability rendering, lifecycle command behavior, and removal of the template implementation do not, because they change the delivered product. Hold only the remaining release-triggering change on one unmerged integration branch until this gate passes, so the terminal review is the product change rather than the whole transition. Ensure the implementation delivery contains an explicit conventional-commit breaking-change signal so semantic-release computes the next major release R from whatever latest release exists when the completed PR reaches main, without manually rewriting history, versions, or tags.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -2351,6 +2428,7 @@
               "All release-attached artifact bytes passed the installed-wheel gate",
               "No runtime path depends on the source checkout or retired template implementation",
               "No history, tag, release record, historical ADR, release note, or archived spec was rewritten",
+              "Any incrementally landed preparatory commit left main green and the template-era product releasable",
               "No incomplete release-triggering package transition merged before the full gate passed",
               "The implementation is ready to merge and release but does not perform the release automatically"
             ]
@@ -2417,7 +2495,7 @@
             "Integrated capability profile",
             "Explicit authorization for a separate self-adoption PR"
           ],
-          "description": "Use the released checksummed wheel, never dist or an editable checkout, to plan adoption of the Rygor repository with the integrated profile. Review explicit collisions, apply the bound plan, and create a separate PR containing .rygor/project.toml, .rygor/state.json, and managed repository artifacts. Keep scripts/validate-project and the Rygor-specific release-asset preparation adopter-owned. Re-run source validation through the released engine and prove candidate-wheel testing remains confined to disposable repositories.",
+          "description": "Use the released checksummed wheel, never dist or an editable checkout, to plan adoption of the Rygor repository with the integrated profile. Adoption needs no keep-existing exception: Rygor's release preparation already lives in the adopter-owned scripts/release-prepare hook that the rendered .releaserc invokes, and flake.nix and flake.lock are seed-once, so the existing files stay adopter-owned by their ownership class rather than by a per-path decision. Review explicit collisions, apply the bound plan, and create a separate PR containing .rygor/project.toml, .rygor/state.json, and the managed repository artifacts. Declare Rygor's commit_assets and release_assets as semantic-release settings so the rendered .releaserc reproduces the hand-maintained one. Re-run source validation through the released engine and prove candidate-wheel testing remains confined to disposable repositories.",
           "execution": {
             "mode": "inline",
             "status": "pending",
@@ -2426,7 +2504,9 @@
           "files": {
             "reuse": [
               "scripts/validate-project",
+              "scripts/release-prepare",
               "scripts/build_release_assets.py",
+              ".releaserc",
               ".github/workflows/ci.yml",
               ".github/workflows/project-validation.yml",
               ".github/workflows/semantic-release.yml",
@@ -2440,14 +2520,12 @@
               ".rygor/state.json"
             ],
             "modify": [
+              ".releaserc",
               ".github/workflows/ci.yml",
               ".github/workflows/project-validation.yml",
               ".github/workflows/semantic-release.yml",
               ".github/workflows/pr-agent.yml",
-              ".github/workflows/pr-agent-commands.yml",
-              ".releaserc",
-              "flake.nix",
-              "flake.lock"
+              ".github/workflows/pr-agent-commands.yml"
             ],
             "delete": []
           },
@@ -2456,6 +2534,10 @@
             "tests": [
               "project.toml points to the immutable R HTTPS wheel and exact checksum",
               "state.json records EngineCoordinate.version R from the installed wheel metadata and the same verified artifact, resource, and catalog identities",
+              "The adopt plan declares no keep-existing decision",
+              "The rendered .releaserc is byte-equivalent in effect to the hand-maintained one and still invokes scripts/release-prepare",
+              "Rygor's release path still builds, revalidates, and attaches assets after adoption",
+              "flake.nix and flake.lock are recognized as seed-once and are neither re-rendered nor drift-fatal",
               "Released engine validates the Rygor repository and calls scripts/validate-project",
               "Managed output matches the integrated profile and passes the full source gate",
               "No local dist path, editable source, secret value, or candidate identity is persisted"
@@ -2463,7 +2545,8 @@
             "acceptance": [
               "Self-adoption is delivered in a separate reviewable PR after release",
               "Released Rygor N manages source while candidate N+1 tests disposable repositories",
-              "Rygor-specific release assets and validation hook remain adopter-owned"
+              "Rygor adopts as an ordinary adopter, with no path excused from its ownership class",
+              "A defect in the rendered .releaserc or release workflow would break Rygor's own next release"
             ]
           }
         }
