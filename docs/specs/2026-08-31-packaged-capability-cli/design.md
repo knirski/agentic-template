@@ -138,7 +138,7 @@ can distinguish desired changes, drift, engine compatibility, activation require
 
 Priority: must.
 
-- `rygor status` never runs the adopter hook, prompts, mutates files, or queries a hosting service.
+- `rygor status` never runs an adopter hook, prompts, mutates files, or queries a hosting service.
 - Text and JSON representations carry the same stable diagnostic identifiers, paths, capabilities, and
   next actions.
 - Status distinguishes healthy state, pending desired configuration, managed drift, update availability,
@@ -176,6 +176,9 @@ Priority: must.
 - Unknown third states are preserved and reported rather than overwritten.
 - `restore` uses the recorded applied configuration and engine identity, never pending desired
   configuration, and does not upgrade the project.
+- `apply` and `restore` run only under the recorded engine build. A running engine with a different
+  resource or catalog digest refuses and names the exact wheel coordinate, source, and digest that can
+  act on the repository.
 
 ### US-7: Evolve within the packaged release's stable major version
 
@@ -221,8 +224,12 @@ Priority: must.
 - Candidate wheels execute against disposable new and adopted repositories before publication.
 - The first package release is produced by the existing release machinery, attached as a checksummed
   release artifact, and followed by adoption of the Rygor repository.
-- Subsequent releases are built by the previously released engine's managed delivery foundation, tested
-  from the candidate wheel, published as release assets, and adopted in a follow-up engine upgrade.
+- Subsequent releases are validated through the previously released engine's managed delivery
+  foundation, tested from the candidate wheel, published as release assets, and adopted in a follow-up
+  engine upgrade.
+- Self-adoption requires no `keep-existing` exception. Rygor's release preparation rides the same
+  `scripts/release-prepare` hook and capability settings every adopter uses, so its managed `.releaserc`
+  and release workflow are the rendered ones.
 
 ## Constraints
 
@@ -233,6 +240,12 @@ Priority: must.
   the next major version computed from the latest release that exists when that boundary reaches `main`.
   Intermediate incomplete states do not merge as release-triggering package changes. Existing history,
   tags, and releases remain.
+- Preparatory work that carries no release-triggering conventional-commit type may land on `main`
+  incrementally, provided every intermediate state leaves the repository's own validation green and the
+  template-era product still buildable and releasable. Packaging metadata, embedded resources, engine
+  identity, and documentation are eligible; capability rendering, lifecycle command behavior, and the
+  removal of the template implementation are not, because they change the delivered product. Only the
+  remaining release-triggering change is held on one integration branch until its full gate passes.
 - The Python floor remains the repository's supported floor and the project uses uv, Ruff, basedpyright,
   pytest, and the canonical parallel test invocation.
 - The build must produce a wheel and source distribution; release validation must exercise the built
@@ -255,7 +268,7 @@ Priority: must.
 
 ## Context
 
-The current repository is a non-packaged Python project named `rygor` at version 2.5.0. It declares
+The current repository is a non-packaged Python project named `rygor` at version 2.6.0. It declares
 runtime dependencies but has no build backend or console-script entry point. The bootstrap engine lives
 under `scripts/bootstrap`, public invocation is through `scripts/bootstrap_project.py`, and resource
 loading assumes the template checkout is present.
@@ -404,9 +417,20 @@ before acquisition and used to authenticate the downloaded bytes. `direct-wheel`
 implementation. The discriminator exists from schema 1 so a future `registry` source can be added without
 changing lifecycle concepts.
 
-**Build identity** is the observed SHA-256 computed from the acquired artifact bytes plus embedded
-resource and catalog digests. For a direct wheel, observed `artifact_sha256` must equal the source's
-expected `sha256` before Rygor executes the wheel or seals project state.
+**Build identity** is the acquisition-attested artifact SHA-256 plus the resource and catalog digests
+computed from the installed distribution. For a direct wheel, `artifact_sha256` must equal the source's
+expected `sha256` before Rygor renders resources from the wheel or seals project state.
+
+The two digests are established differently and the distinction is load-bearing. `resource_digest` and
+`catalog_digest` are recomputed by the running process from the installed package, so tampering after
+installation is detected directly. `artifact_sha256` is not recomputed: an installed distribution
+contains an unpacked tree, not the wheel it came from, and Rygor does not re-download the artifact in
+order to hash it. Rygor reads the digest the installer already verified, from PEP 610
+`direct_url.json` `archive_info.hashes`, or accepts it as explicit source metadata on the command line.
+Integrity of the acquired bytes is therefore the installer's guarantee — `uv` rejects a wheel whose
+bytes do not match the `#sha256=` fragment before any Rygor code runs — and Rygor's own check is that
+the attested digest agrees with the digest the project declares or is about to persist. A missing,
+unverifiable, or disagreeing attestation is an integrity failure that performs no project mutation.
 
 **Minimum engine** is the earliest compatible engine coordinate permitted to interpret the repository's
 persisted semantics. It is advanced only when a capability, setting, state field, migration, or rendered
@@ -432,7 +456,7 @@ Conceptually, each definition contains:
 CapabilityDefinition(
     id="pr-agent",
     provides=frozenset({"review.automation"}),
-    requires=frozenset({"hosting"}),
+    requires=frozenset({"hosting", "delivery.ci"}),
     settings_schema=PrAgentSettings,
     artifacts=(),
     contributions=(ReviewAutomation(...),),
@@ -452,10 +476,22 @@ The core contribution vocabulary is deliberately small and closed for this relea
 
 New contribution kinds require a current capability use case. Rygor does not model arbitrary CI syntax.
 
+`ReleaseJob` carries whether the job invokes the adopter release-preparation hook, so a consumer can
+render the invocation and, when `toolchain.nix` is selected, wrap it in the project's Nix environment.
+It carries no command text: the hook path is fixed and the adopter owns the script behind it.
+
 Each contribution states whether consumption is optional or required. An optional Nix validation
 contribution may remain unconsumed when no delivery CI is selected. Publish, release, and review
 automation require exactly one compatible selected consumer. Required contributions are never silently
 dropped.
+
+A capability that emits a required contribution must also declare a requirement on the contract its
+consumer provides. Otherwise the requirement graph and the routing graph can disagree: a selection would
+satisfy every declared requirement, pass resolution step 3, and then fail at routing in step 6 with a
+diagnostic about an unconsumed contribution rather than about the missing capability. `pr-agent`
+therefore requires `delivery.ci` alongside `hosting`, matching `semantic-release` and `cachix-publish`.
+Requirement granularity is a catalog invariant, not a stylistic choice; the resolver rejects a
+definition whose required contributions have no corresponding declared requirement.
 
 Resolution is deterministic:
 
@@ -475,17 +511,17 @@ Resolution is deterministic:
 | Capability | Provides | Requires | Behavior |
 |---|---|---|---|
 | `github-ci` | `hosting`, `hosting.github`, `delivery.ci` | none | Renders GitHub workflows and consumes validation, publish, release, and review contributions |
-| `nix` | `toolchain.nix` | none | Installs Nix resources and emits an optional validation contribution |
+| `nix` | `toolchain.nix` | none | Seeds `flake.nix` and `flake.lock` once and emits an optional validation contribution |
 | `cachix-publish` | `delivery.publish` | `toolchain.nix`, `delivery.ci` | Emits a Cachix publish job; normalizes `cache_name`; documents `CACHIX_AUTH_TOKEN` |
-| `semantic-release` | `delivery.release` | `hosting`, `delivery.ci` | Emits trusted release automation |
-| `pr-agent` | `review.automation` | `hosting` | Emits host-consumed PR review automation using the configured AI backend |
+| `semantic-release` | `delivery.release` | `hosting`, `delivery.ci` | Renders `.releaserc`; seeds `scripts/release-prepare`; emits trusted release automation |
+| `pr-agent` | `review.automation` | `hosting`, `delivery.ci` | Emits host-consumed PR review automation using the configured AI backend |
 
 `hosting` is exclusive: a project selects exactly one hosting provider when a selected capability requires
 hosting. A future `gitlab-ci` may provide `hosting`, `hosting.gitlab`, and `delivery.ci` and consume the
 same typed declarations. Provider-specific contracts remain available only for semantics that cannot be
 substituted.
 
-Nix does not require GitHub or any hosting capability. It always installs its standalone resources. When
+Nix does not require GitHub or any hosting capability. It always seeds its standalone resources. When
 `github-ci` is selected, that consumer incorporates Nix's optional validation check and becomes more
 capable.
 
@@ -528,6 +564,63 @@ A future backend is added as another backend definition under the same capabilit
 changes desired settings, produces a normal bound plan, replaces workflow references transactionally,
 and removes obsolete secret references from managed output. Rygor never migrates or copies secret values.
 
+### Adopter release preparation
+
+Stack neutrality forces an extension point here. A `semantic-release` capability that renders a complete
+`.releaserc` must decide how to stamp the computed version and how to produce release artifacts, and
+those are product-toolchain decisions Rygor does not own. A rendered prepare command that runs `uv` is
+not a delivery contract, it is a Python contract, and it is useless to a Rust or Node adopter. Every
+adopter that ships an artifact needs this, so it is a capability contract rather than a Rygor exception.
+
+`semantic-release` therefore renders a fixed prepare command that invokes an adopter-owned hook:
+
+```json
+"prepareCmd": "scripts/release-prepare ${nextRelease.version}"
+```
+
+`scripts/release-prepare` is seed-once, extensionless, and stack-neutral, receiving the computed version
+as its first argument, exactly as `scripts/validate-project` is the stack-neutral validation boundary. It
+stamps the version, builds whatever the project distributes, and writes the files the capability's
+settings name. Rygor's own copy performs the version handoff, compatibility-corpus freeze, wheel and sdist
+build, rebuilt-wheel revalidation, and checksum generation.
+
+The remaining declarations are settings, so they stay reviewable data rather than shell text:
+
+```toml
+[capabilities.semantic-release]
+prepare_hook = true
+commit_assets = ["pyproject.toml", "uv.lock", "tests/data/releases"]
+release_assets = ["dist/*.whl", "dist/*.tar.gz", "dist/SHA256SUMS"]
+```
+
+`commit_assets` becomes the `@semantic-release/git` asset list and `release_assets` the
+`@semantic-release/github` asset list. Both are target-relative globs validated for path safety like any
+managed path; neither may escape the worktree or name a reserved runtime path. An empty `commit_assets`
+renders no `@semantic-release/git` plugin at all rather than a plugin with an empty asset list, because
+the latter is a configuration that commits nothing and fails differently across plugin versions.
+
+`prepare_hook` defaults to `false` and both asset lists default to empty, so a project created with
+`release-automated` or `integrated` releases a tag and release notes and works on its first run without
+the adopter writing anything. Shipping an artifact is the opt-in. The seeded `scripts/release-prepare`
+is a working no-op that exits 0 and documents its contract in comments, so enabling the hook before
+filling the script in cannot break a release either.
+
+Because a managed `.releaserc` names a seed-once script, `rygor validate` treats the pair as a capability
+readiness obligation: when `prepare_hook` is set, the hook must exist and be executable. Drift detection
+deliberately ignores seed-once paths, so without this check a deleted hook would first surface in the
+trusted release job, after the tag decision.
+
+The release job's toolchain comes from existing contract composition rather than a new axis. The
+`ReleaseJob` contribution declares that the job invokes the prepare hook; when `toolchain.nix` is
+present, `github-ci` renders `nix develop -c scripts/release-prepare "$VERSION"`, the same way selected
+CI already becomes more capable in the presence of Nix. Without Nix the hook bootstraps whatever it
+needs, which is the adopter's business.
+
+`flake.nix` and `flake.lock` are seed-once rather than managed for the same reason. A dev shell is a
+declaration of product toolchain — the current template hardcodes `python314` and `uv` — and Rygor owns
+no such thing. The `nix` capability seeds them once and then leaves them to the adopter, while its
+optional `ValidationCheck` contribution keeps working against whatever flake the repository ends up with.
+
 ### Ownership and render model
 
 The candidate render partitions paths into:
@@ -535,7 +628,8 @@ The candidate render partitions paths into:
 - Rygor-managed output, included in the inventory and reproducible from the applied configuration and
   exact engine build.
 - Seed-once product scaffolding, created only when absent or explicitly permitted and then excluded from
-  the inventory.
+  the inventory. `scripts/validate-project`, `scripts/release-prepare`, `flake.nix`, and `flake.lock` are
+  all seed-once: each declares product toolchain or product behavior, which Rygor seeds but does not own.
 - Adopter-owned existing content, never rendered or made drift-fatal.
 
 `.rygor/project.toml` is adopter-controlled desired state and is not a managed render. Rygor may create it
@@ -552,6 +646,11 @@ Managed drift blocks unrelated render mutation. `restore` repairs the recorded a
 transitions from the applied configuration to the desired configuration. Seed-once and adopter-owned
 files are never restored.
 
+Disabling a capability removes its managed artifacts and nothing else. Files it seeded once stay, because
+they became adopter-owned the moment they were written, and Rygor has no record of whether the adopter
+has since edited them. Re-enabling the capability does not re-seed or overwrite them. Disabling `nix`
+therefore leaves `flake.nix` in place; removing it is the adopter's decision to make.
+
 ## API Design
 
 ### Distribution and invocation
@@ -567,6 +666,15 @@ compatibility-corpus `EngineCoordinate.version`, and the expected tag under the 
 source distribution, and checksums to that same tag; post-publication verification confirms the tag and
 release coordinate. Any disagreement aborts publication. The later self-adoption may persist only the
 coordinate verified from that immutable released wheel.
+
+The published wheel is necessarily rebuilt during preparation and is therefore not byte-identical to the
+candidate the pre-release matrix validated: preparation stamps `R` into package metadata, so the two
+artifacts differ in version metadata and in every filename and digest derived from it. Nothing else may
+differ. The release path closes that gap by re-running the installed-wheel boundary suite — resource
+index verification, the complete capability matrix, and the public command contracts — against the
+rebuilt wheel inside preparation, before the GitHub publisher attaches anything. A repository whose only
+evidence is the pre-bump candidate has not validated the artifact it would publish. "The artifact under
+test is the artifact eligible for release" is satisfied by this second gate, not by the first one.
 
 An invocation uses a direct wheel reference with a hash fragment:
 
@@ -586,10 +694,13 @@ disposable candidate-wheel fixtures.
 
 The direct wheel's metadata must match the declared engine distribution and version. The CLI entry point
 may differ from the distribution name and is part of the engine coordinate. `EngineSource.sha256` is the
-expected digest established before acquisition; `BuildIdentity.artifact_sha256` is computed from the
-acquired wheel bytes. The two values identify the same direct wheel and must be equal. A mismatch is an
-integrity failure: Rygor must not execute the candidate, render resources from it, or persist it as the
-applied engine.
+expected digest established before acquisition; `BuildIdentity.artifact_sha256` is the digest the
+installer attested for the bytes it actually fetched, read from PEP 610 direct-URL metadata or supplied
+explicitly. The two values identify the same direct wheel and must be equal. A mismatch is an integrity
+failure: Rygor must not render resources from the installed distribution or persist it as the applied
+engine. Rygor cannot retroactively prevent its own execution — the installer verified the bytes before
+handing control to this process — so the guarantee Rygor adds is that a distribution whose acquisition
+cannot be tied to the declared digest never becomes recorded project state.
 
 The model separates:
 
@@ -622,30 +733,41 @@ The public lifecycle is:
 - `rygor upgrade --plan DIGEST`
 - `rygor recover [PATH]`
 
-Creation and adoption accept capability settings through schema-validated command input and materialize
-the complete normalized configuration. Exact flag encoding may use repeated `CAPABILITY.KEY=VALUE`
-arguments or a supplied project configuration, but there is no interactive questionnaire or hidden
-ambient default.
+Creation and adoption accept both the `[project]` values and capability settings through
+schema-validated command input and materialize the complete normalized configuration. Exact flag
+encoding may use repeated `CAPABILITY.KEY=VALUE` arguments, dedicated project flags, or a supplied
+project configuration, but there is no interactive questionnaire or hidden ambient default.
+
+`adopt` may propose `default_branch` from the observed Git HEAD as the value it writes into desired
+configuration, and `name` from the target directory. That is capture-time observation, reported in the
+plan and recorded once as an adopter-editable value; it is not the render-time Git read that the data
+model prohibits. Rendering afterwards reads only the stored value, so the same configuration renders the
+same bytes on a machine whose checkout has a different HEAD.
 
 `new` applies only to a target that does not exist or is empty, so it may compile and execute its bound
 plan in one command. Before creating the target or running `git init`, it acquires the deterministic
 parent-scoped bootstrap lease and re-observes the target under that lease. It refuses a populated target,
 an existing bootstrap transaction, or changed target identity and never acts as adoption implicitly.
 
-`plan adopt` is read-only and requires explicit collision declarations for every planned path that
-already exists. `adopt` repeats the same intent and accepts the plan digest; it re-observes the target
-under the lock before writing.
+`plan adopt` is read-only and requires an explicit collision declaration for every planned *managed*
+path that already exists. A seed-once path that already exists needs no decision and is never rewritten,
+because seed-once artifacts are created only when absent; the plan reports each one as retained
+adopter-owned content so the outcome is still visible. `adopt` repeats the same intent and accepts the
+plan digest; it re-observes the target under the lock before writing.
 
 `capability list` and `capability show` inspect the packaged catalog. `show` reports requirements,
-provided contracts, consumers, settings, artifacts, contributions, external secret names, activation
-limits, and minimum engine information.
+provided contracts, consumers, settings, artifacts with their ownership class, contributions, readiness
+obligations, external secret names, activation limits, and minimum engine information. Ownership class
+is reported because whether an artifact is managed or seed-once decides who may edit it afterwards, and
+that is the question an adopter actually has.
 
 `plan apply` compares adopter-controlled desired configuration, Rygor-controlled applied state, and the
 observed tree. It reports capability closure, settings changes, artifact operations, ownership effects,
-external activation notes, and a plan digest. `apply` executes exactly that bound transition. Separate
-`add`, `remove`, and `configure` command families are unnecessary.
+external activation notes, and a plan digest. `apply` executes exactly that bound transition. Like
+`restore`, it renders, so it requires the recorded engine build and refuses `ENGINE_BUILD_MISMATCH`
+otherwise. Separate `add`, `remove`, and `configure` command families are unnecessary.
 
-`status` performs one stable read-only observation. It does not run the adopter hook or query hosting
+`status` performs one stable read-only observation. It does not run either adopter hook or query hosting
 state. It reports pending desired state separately from managed drift and cannot infer that an external
 secret is configured.
 
@@ -654,17 +776,26 @@ inventory, managed workflow structure, mechanical readiness, and then invokes
 `scripts/validate-project`. Hook effects and results belong to the adopter and are not persisted or
 rolled back.
 
-`restore` re-renders only the recorded applied configuration with the recorded compatible engine and
-repairs managed drift. It neither adopts pending desired changes nor changes engine identity.
+`restore` re-renders only the recorded applied configuration with the recorded engine build and repairs
+managed drift. It neither adopts pending desired changes nor changes engine identity.
 
-`upgrade` is the only operation that changes the applied engine coordinate or source. It may also run
-pure schema and capability-setting migrations and re-render managed artifacts. It requires a previewed
-plan and is fully journaled.
+Restore requires the exact recorded build, not merely a compatible one, under the rendering invariant
+in *Engine compatibility and upgrade proposal*. The inventory records digests and modes, never content,
+so repairing drift means re-rendering, and a newer engine's resources may render different bytes for the
+same applied configuration. Restoring from that engine would be an upgrade performed under the name of a
+repair. The adopter either acquires the recorded wheel and restores, or runs `plan upgrade` and accepts
+the newer rendering explicitly.
+
+`upgrade` is the only operation that changes the applied engine coordinate or source. It targets the
+running engine: invoke the newer wheel and `plan upgrade` proposes recording that coordinate, together
+with the source metadata that acquired it, captured from direct-URL metadata or supplied explicitly. It
+may also run pure schema and capability-setting migrations and re-render managed artifacts. It requires
+a previewed plan and is fully journaled.
 
 `recover` examines both the deterministic parent bootstrap location and the canonical Git runtime
 location. It classifies the authoritative journal and completes rollback or sealed cleanup, including
 bootstrap-to-Git handoff cleanup. `PATH` defaults to the current working tree; it is required when an
-interrupted `new` left the target absent. Recovery does not run the adopter hook. Each journal records its
+interrupted `new` left the target absent. Recovery runs no adopter hook. Each journal records its
 writer and minimum recovery engine; an incompatible engine identifies the exact compatible source rather
 than attempting recovery.
 
@@ -698,13 +829,14 @@ earlier same-major project. An older engine is not required to understand later 
 or render behavior.
 
 The compatibility classifier considers the running coordinate, recorded applied coordinate, project
-format, manifest schema, repository minimum engine, and the running engine's embedded compatibility
+format, state schema, repository minimum engine, and the running engine's embedded compatibility
 metadata:
 
 | Condition | Result |
 |---|---|
 | Exact applied coordinate | Normal operation |
-| Recognized newer same-major engine on older same-major state | Backward-compatible inspection and non-blocking update proposal |
+| Recognized newer same-major engine on older same-major state | Backward-compatible inspection and non-blocking update proposal; `apply` and `restore` excluded |
+| `apply` or `restore` requested where the running resource or catalog digest differs from the recorded build | Refuse with `ENGINE_BUILD_MISMATCH`; name the recorded coordinate, source, and digest |
 | Running engine below repository minimum | Limited warning inspection; semantic commands refuse with `ENGINE_TOO_OLD` |
 | Running engine older than the repository's supported major | Refuse as unsupported downgrade |
 | Unrelated or unrecognized coordinate | Refuse with `ENGINE_IDENTITY_MISMATCH` |
@@ -713,8 +845,21 @@ metadata:
 
 Running a later minor `M.y` against a repository applied by earlier `M.x` does not silently rewrite
 anything. `status` and other safe inspection report `RYGOR_UPDATE_AVAILABLE` with recorded and running
-coordinates, schema information, and the exact `plan upgrade` action. A mutation that would use the newer
-catalog must include the engine transition in its explicit plan.
+coordinates, schema information, and the exact `plan upgrade` action.
+
+One invariant governs every rendering operation: **`apply` and `restore` require the running build
+identity to equal the recorded build identity; `new` and `adopt` establish it; `upgrade` is the only
+transition that changes it.** Rendered bytes are a function of the embedded resources and capability
+catalog, so a mutation performed by a different build either writes bytes the recorded configuration does
+not describe or silently adopts that build's rendering. Both are engine transitions, and an engine
+transition is `upgrade`'s job. A running engine whose `resource_digest` or `catalog_digest` differs from
+the recorded build therefore refuses `apply` and `restore` with `ENGINE_BUILD_MISMATCH`, naming the
+recorded coordinate, source URL, and digest.
+
+The practical consequence is worth stating plainly: once a newer wheel is in use, the repository accepts
+no mutation at all until an explicit `upgrade` lands. `RYGOR_UPDATE_AVAILABLE` is non-blocking for
+inspection only. This is the cost of making rendered output reproducible from recorded state, and it is
+paid deliberately.
 
 Running earlier `M.x` against state whose `minimum_engine` is later `M.y` reports `ENGINE_TOO_OLD`. It may
 compare recorded inventory identities with observed paths, but marks the result incomplete and refuses
@@ -727,6 +872,9 @@ Within packaged major `M`:
 - Schema changes are additive or have a pure, non-lossy migration.
 - Stable capability IDs, setting meanings, provided contracts, and diagnostic meanings are not
   reinterpreted.
+- The calling conventions of `scripts/validate-project` and `scripts/release-prepare` are frozen. Both
+  are seed-once and therefore never re-rendered, so an engine cannot migrate an adopter's existing
+  script; changing how a hook is invoked requires `M + 1`.
 - New capabilities, settings, backends, contribution kinds with current consumers, and engine source
   variants may be added.
 - A repository may raise its minimum engine when persisted behavior cannot be reproduced safely by an
@@ -734,9 +882,10 @@ Within packaged major `M`:
 - Major version `M + 1` is required when valid major-`M` configuration cannot be preserved or interpreted.
 
 Engine major `M` scopes semantic compatibility; it does not replace the independently versioned persisted
-contracts. The first packaged release starts project format 1 and schema 1. Those counters may evolve
-additively or through pure non-lossy migration within `M`, while an incompatible persisted-contract change
-still requires `M + 1` regardless of the numeric schema value.
+contracts. The first packaged release starts `project_format` 1 and `state_schema` 1. Those two counters
+evolve independently of each other and of the engine major, additively or through pure non-lossy
+migration within `M`, while an incompatible persisted-contract change still requires `M + 1` regardless
+of either numeric value.
 
 Package version ordering helps present updates but is not the sole compatibility test. Embedded supported
 predecessor and schema metadata decides whether a transition is valid. A distribution rename is an
@@ -760,8 +909,12 @@ permission boundaries, never by checking out and executing untrusted contributor
 `.rygor/project.toml` is tracked, adopter-controlled desired state:
 
 ```toml
-schema = 1
+project_format = 1
 initial_profile = "integrated"
+
+[project]
+name = "example"
+default_branch = "main"
 
 [engine]
 distribution = "rygor"
@@ -776,6 +929,9 @@ sha256 = "..."
 [capabilities.github-ci]
 
 [capabilities.semantic-release]
+prepare_hook = false
+commit_assets = []
+release_assets = []
 
 [capabilities.nix]
 
@@ -788,14 +944,33 @@ model = "gemini/gemini-3.7-flash"
 fallback_models = ["gemini/gemini-3.5-flash-lite"]
 ```
 
-The profile is provenance only. The explicit tables are authoritative. Creation writes every effective
-setting, including defaults, so later releases cannot reinterpret an omitted value. A newly introduced
+`project_format` versions this file's contract and is the counter its fields are validated against. It
+is independent of the state file's `state_schema` and of the packaged engine major; the state file
+records a copy so the classifier can tell which format the last sealed transition was written against.
+
+`[engine]` and `[engine.source]` sit in this adopter-controlled file but are Rygor-maintained: `new` and
+`adopt` write them and `upgrade` is the only command that changes them. A hand edit to either is refused
+as invalid desired configuration rather than accepted as a pending change, because no command could ever
+apply it — `upgrade` targets the running engine, not a version declared in a file. Asking for a different
+engine means invoking that engine and running `plan upgrade`, which then records it here.
+
+`[project]` holds the small set of non-capability values that managed rendering needs and no capability
+owns. `default_branch` is required because the rendered `.releaserc` names the release branch and
+`github-ci` names push triggers; reading it from Git at render time would make output depend on ambient
+repository state and break reproduction from recorded configuration alone. `name` labels seeded
+scaffolding. The table is closed: a value belongs here only when more than one capability needs it or no
+capability can own it, and everything else is a capability setting.
+
+`initial_profile` is provenance only. It records how the initial capability set was chosen, is not part
+of `applied_config`, and is therefore never a pending change. The explicit tables are authoritative.
+Creation writes every effective setting, including defaults, so later releases cannot reinterpret an
+omitted value. A newly introduced
 setting is materialized by an explicit upgrade migration before it can affect an existing project.
 
-The config permits only known schema fields, capability IDs supported by the running compatible engine,
-and normalized non-secret values. Invalid desired configuration is reported without changing the applied
-state. Desired configuration may be edited while managed files are drifted; application remains blocked
-until both contracts are addressed by an appropriate plan.
+The config permits only fields known to its `project_format`, capability IDs supported by the running
+compatible engine, and normalized non-secret values. Invalid desired configuration is reported without
+changing the applied state. Desired configuration may be edited while managed files are drifted;
+application remains blocked until both contracts are addressed by an appropriate plan.
 
 ### Applied state
 
@@ -804,7 +979,8 @@ until both contracts are addressed by an appropriate plan.
 ```json
 {
   "format": "rygor.project-state",
-  "schema": 1,
+  "state_schema": 1,
+  "project_format": 1,
   "engine": {
     "coordinate": {
       "distribution": "rygor",
@@ -823,41 +999,97 @@ until both contracts are addressed by an appropriate plan.
     }
   },
   "compatibility": {
-    "engine_major": 123,
     "minimum_engine": "123.0.0"
   },
   "origin": {
     "kind": "new"
   },
   "applied_config": {
+    "project": {
+      "name": "example",
+      "default_branch": "main"
+    },
     "capabilities": {
+      "cachix-publish": {
+        "cache_name": "example"
+      },
       "github-ci": {},
       "nix": {},
-      "semantic-release": {}
+      "pr-agent": {
+        "ai_backend": "gemini",
+        "fallback_models": ["gemini/gemini-3.5-flash-lite"],
+        "model": "gemini/gemini-3.7-flash"
+      },
+      "semantic-release": {
+        "commit_assets": [],
+        "prepare_hook": false,
+        "release_assets": []
+      }
     }
   },
-  "config_digest": "sha256:...",
   "inventory": {
     ".github/workflows/ci.yml": {
       "digest": "sha256:...",
       "mode": "0644",
-      "contributors": ["github-ci", "nix", "semantic-release"]
+      "contributors": ["cachix-publish", "github-ci", "nix", "semantic-release"]
+    },
+    ".github/workflows/pr-agent.yml": {
+      "digest": "sha256:...",
+      "mode": "0644",
+      "contributors": ["github-ci", "pr-agent"]
+    },
+    ".releaserc": {
+      "digest": "sha256:...",
+      "mode": "0644",
+      "contributors": ["semantic-release"]
     }
   },
   "checksum": "sha256:..."
 }
 ```
 
-The `format` discriminator prevents accidental decoding of template-era manifests that also used schema
-1. No compatibility or migration path exists for those manifests.
+The fields are described here in the order they appear above.
 
-Applied configuration is stored in normalized form so restore and drift classification do not depend on
-pending desired edits. It contains no secret values or adopter prose. Inventory identity records
-normalized content digest and executable mode. Contributor IDs aid explanation but do not divide file
-ownership.
+`format` is a string discriminator, not a counter. It exists so a template-era manifest — which also
+carried a numeric `schema` field — can never be mistaken for this document. No compatibility or migration
+path exists for those manifests. `state_schema` versions this file's own contract, and `project_format`
+mirrors the counter from the desired file so the classifier can compare the format the state was written
+against with the format of the file now on disk. Both counters evolve independently of each other and of
+the packaged engine major.
 
-State is primary evidence, not a claim about current bytes. Status observes the tree and compares it with
-the inventory. The state checksum detects accidental or partial edits; it is not a security signature.
+`engine` records the coordinate, the acquisition source, and the build identity of the engine that
+produced this state. It is written by `new`, `adopt`, and `upgrade`, and no other command may change it.
+`compatibility` carries only `minimum_engine`; the packaged major is read from
+`engine.coordinate.version` rather than stored beside it.
+
+`origin` records how the repository entered management, `new` or `adopt`. It is provenance for
+diagnostics and support only: no decision, plan, render, or recovery path branches on it, and adoption's
+consequences are carried by the inventory and ownership classes rather than by this field.
+
+`applied_config` mirrors the desired configuration in normalized form — the same `project` table and the
+same capability settings, defaults materialized, secrets and adopter prose absent. It is the sole input
+to `restore`, so anything omitted here could not be re-rendered, and it is stored normalized so that
+restore and drift classification never depend on pending desired edits. Pending desired state is detected
+structurally, by normalizing the file on disk and comparing it against this value: an edit is pending
+exactly when it would change what Rygor renders, so reformatting, reordering tables, or spelling a
+default explicitly is not a pending change.
+
+`inventory` records one entry per managed path: normalized content digest and executable mode, which
+together are what drift is measured against, plus the capabilities that contributed to it. Contributor
+IDs explain provenance and nothing more — they never divide ownership of a file, which belongs whole to
+its rendering consumer. Seed-once and adopter-owned paths do not appear.
+
+`checksum` covers the document. It detects accidental or partial edits; it is not a security signature.
+
+Two absences are deliberate and follow one rule: **a value that can be derived is never stored.** The
+packaged major is derived from the coordinate, and there is no digest of `applied_config` because the
+document checksum already covers that subtree. A stored copy of either would be a second source of truth
+that can disagree with the first after a hand edit or a partial migration, with no principled way to
+decide which one is right. The same rule is why nothing in state claims that the desired file on disk is
+unmodified — that is observable, so it is observed rather than recorded.
+
+State is primary evidence of the last sealed transition, not a claim about what the working tree
+currently contains. Status observes the tree and compares it against the inventory.
 
 ### Runtime state
 
@@ -955,6 +1187,11 @@ unsupported node types, target-root substitution, and writes outside the canonic
   declarations only when selected.
 - Reject required contributions with no consumer or multiple consumers.
 - Prove no secret value can enter configuration, normalized state, plans, diagnostics, or rendered docs.
+- Render `.releaserc` across the `prepare_hook`, `commit_assets`, and `release_assets` combinations,
+  including the empty-asset case that omits the git plugin, and prove no adopter command text reaches it.
+- Prove `rygor validate` fails when `prepare_hook` is set and the seeded hook is missing or non-executable.
+- Prove `apply` and `restore` refuse with `ENGINE_BUILD_MISMATCH` when the running build differs from the
+  recorded one, and that `new`, `adopt`, and `upgrade` are unaffected.
 - Acquire direct-wheel fixtures with matching and mismatching digests; prove source `sha256` equals
   observed `artifact_sha256` in every accepted build identity and that a mismatch is rejected before
   execution or state mutation.
@@ -999,7 +1236,7 @@ proved secretless and read-only.
 - Exercise stale plans, concurrent mutation, target replacement, symlink substitution, third states,
   invalid journals, and `git clean -fdx` survival.
 - Prove pending desired configuration does not affect restore.
-- Prove status and recovery never invoke the adopter hook.
+- Prove status and recovery never invoke either adopter hook.
 - Prove hook failure does not roll back a mechanically valid installation and its effects are not claimed
   by Rygor recovery.
 
@@ -1061,6 +1298,10 @@ The generic initial catalog does not include Python package publication. Attachi
 checksum is initially a Rygor-specific maintainer workflow at an adopter-owned path. A generic Python
 publication capability is not added until a real second consumer justifies it.
 
+Consequently Rygor's own repository adopts as an ordinary adopter, with no `keep-existing` exception and
+no managed path it must specialize. Self-hosting proves the release and toolchain artifacts rather than
+excusing them: a defect in the rendered `.releaserc` breaks Rygor's own next release.
+
 Dogfooding is evidence in addition to, not a substitute for, the full profile and custom-selection matrix.
 
 ## Security and Failure Model
@@ -1076,8 +1317,15 @@ Dogfooding is evidence in addition to, not a substitute for, the full profile an
   credential, and attach no privileged environment.
 - PR Agent, semantic release, and Cachix jobs receive only their declared secrets and permissions on
   trusted events. A hosting renderer cannot infer permission broadening from arbitrary capability data.
-- Capabilities cannot execute arbitrary code inside the Rygor process. The only adopter execution boundary
-  is the explicit validation hook.
+- Capabilities cannot execute arbitrary code inside the Rygor process. The adopter execution boundaries
+  are the two explicit hooks: `scripts/validate-project` and `scripts/release-prepare`.
+- The two hooks have deliberately different privilege. `scripts/validate-project` runs in the untrusted
+  contributor job with no secrets, no write permission, and no persisted credential.
+  `scripts/release-prepare` runs only in the trusted release job, on trusted events, with the release
+  token and declared secrets in scope. Rygor never invokes the release hook on a `pull_request` event.
+  This is not an escalation — the adopter already owns the workflow and could edit it directly — but it
+  is adopter code executing with release privilege, and Rygor renders its invocation rather than
+  auditing its contents.
 - Plans bind target and content identities. Atomic bootstrap and canonical locks prevent accidental
   concurrent Rygor mutation, and double observation prevents ordinary time-of-check/time-of-use
   divergence. Bootstrap leases are never reclaimed solely from a process ID or timeout.
@@ -1091,7 +1339,10 @@ Dogfooding is evidence in addition to, not a substitute for, the full profile an
 
 Implementation replaces active documentation as one coherent product transition:
 
-- `docs/prd.md` becomes the packaged CLI product contract and release acceptance source.
+- `docs/prd.md` becomes the packaged CLI product contract and release acceptance source. It is written
+  before implementation, so it is also reconciled against as-built behavior in the same pass that
+  rewrites the rest of the active documentation. A source of truth that was never checked against what
+  shipped is not one.
 - `README.md` explains direct-wheel invocation, new/adopt workflows, desired configuration, and the
   package-only scope.
 - `CONTEXT.md` adopts the domain terms defined here and removes template generation-path terminology.
@@ -1099,9 +1350,11 @@ Implementation replaces active documentation as one coherent product transition:
   validation boundary.
 - `docs/capabilities.md` describes capability definitions, provided contracts, contributions, consumers,
   settings, profiles, and the initial catalog.
-- `docs/delivery-workflow.md` describes desired state, plan/apply, status, restore, upgrade, recovery, and
-  external activation.
-- `docs/project-readiness.md` describes package mechanical validation and the adopter-owned hook.
+- `docs/delivery-workflow.md` describes desired state, plan/apply, status, restore, upgrade, recovery,
+  external activation, and `scripts/release-prepare` with the release-asset settings and the trusted-job
+  privilege that hook carries.
+- `docs/project-readiness.md` describes package mechanical validation and the adopter-owned
+  `scripts/validate-project` hook.
 - `docs/github-setup.md` becomes guidance for the `github-ci` capability rather than a universal hosting
   contract.
 - `docs/template-updates.md` is removed or replaced by engine-upgrade guidance under an accurately named
@@ -1186,6 +1439,17 @@ An older engine may not understand a new capability or contribution in a shared 
 render could silently erase behavior. Limited read-only inspection warns; semantic commands fail closed
 when the repository minimum exceeds the running engine.
 
+### Rejected: except Rygor's own release files from management
+
+The alternative to an extension point was to let Rygor adopt itself with `keep-existing` decisions on
+`.releaserc`, `flake.nix`, `flake.lock`, and the release workflow, treating Rygor as the one adopter whose
+files the capability cannot render. That reasoning depended on Rygor being exceptional, and it is not.
+The template-era `.releaserc` renders a `uv`-specific prepare command and the flake pins `python314`, so
+the capability as inherited only fits Python projects; stack neutrality requires changing it regardless,
+and once changed it cannot stamp a version or build an artifact for anyone without an adopter boundary.
+The exception would have shipped a broken capability to every other adopter while hiding the breakage
+from the one repository positioned to notice it.
+
 ### Known limitations
 
 - A direct release asset can become unavailable. The checksum prevents substitution but cannot provide
@@ -1200,6 +1464,15 @@ when the repository minimum exceeds the running engine.
   newer behavior.
 - Managed artifacts are whole-file owned. Rygor does not merge arbitrary adopter edits inside managed
   files.
+- `restore` requires the exact recorded engine build, not merely a compatible one. Repairing drift on a
+  machine that has only a newer wheel means acquiring the recorded wheel or upgrading explicitly.
+- `artifact_sha256` is attested by the installer that fetched the wheel, not recomputed by Rygor. Rygor
+  detects a tampered installed tree through the resource and catalog digests, and detects a disagreeing
+  acquisition, but adds no independent check of the original bytes.
+- Release preparation runs adopter-authored code in the trusted, secret-bearing job. Rygor renders the
+  invocation and the asset lists but neither inspects nor sandboxes what the hook does.
+- `flake.nix` and `flake.lock` are seeded once and then unowned, so a stale dev shell is the adopter's to
+  fix and `nix flake check` is only as strong as the flake they keep.
 
 These limitations are explicit product boundaries rather than hidden degradation.
 
