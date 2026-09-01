@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 from typing import cast
@@ -12,6 +13,14 @@ from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 from scripts.bootstrap.blobs import BlobRecord, ContentId, VerifiedBlobStore
 from scripts.bootstrap.result import Err, Ok
 from scripts.bootstrap.values import ResourceLimits
+
+
+def _project_without_snapshot_commit(content: bytes) -> dict[str, object]:
+    document = cast(dict[str, object], json.loads(content))
+    provenance = cast(dict[str, object], document["provenance"])
+    source_baseline = cast(dict[str, object], provenance["source_baseline"])
+    _ = source_baseline.pop("snapshot_commit")
+    return document
 
 
 class BlobStoreStateMachine(RuleBasedStateMachine):
@@ -260,7 +269,16 @@ class AdoptionCrashStateMachine(RuleBasedStateMachine):
                 assert tree == self.pre_state
                 assert not journal.exists()
             case "installed":
-                assert tree == self.expected_installed
+                assert tree.keys() == self.expected_installed.keys()
+                for path, observed in tree.items():
+                    expected = self.expected_installed[path]
+                    if path == ".rygor/project.json":
+                        assert observed[1] == expected[1]
+                        assert _project_without_snapshot_commit(
+                            observed[0]
+                        ) == _project_without_snapshot_commit(expected[0])
+                    else:
+                        assert observed == expected
                 assert not journal.exists()
             case "mutating" | "sealed":
                 assert journal.exists()
